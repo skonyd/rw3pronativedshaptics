@@ -60,6 +60,15 @@
             <Button x:Name="TestLeftButton" Content="Sol Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestLeft_Click"/>
             <Button x:Name="TestRightButton" Content="Sağ Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestRight_Click"/>
           </StackPanel>
+          <TextBlock Text="Gerçek UAC haptic yolunun oyun açmadan testi: sentetik PCM'yi 3./4. kanala gönder, geri yakala ve Sensa çıkışına dönüştür."
+                     TextWrapping="Wrap" Foreground="#A8C2DF" Margin="0,14,0,9"/>
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="LoopLeftButton" Content="Tam yol: PCM sol → Sensa" Style="{StaticResource Btn}"
+                    Background="#266B64" Click="LoopLeft_Click"/>
+            <Button x:Name="LoopRightButton" Content="Tam yol: PCM sağ → Sensa" Style="{StaticResource Btn}"
+                    Background="#266B64" Click="LoopRight_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="FullPathTestText" Margin="0,10,0,0" Foreground="#E2C59A" TextWrapping="Wrap"/>
           <TextBlock x:Name="PhysicalTestText" Margin="0,10,0,0" Foreground="#E2C59A" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
