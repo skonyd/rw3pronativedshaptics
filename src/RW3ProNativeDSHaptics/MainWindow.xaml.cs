@@ -142,10 +142,11 @@ public partial class MainWindow : Window
         }
         else
         {
-            StatusHeading.Text = "Native DualSense · henüz desteklenmiyor";
-            StatusDescription.Text = "Orijinal DualSense sol/sağ PCM verilerini Wolverine'in iki Sensa voice-coil aktüatörüne " +
-                "aktaran doğrulanmış bir gerçek zamanlı donanım çıkışı henüz yok. Burada sahte rumble oynatılmıyor. " +
-                "Araştırma ve donanım doğrulama durumu GitHub dokümanlarında.";
+            StatusHeading.Text = "Native DualSense · deneysel stereo bridge";
+            StatusDescription.Text = "Deneysel köprü: DualSense'in 4-kanallı UAC ses aygıtındaki haptic 3./4. kanallarını " +
+                "okuyup iki Interhaptics parametrik Sensa efektine dönüştürmeyi dener. " +
+                "Gerçek oyun komutu, bağımsız motor ayrımı ve bit-perfect PCM aktarımı henüz " +
+                "fiziksel olarak kanıtlanmadı. Başlatmak için 'Deneysel Native Stereo Bridge' düğmesini kullan.";
         }
         DiagnosticsService.Info("Selected mode: " + selected + "; Native is unavailable pending verified hardware bridge.");
         RefreshDevice();
@@ -380,15 +381,22 @@ public partial class MainWindow : Window
                     (outputRecent ? " | Yakın zamanda motor komutu iletildi." : " | Güncel motor komutu yok.");
                 break;
             default:
-                ProvenanceText.Text = "KAYNAK: Native DualSense PCM — DESTEKLENMİYOR";
-                CaptureText.Text = "Doğrulanmış DualSense PCM çerçevesi: 0 (yakalama backend'i YOK).";
-                DeliveryText.Text = "Razer Sensa stereo PCM cihaz aktarımı: 0 (donanım backend'i YOK).";
+                ProvenanceText.Text = "KAYNAK: 4ch UAC haptic adayı — deneysel (gerçek oyun doğrulanmadı)";
+                CaptureText.Text = _nativeBridge is { IsVisible: true }
+                    ? _nativeBridge.StatusForParent
+                    : "Deneysel köprü kapalı. UAC PCM yakalayıcı ve Interhaptics çıkışı başlatılmadı.";
+                DeliveryText.Text = "Sensa parametrik 2 kanal / 50 Hz prototipi. Ham DualSense 48k PCM birebir iletilmez.";
                 break;
         }
-        ProvenanceText.Text = HapticEvidence.Evaluate(
-            _settings.Mode, framesRecent, outputRecent && snap.OutputAccepted > 0,
-            nativeStereoCaptured: false, nativeStereoOutputAcknowledged: false,
-            physicalNativePlaybackConfirmed: false);
+        if (_settings.Mode != HapticMode.Native)
+            ProvenanceText.Text = HapticEvidence.Evaluate(
+                _settings.Mode, framesRecent, outputRecent && snap.OutputAccepted > 0,
+                nativeStereoCaptured: false, nativeStereoOutputAcknowledged: false,
+                physicalNativePlaybackConfirmed: false);
+        else
+            ProvenanceText.Text = _nativeBridge?.HasRecentHapticChannelSamples == true
+                ? "Deneysel UAC stereo haptic sinyali GÖZLENDİ (kaynağın oyun olduğu kanıtlanmadı)"
+                : "Native DualSense 4-kanal PCM kaynağı henüz GÖZLENMEDİ / DOĞRULANMADI";
         PhysicalText.Text = _manualPulseConfirmed ?
             "Fiziksel teyit: Kullanıcı standart 250ms XInput titreşimini hissettiğini bildirdi. Native HD kanıtı değil." :
             "Fiziksel teyit: Kullanıcı tarafından henüz doğrulanmadı; API kabulü motor titreşimini kanıtlamaz.";
@@ -427,8 +435,9 @@ public partial class MainWindow : Window
                 "Performance: " + ResourceText.Text + "\n" +
                 "AudioCallbacks: " + snap.Callbacks + "\n" +
                 "AudioFrames: " + snap.AudioFrames + "\n" +
-                "NativeDualSensePcmReceived: 0 (backend not implemented)\n" +
-                "RazerSensaNativeOutput: 0 (backend not implemented)\n" +
+                "ExperimentalNativeBridge: " + (_nativeBridge?.StatusForParent ?? "not started") + "\n" +
+                "NativeGameAuthoredPcmVerified: false (UAC data may be synthetic/other application)\n" +
+                "NativeBitPerfectRazerPlaybackVerified: false (parametric conversion only)\n" +
                 "LastProblem: " + DiagnosticsText.Text + "\n";
             System.Windows.Clipboard.SetText(report);
         }
