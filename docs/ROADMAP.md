@@ -28,6 +28,21 @@
 - [ ] Confirm short physical rumble pulse manually; no HD source assertions from XInput
 - [ ] Add configurable CPU guard/profiling telemetry only after measurement, avoid telemetry overhead
 
+## Phase 2c — game-free stereo test lab & experimental native bridge
+- [x] Source: game-free L/R XInput tests with manual confirmation
+- [x] Source: actual stereo test sound via Windows output + WASAPI return counters
+- [x] Source: reproducible 48 kHz stereo fixture and 4-channel UAC fixture (rear haptic L/R)
+- [x] Source: optional real 4ch/48k UAC haptic channel capture (strict source validation; no stereo fallback)
+- [x] Source: experimental Interhaptics parametric Left/Right output via two HAR effects
+- [x] Source: full 4-channel UAC synthetic playback → source monitor → Razer provider render test and user confirmation
+- [x] Source: 13 independent unit test rules checking signal identity and L/R isolation
+- [ ] **Verify Windows CI build succeeds, no source compile regressions**
+- [ ] **Verify correct Interhaptics x64 library loading and correct Razer physical L/R routing**
+- [ ] **Verify real DSX+/physical DualSense 4ch UAC endpoint and actual game's authored haptic samples**
+- [ ] Measure latency, stereo separation and physical accuracy vs original DualSense
+- [ ] Discover supported **direct stereo waveform sink**, as current parametric 50Hz envelope is lossy
+- [ ] Make native bridge safe when launched multiple times and when other Razer apps compete for haptic provider
+
 ## Phase 3 — Razer Sensa HD output R&D
 - [ ] Locate supported public API for precise independent left/right voice-coil output
 - [ ] Test event + .haps capabilities and short on-the-fly effects; establish limits
