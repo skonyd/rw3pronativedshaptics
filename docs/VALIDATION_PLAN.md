@@ -12,7 +12,7 @@
 ## Normal Rumble smoke
 - [ ] Game rumble is not intercepted in idle mode.
 - [ ] Test button makes physically identified Wolverine pulse briefly, then stops; reject no gamepad.
-- [ ] If multiple XInput devices connected, display first connected slot clearly; future selection is required.
+- [x] UI and XInput source support explicit slot 0–3 selection or automatic first; [ ] validate with physical Wolverine and DSX+ virtual device connected simultaneously.
 
 ## Audio-to-Haptics smoke
 - [ ] Explicit user action starts WASAPI default-render loopback.
