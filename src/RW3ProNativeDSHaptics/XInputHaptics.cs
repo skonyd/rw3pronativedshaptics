@@ -1,11 +1,21 @@
 using NAudio.Wave;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RW3ProNativeDSHaptics;
 
-/// <summary>Conventional XInput rumble only. Does not address Razer's two HD haptic voice-coils directly.</summary>
+/// <summary>Facts observed by the app, NOT proof of motor motion or native HD haptics.</summary>
+public sealed record CaptureSnapshot(
+    bool IsCapturing, int XInputSlot, long Callbacks, long AudioFrames, long LastAudioTick,
+    long LastActiveSoundTick, long OutputAccepted, long OutputRejected, long LastOutputTick,
+    string? LastError);
+
+/// <summary>
+/// Low-overhead WASAPI loopback to ordinary XInput rumble.
+/// Does not acquire DualSense PCM or address Razer Sensa HD body actuators.
+/// </summary>
 public sealed class XInputHaptics : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -13,19 +23,14 @@ public sealed class XInputHaptics : IDisposable
     {
         public uint PacketNumber;
         public ushort Buttons;
-        public byte LeftTrigger;
-        public byte RightTrigger;
-        public short ThumbLX;
-        public short ThumbLY;
-        public short ThumbRX;
-        public short ThumbRY;
+        public byte LeftTrigger, RightTrigger;
+        public short ThumbLX, ThumbLY, ThumbRX, ThumbRY;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct XInputVibration
     {
-        public ushort LeftMotorSpeed;
-        public ushort RightMotorSpeed;
+        public ushort LeftMotorSpeed, RightMotorSpeed;
     }
 
     [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
@@ -34,122 +39,183 @@ public sealed class XInputHaptics : IDisposable
     private static extern uint XInputSetState(uint userIndex, ref XInputVibration vibration);
 
     private WasapiLoopbackCapture? _capture;
-    private bool _capturing;
-    private long _lastUpdate;
-    private int _selectedIndex = -1;
+    private int _captureFlag, _selectedIndex = -1;
+    private long _audioCallbacks, _audioFrames, _lastAudioTick, _lastActiveSoundTick;
+    private long _outputAccepted, _outputRejected, _lastOutputTick, _lastUpdate;
+    private string? _lastError;
 
     public static int DetectIndex()
     {
         try
         {
-            for (uint i = 0; i < 4; i++)
-                if (XInputGetState(i, out _) == 0) return (int)i;
+            for (uint index = 0; index < 4; index++)
+                if (XInputGetState(index, out _) == 0) return (int)index;
         }
         catch (DllNotFoundException) { }
         catch (EntryPointNotFoundException) { }
         return -1;
     }
 
-    private static void SetMotor(int index, double strong, double weak)
+    public CaptureSnapshot Snapshot() => new(
+        Volatile.Read(ref _captureFlag) == 1, Volatile.Read(ref _selectedIndex),
+        Interlocked.Read(ref _audioCallbacks), Interlocked.Read(ref _audioFrames),
+        Interlocked.Read(ref _lastAudioTick), Interlocked.Read(ref _lastActiveSoundTick),
+        Interlocked.Read(ref _outputAccepted), Interlocked.Read(ref _outputRejected),
+        Interlocked.Read(ref _lastOutputTick), Volatile.Read(ref _lastError));
+
+    private bool SendMotor(int index, double strong, double weak)
     {
-        if (index < 0) return;
+        if (index < 0) return false;
         var vibration = new XInputVibration
         {
             LeftMotorSpeed = (ushort)(Math.Clamp(strong, 0, 1) * ushort.MaxValue),
             RightMotorSpeed = (ushort)(Math.Clamp(weak, 0, 1) * ushort.MaxValue)
         };
-        XInputSetState((uint)index, ref vibration);
-    }
-
-    public async Task<bool> TestAsync()
-    {
-        if (_capturing) return false;
-        var index = DetectIndex();
-        if (index < 0) return false;
         try
         {
-            SetMotor(index, 0.30, 0.20);
-            await Task.Delay(250);
+            if (XInputSetState((uint)index, ref vibration) == 0)
+            {
+                Interlocked.Increment(ref _outputAccepted);
+                Interlocked.Exchange(ref _lastOutputTick, Environment.TickCount64);
+                return true;
+            }
+            Interlocked.Increment(ref _outputRejected);
+            Interlocked.Exchange(ref _lastError, "Windows XInput titreşim komutunu reddetti.");
         }
-        finally { SetMotor(index, 0, 0); }
-        return true;
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException)
+        {
+            Interlocked.Increment(ref _outputRejected);
+            Interlocked.Exchange(ref _lastError, error.Message);
+        }
+        return false;
+    }
+
+    /// <summary>Returns XInput API acknowledgement, not hardware sensor evidence.</summary>
+    public async Task<bool> TestAsync()
+    {
+        if (Volatile.Read(ref _captureFlag) == 1) return false;
+        int index = DetectIndex();
+        if (index < 0) return false;
+        bool acknowledged = false;
+        try
+        {
+            acknowledged = SendMotor(index, 0.30, 0.20);
+            if (acknowledged) await Task.Delay(250);
+        }
+        finally { SendMotor(index, 0, 0); }
+        return acknowledged;
     }
 
     public void StartAudio()
     {
         StopAudio();
         int index = DetectIndex();
-        if (index < 0)
-            throw new InvalidOperationException("XInput cihazı bulunamadı. Wolverine'i PC moduna alın; diğer gamepad'leri geçici ayırın.");
+        if (index < 0) throw new InvalidOperationException(
+            "XInput cihazı yok. Oyun kollarını kontrol edin; algılanan slot Wolverine olarak doğrulanmış değildir.");
         var capture = new WasapiLoopbackCapture();
-        bool floating = capture.WaveFormat.Encoding == WaveFormatEncoding.IeeeFloat
-                        && capture.WaveFormat.BitsPerSample == 32;
-        bool pcm16 = capture.WaveFormat.Encoding == WaveFormatEncoding.Pcm
-                     && capture.WaveFormat.BitsPerSample == 16;
-        if (!floating && !pcm16)
+        bool supported =
+            (capture.WaveFormat.Encoding == WaveFormatEncoding.IeeeFloat &&
+             capture.WaveFormat.BitsPerSample == 32) ||
+            (capture.WaveFormat.Encoding == WaveFormatEncoding.Pcm &&
+             capture.WaveFormat.BitsPerSample == 16);
+        if (!supported)
         {
             capture.Dispose();
-            throw new NotSupportedException("Ses çıkış formatı desteklenmiyor. 32-bit float veya 16-bit PCM Windows çıkışı gerekiyor.");
+            throw new NotSupportedException("WASAPI ses biçimi desteklenmiyor (32-bit float veya 16-bit PCM gerekir).");
         }
-        _selectedIndex = index;
+        Interlocked.Exchange(ref _lastError, null);
+        Interlocked.Exchange(ref _audioCallbacks, 0);
+        Interlocked.Exchange(ref _audioFrames, 0);
+        Interlocked.Exchange(ref _lastAudioTick, 0);
+        Interlocked.Exchange(ref _lastActiveSoundTick, 0);
+        Interlocked.Exchange(ref _outputAccepted, 0);
+        Interlocked.Exchange(ref _outputRejected, 0);
+        Interlocked.Exchange(ref _lastOutputTick, 0);
+        Interlocked.Exchange(ref _lastUpdate, 0);
+        Volatile.Write(ref _selectedIndex, index);
         _capture = capture;
-        _capturing = true;
-        _lastUpdate = 0;
+        Volatile.Write(ref _captureFlag, 1);
         capture.DataAvailable += OnAudioData;
+        capture.RecordingStopped += OnRecordingStopped;
         try { capture.StartRecording(); }
-        catch { StopAudio(); throw; }
+        catch
+        {
+            StopAudio();
+            throw;
+        }
+    }
+
+    private void OnRecordingStopped(object? sender, StoppedEventArgs e)
+    {
+        if (Volatile.Read(ref _captureFlag) != 1) return;
+        Volatile.Write(ref _captureFlag, 0);
+        if (e.Exception != null)
+            Interlocked.Exchange(ref _lastError, "Ses yakalama durdu: " + e.Exception.Message);
+        else
+            Interlocked.Exchange(ref _lastError, "WASAPI yakalama beklenmedik biçimde durdu.");
+        try { SendMotor(Volatile.Read(ref _selectedIndex), 0, 0); } catch { }
     }
 
     private void OnAudioData(object? sender, WaveInEventArgs e)
     {
-        if (!_capturing || _capture == null) return;
+        if (Volatile.Read(ref _captureFlag) != 1 || _capture is null) return;
         var fmt = _capture.WaveFormat;
-        var bytes = fmt.BitsPerSample / 8;
-        int frameBytes = Math.Max(1, fmt.Channels) * bytes;
-        var count = e.BytesRecorded / frameBytes;
-        if (count < 1) return;
-        int step = Math.Max(1, count / 512);
-        double energy = 0, change = 0, previous = 0;
+        int bytes = fmt.BitsPerSample / 8;
+        int frameBytes = fmt.Channels * bytes;
+        if (frameBytes <= 0) return;
+        int frames = e.BytesRecorded / frameBytes;
+        if (frames == 0) return;
+        Interlocked.Increment(ref _audioCallbacks);
+        Interlocked.Add(ref _audioFrames, frames);
+        var now = Environment.TickCount64;
+        Interlocked.Exchange(ref _lastAudioTick, now);
+
+        // Avoid per-sample allocations and expensive full-buffer processing.
+        // At most ~256 samples regardless of audio sample rate or buffer size.
+        int stride = Math.Max(1, (frames + 255) / 256);
+        double energy = 0, change = 0, last = 0;
         int n = 0;
-        for (int frame = 0; frame < count; frame += step)
+        for (int frame = 0; frame < frames; frame += stride)
         {
             int offset = frame * frameBytes;
-            double sample = fmt.BitsPerSample == 16 ?
-                BitConverter.ToInt16(e.Buffer, offset) / 32768.0 :
-                BitConverter.ToSingle(e.Buffer, offset);
-            if (!double.IsFinite(sample)) continue;
-            sample = Math.Clamp(sample, -1, 1);
-            energy += sample * sample;
-            change += Math.Abs(sample - previous);
-            previous = sample;
+            double value = fmt.BitsPerSample == 16
+                ? BitConverter.ToInt16(e.Buffer, offset) / 32768.0
+                : BitConverter.ToSingle(e.Buffer, offset);
+            if (!double.IsFinite(value)) continue;
+            value = Math.Clamp(value, -1, 1);
+            energy += value * value;
+            change += Math.Abs(value - last);
+            last = value;
             n++;
         }
         if (n == 0) return;
-        var rms = Math.Sqrt(energy / n);
-        var transient = change / n;
-        long now = Environment.TickCount64;
-        if (now - _lastUpdate < 45) return;
-        _lastUpdate = now;
-        // Conservative, intentionally conventional low-fidelity rumble; never call it native HD.
-        var strong = Math.Min(0.40, rms * 2.6);
-        var weak = Math.Min(0.28, transient * 2.1);
-        try { if (_capturing) SetMotor(_selectedIndex, strong, weak); } catch { }
+        double rms = Math.Sqrt(energy / n);
+        if (rms > 0.006) Interlocked.Exchange(ref _lastActiveSoundTick, now);
+
+        // <=20 XInput updates/s, do not queue; no disk IO or UI work in callback.
+        if (now - Interlocked.Read(ref _lastUpdate) < 50) return;
+        Interlocked.Exchange(ref _lastUpdate, now);
+        if (Volatile.Read(ref _captureFlag) != 1) return;
+        SendMotor(Volatile.Read(ref _selectedIndex),
+            Math.Min(0.36, rms * 2.5),
+            Math.Min(0.25, (change / n) * 2.0));
     }
 
     public void StopAudio()
     {
-        _capturing = false;
+        Volatile.Write(ref _captureFlag, 0);
         var capture = _capture;
         _capture = null;
-        int index = _selectedIndex;
-        _selectedIndex = -1;
+        int index = Volatile.Read(ref _selectedIndex);
+        Volatile.Write(ref _selectedIndex, -1);
         if (capture != null)
         {
             capture.DataAvailable -= OnAudioData;
+            capture.RecordingStopped -= OnRecordingStopped;
             try { capture.StopRecording(); } catch { }
             capture.Dispose();
         }
-        try { SetMotor(index, 0, 0); } catch { }
+        try { SendMotor(index, 0, 0); } catch { }
     }
 
     public void Dispose() => StopAudio();
