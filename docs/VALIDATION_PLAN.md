@@ -21,6 +21,21 @@
 - [ ] Simultaneous game XInput rumble conflict explained; don't silently overlay.
 - [ ] Change modes/exit always stops loopback and rumble.
 
+## Provenance and game-performance validation — new
+- [ ] Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`: all 7 pure truth-model checks must pass.
+- [ ] No XInput device: status warns; no false vibration or Sensa success.
+- [ ] Motor test: Windows acknowledges command, only mark *physically confirmed* if the user actually feels the short pulse.
+- [ ] Silent loopback: initialized vs received data vs meaningful sound are differentiated.
+- [ ] Real game audio: callback/frame counters increase; XInput accepted/rejected counts distinguish command status; do not label as DualSense PCM.
+- [ ] Native selection: always shows 0 original PCM received and 0 hardware stereo output, not an active HD indicator.
+- [ ] Disconnect controller or change Windows audio endpoint: log/show error and gracefully stop capture.
+- [ ] Capture performance for 10 minutes under a demanding game; compare FPS, 1% lows, p95/p99 frame times and audio quality with mode off/on.
+- [ ] Measure idle CPU (<1% preferred), RAM stability, bounded 20/s motor calls, callback samples ≤256, log max 1MiB + 1 backup.
+- [ ] Force sustained >3% normalized CPU for 3 successive polls: app should automatically stop audio mode and return Normal; report why.
+- [ ] Observe game + audio output simultaneously: the current prototype may contend for the same XInput motor state; test this risk explicitly.
+- [ ] Copy diagnostic status and check it contains exact source, receipt and blocker. Do not store raw game audio.
+- [ ] Confirm close-to-tray and recover from UI error stop the motor.
+
 ## Native DualSense capture / playback — not yet done
 - [ ] Establish real PCM capture from a DualSense-compatible PC game, record timestamped raw L/R frames.
 - [ ] Confirm no input duplication with DSX+ and Steam Input.
