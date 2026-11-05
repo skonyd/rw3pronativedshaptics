@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     private readonly UpdateService _updates = new();
 
     private Forms.NotifyIcon? _tray;
+    private TestLabWindow? _testLab;
+    private NativeBridgeWindow? _nativeBridge;
     private Forms.ToolStripMenuItem? _normalMenu;
     private Forms.ToolStripMenuItem? _audioMenu;
     private Forms.ToolStripMenuItem? _nativeMenu;
@@ -83,6 +85,11 @@ public partial class MainWindow : Window
 
     private void SetMode(HapticMode requested, bool fromUser = true)
     {
+        if (requested != _settings.Mode)
+        {
+            _testLab?.Close();
+            _nativeBridge?.Close();
+        }
         _rumble.StopAudio();
         SetAudioPriority(false);
         var selected = requested == HapticMode.Audio && !fromUser ? HapticMode.Normal : requested;
@@ -119,7 +126,7 @@ public partial class MainWindow : Window
         if (_audioMenu != null) _audioMenu.Checked = selected == HapticMode.Audio;
         if (_nativeMenu != null) _nativeMenu.Checked = selected == HapticMode.Native;
 
-        TestButton.IsEnabled = selected == HapticMode.Normal;
+        TestButton.IsEnabled = true;
         if (selected == HapticMode.Normal)
         {
             StatusHeading.Text = "Normal Rumble · hazır";
@@ -178,6 +185,8 @@ public partial class MainWindow : Window
     {
         _realExit = true;
         _diagnosticsTimer.Stop();
+        _testLab?.Close();
+        _nativeBridge?.Close();
         _rumble.Dispose();
         SetAudioPriority(false);
         _performance.Dispose();
@@ -211,30 +220,29 @@ public partial class MainWindow : Window
     private void Audio_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Audio);
     private void Native_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Native);
 
-    private async void Test_Click(object sender, RoutedEventArgs e)
+    private void Test_Click(object sender, RoutedEventArgs e)
     {
-        TestButton.IsEnabled = false;
-        try
+        if (_testLab != null && _testLab.IsVisible)
         {
-            bool success = await _rumble.TestAsync();
-            if (!success)
-                System.Windows.MessageBox.Show("Bir XInput kontrolcüsü bağlayın. Birden fazla kol bağlıysa ilk slot kullanılacaktır. Fiziksel titreşim doğrulanmadı.",
-                    "Motor testi", MessageBoxButton.OK, MessageBoxImage.Information);
-            else
-            {
-                _manualPulseConfirmed = System.Windows.MessageBox.Show(
-                    "Windows XInput titreşim komutunu kabul etti. Kolda titreşimi bizzat hissettin mi?\n" +
-                    "Bu onay NORMAL rumble içindir, Native DualSense haptic kanıtı değildir.",
-                    "Fiziksel titreşim teyidi", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-                DiagnosticsService.Info(_manualPulseConfirmed ? "User confirmed short conventional pulse." : "User did NOT confirm physical motor pulse.");
-            }
+            _testLab.Activate();
+            return;
         }
-        catch (Exception ex)
+        _testLab = new TestLabWindow(_settings.Mode, _rumble) { Owner = this };
+        _testLab.Closed += (_, _) => _testLab = null;
+        _testLab.Show();
+    }
+
+    private void NativeBridge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings.Mode != HapticMode.Native) SetMode(HapticMode.Native);
+        if (_nativeBridge != null && _nativeBridge.IsVisible)
         {
-            NoteError("Motor test", ex);
-            System.Windows.MessageBox.Show(ex.Message, "Motor testi", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _nativeBridge.Activate();
+            return;
         }
-        finally { TestButton.IsEnabled = _settings.Mode == HapticMode.Normal; UpdateDiagnostics(); }
+        _nativeBridge = new NativeBridgeWindow { Owner = this };
+        _nativeBridge.Closed += (_, _) => _nativeBridge = null;
+        _nativeBridge.Show();
     }
 
     private async Task CheckForUpdatesAsync()
