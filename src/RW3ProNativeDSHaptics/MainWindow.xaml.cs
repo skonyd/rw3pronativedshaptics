@@ -359,6 +359,10 @@ public partial class MainWindow : Window
                 DeliveryText.Text = "Razer Sensa stereo PCM cihaz aktarımı: 0 (donanım backend'i YOK).";
                 break;
         }
+        ProvenanceText.Text = HapticEvidence.Evaluate(
+            _settings.Mode, framesRecent, outputRecent && snap.OutputAccepted > 0,
+            nativeStereoCaptured: false, nativeStereoOutputAcknowledged: false,
+            physicalNativePlaybackConfirmed: false);
         PhysicalText.Text = _manualPulseConfirmed ?
             "Fiziksel teyit: Kullanıcı standart 250ms XInput titreşimini hissettiğini bildirdi. Native HD kanıtı değil." :
             "Fiziksel teyit: Kullanıcı tarafından henüz doğrulanmadı; API kabulü motor titreşimini kanıtlamaz.";
