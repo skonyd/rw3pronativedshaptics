@@ -38,6 +38,22 @@ public sealed class XInputHaptics : IDisposable
     [DllImport("xinput1_4.dll", EntryPoint = "XInputSetState")]
     private static extern uint XInputSetState(uint userIndex, ref XInputVibration vibration);
 
+    private int _preferredIndex = -1;
+    public int PreferredIndex
+    {
+        get => Volatile.Read(ref _preferredIndex);
+        set => Volatile.Write(ref _preferredIndex, value is >= -1 and <= 3 ? value : -1);
+    }
+
+    public int DetectTargetIndex()
+    {
+        int desired = PreferredIndex;
+        if (desired < 0) return DetectIndex();
+        try { return XInputGetState((uint)desired, out _) == 0 ? desired : -1; }
+        catch (DllNotFoundException) { return -1; }
+        catch (EntryPointNotFoundException) { return -1; }
+    }
+
     private WasapiLoopbackCapture? _capture;
     private int _captureFlag, _selectedIndex = -1;
     private long _audioCallbacks, _audioFrames, _lastAudioTick, _lastActiveSoundTick;
@@ -94,7 +110,7 @@ public sealed class XInputHaptics : IDisposable
     public async Task<bool> TestAsync()
     {
         if (Volatile.Read(ref _captureFlag) == 1) return false;
-        int index = DetectIndex();
+        int index = DetectTargetIndex();
         if (index < 0) return false;
         bool acknowledged = false;
         try
@@ -109,7 +125,7 @@ public sealed class XInputHaptics : IDisposable
     public void StartAudio()
     {
         StopAudio();
-        int index = DetectIndex();
+        int index = DetectTargetIndex();
         if (index < 0) throw new InvalidOperationException(
             "XInput cihazı yok. Oyun kollarını kontrol edin; algılanan slot Wolverine olarak doğrulanmış değildir.");
         var capture = new WasapiLoopbackCapture();
