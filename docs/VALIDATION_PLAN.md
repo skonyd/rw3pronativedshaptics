@@ -36,6 +36,18 @@
 - [ ] Copy diagnostic status and check it contains exact source, receipt and blocker. Do not store raw game audio.
 - [ ] Confirm close-to-tray and recover from UI error stop the motor.
 
+## Game-free full-path 4ch native source experiment — not yet hardware validated
+- [ ] Select physical/virtual DualSense UAC endpoint; it must be exactly 4-channel 48 kHz. Selecting ordinary 2-channel speakers MUST fail rather than silently call system audio native.
+- [ ] On Windows verify user-obtained licensed HAR.dll and Interhaptics.RazerProvider.dll load and provider init succeeds.
+- [ ] Run `Sol Sensa` and `Sağ Sensa` test pulses, confirm physically distinct left/right handles. Provider init alone is not proof.
+- [ ] Run `Tam yol: PCM sol/sağ → Sensa` with no game running: 4ch fixture must fill only speaker-silent rear haptic channel 3 or 4; WASAPI monitor must see the selected channel and provider render must tick.
+- [ ] Ask human to confirm side-by-side physical sensation, preserve negative results as evidence.
+- [ ] Confirm lack of DLLs, inactive endpoint, mismatched sample rate, disconnected gamepad, STOP and close all fail safely with motors zeroed.
+- [ ] Start a real DualSense-authored game, compare haptic channel energy during game effect vs silence; identify the actual writing source, not just total PCM samples.
+- [ ] Compare actual DualSense force/spectral/latency vs Razer, document reconstruction loss.
+- [ ] Run CPU/frame-time A/B benchmark in a demanding story game (no performance guarantee).
+- [ ] Native bridge source status must NOT imply bit-perfect 48k waveform playback.
+
 ## Native DualSense capture / playback — not yet done
 - [ ] Establish real PCM capture from a DualSense-compatible PC game, record timestamped raw L/R frames.
 - [ ] Confirm no input duplication with DSX+ and Steam Input.
