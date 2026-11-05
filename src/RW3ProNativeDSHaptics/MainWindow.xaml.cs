@@ -373,6 +373,38 @@ public partial class MainWindow : Window
                 snap.LastError is not null ? "Son cihaz hatası: " + snap.LastError : "Son hata: yok";
     }
 
+    public void RecoverFromUnexpectedError(Exception failure)
+    {
+        try { _rumble.StopAudio(); } catch { }
+        try { SetAudioPriority(false); } catch { }
+        try { SetMode(HapticMode.Normal); } catch { }
+        _lastErrorNoted = "Beklenmeyen hata: " + failure.Message;
+        try { UpdateDiagnostics(); } catch { }
+    }
+
+    private void CopyStatus_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var snap = _rumble.Snapshot();
+            string report = "RW3 Pro Haptics Diagnostics\\n" +
+                "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\\n" +
+                "Mode: " + _settings.Mode + "\\n" +
+                "Evidence: " + ProvenanceText.Text + "\\n" +
+                "Capture: " + CaptureText.Text + "\\n" +
+                "Delivery: " + DeliveryText.Text + "\\n" +
+                "Physical: " + PhysicalText.Text + "\\n" +
+                "Performance: " + ResourceText.Text + "\\n" +
+                "AudioCallbacks: " + snap.Callbacks + "\\n" +
+                "AudioFrames: " + snap.AudioFrames + "\\n" +
+                "NativeDualSensePcmReceived: 0 (backend not implemented)\\n" +
+                "RazerSensaNativeOutput: 0 (backend not implemented)\\n" +
+                "LastProblem: " + DiagnosticsText.Text + "\\n";
+            System.Windows.Clipboard.SetText(report);
+        }
+        catch (Exception ex) { NoteError("Copy diagnostics", ex); }
+    }
+
     private void OpenLog_Click(object sender, RoutedEventArgs e)
     {
         try
