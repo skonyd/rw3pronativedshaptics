@@ -31,6 +31,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet restore src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj
+          dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj -c Release
           dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release --no-restore -warnaserror
           dotnet publish src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.version }} -o publish
       - name: Prepare portable ZIP
