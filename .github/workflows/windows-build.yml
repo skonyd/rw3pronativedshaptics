@@ -1,0 +1,74 @@
+name: Windows build / portable / setup
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "0.1.0"
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Build Windows desktop application
+        shell: pwsh
+        run: |
+          dotnet restore src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj
+          dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release --no-restore -warnaserror
+          dotnet publish src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.version }} -o publish
+      - name: Prepare portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force portable, dist | Out-Null
+          Copy-Item -Path publish\* -Destination portable\ -Recurse -Force
+          New-Item -ItemType File -Path portable\portable.flag -Force | Out-Null
+          Compress-Archive -Path portable\* -DestinationPath dist\RW3ProNativeDSHaptics-Portable-win-x64.zip -CompressionLevel Optimal
+      - name: Ensure Inno Setup is installed
+        shell: pwsh
+        run: |
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { choco install innosetup --yes --no-progress }
+          if (-not (Test-Path $compiler)) { throw "Inno Setup compiler unavailable" }
+      - name: Create Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $publish = (Resolve-Path publish).Path
+          & $compiler "/DAppVersion=${{ steps.version.outputs.version }}" "/DPublishDir=$publish" "installer\app.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Installer packaging failed" }
+      - name: Generate SHA256 manifests
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.zip', '.exe' } | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content -Path "$($_.FullName).sha256" -NoNewline -Encoding ascii
+          }
+      - name: Upload downloadable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: RW3ProNativeDSHaptics-win-x64
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish release on version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
