@@ -27,4 +27,13 @@ Check(noPhysical.Contains("fiziksel HD oynatma doğrulanmadı"), "Driver acknowl
 var valid = HapticEvidence.Evaluate(HapticMode.Native, false, false, true, true, true);
 Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native proofs required");
 
-Console.WriteLine("7 evidence contract checks passed.");
+
+Check(NativeStereoFixture.ValidateSeparation(HapticTestChannel.Left), "Synthetic left PCM is left-only");
+Check(NativeStereoFixture.ValidateSeparation(HapticTestChannel.Right), "Synthetic right PCM is right-only");
+Check(!ChannelTestGate.CanRunNative(false, true), "No DualSense PCM capture means no native test");
+Check(!ChannelTestGate.CanRunNative(true, false), "No Razer haptic output means no native test");
+Check(!ChannelTestGate.CanConfirmNative(true, true, true, false),
+    "Single-side physical feedback is not full native proof");
+Check(!ChannelTestGate.CanConfirmNative(false, true, true, true),
+    "Audio or synthetic input cannot masquerade as authentic game haptics");
+Console.WriteLine("13 evidence and stereo fixture checks passed.");
