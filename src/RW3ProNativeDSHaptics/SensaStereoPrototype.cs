@@ -32,7 +32,7 @@ public sealed class SensaStereoPrototype : IDisposable
         public static extern int AddParametricEffect(
             [In] double[] amplitude, int amplitudeSize,
             [In] double[]? pitch, int pitchSize, double minHz, double maxHz,
-            [In] double[]? transient, int transientSize, [MarshalAs(UnmanagedType.I1)] bool loop);
+            [In] double[]? transient, int transientSize, bool loop);
         [DllImport(Dll)] public static extern void AddTargetToEventMarshal(
             int effectId, [In] CommandData[] targets, int count);
         [DllImport(Dll)] public static extern void SetEventIntensity(int id, double intensity);
@@ -172,9 +172,17 @@ public sealed class SensaStereoPrototype : IDisposable
     public async Task<bool> TestSideAsync(HapticTestChannel channel, CancellationToken token)
     {
         if (!IsActive) return false;
-        Submit(channel == HapticTestChannel.Left ? 0.20f : 0,
-               channel == HapticTestChannel.Right ? 0.20f : 0);
-        try { await Task.Delay(380, token); }
+        try
+        {
+            // Keep each test pulse fresh past the normal 140ms signal watchdog.
+            for (int i = 0; i < 7; ++i)
+            {
+                token.ThrowIfCancellationRequested();
+                Submit(channel == HapticTestChannel.Left ? 0.20f : 0,
+                       channel == HapticTestChannel.Right ? 0.20f : 0);
+                await Task.Delay(55, token);
+            }
+        }
         finally { Submit(0, 0); }
         return IsActive;
     }
