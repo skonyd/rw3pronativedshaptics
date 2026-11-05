@@ -1,6 +1,6 @@
 # AI Handoff — rw3pronativedshaptics
 
-Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,VALIDATION_PLAN,ROADMAP,WINDOWS_APP}.md in that order at the start of every coding session.
+Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STATUS_AND_PERFORMANCE,VALIDATION_PLAN,ROADMAP,WINDOWS_APP}.md in that order at the start of every coding session.
 
 ## Non-negotiable user intent
 - User owns Wolverine V3 Pro, DualSense and DSX+; prefers the Wolverine's shape because DualSense hurts/tire hands.
@@ -20,6 +20,12 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,VALI
 - Build/tests must run on Windows x64; Linux cannot validate WPF/device output. Fail clearly on unavailable controller/SDK.
 - Preserve native stereo PCM before processing. Maintain separately verifiable mock/real backends and no silent fallback.
 - When shipping, maintain changelog, reproducible signed hashes, no claim that unsigned executables are trusted.
+
+## Live diagnostics and performance requirements
+- Read docs/STATUS_AND_PERFORMANCE.md before changing mode labels, counters or backend implementations.
+- App CPU/memory observations, WASAPI frame counts and XInput acknowledgements are telemetry evidence, **not** measured physical HD haptic output. Never mark native successful without three independent proofs.
+- Keep WASAPI callbacks allocation-/I/O-light; bound processing and command rate; log only transitions/errors; retain below-normal priority and watchdog or document alternatives.
+- Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj` and WPF build on Windows runner. Any original motor response needs real Windows 11 + Wolverine user confirmation.
 
 ## Development workflow
 1. Inspect current commit, build status and issues; run build.
