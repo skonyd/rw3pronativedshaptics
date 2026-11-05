@@ -113,11 +113,17 @@ public sealed class XInputHaptics : IDisposable
         if (index < 0) throw new InvalidOperationException(
             "XInput cihazı yok. Oyun kollarını kontrol edin; algılanan slot Wolverine olarak doğrulanmış değildir.");
         var capture = new WasapiLoopbackCapture();
-        bool supported =
-            (capture.WaveFormat.Encoding == WaveFormatEncoding.IeeeFloat &&
-             capture.WaveFormat.BitsPerSample == 32) ||
-            (capture.WaveFormat.Encoding == WaveFormatEncoding.Pcm &&
-             capture.WaveFormat.BitsPerSample == 16);
+        // WASAPI shared-mode frequently reports WAVEFORMATEXTENSIBLE rather than plain IEEE float.
+        var format = capture.WaveFormat;
+        bool float32 = format.BitsPerSample == 32 &&
+            (format.Encoding == WaveFormatEncoding.IeeeFloat ||
+             format is WaveFormatExtensible f32 &&
+             f32.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71"));
+        bool pcm16 = format.BitsPerSample == 16 &&
+            (format.Encoding == WaveFormatEncoding.Pcm ||
+             format is WaveFormatExtensible p16 &&
+             p16.SubFormat == new Guid("00000001-0000-0010-8000-00aa00389b71"));
+        bool supported = float32 || pcm16;
         if (!supported)
         {
             capture.Dispose();
