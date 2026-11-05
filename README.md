@@ -4,6 +4,14 @@
 
 > **Status: Windows tray application and packaging implementation; native DualSense PCM → physical Wolverine Sensa playback remains research-blocked.** See [PROJECT_BRIEF](docs/PROJECT_BRIEF.md) and [ROADMAP](docs/ROADMAP.md). Do not confuse the app's real conventional XInput motor test / audio-to-rumble with original HD haptic replay.
 
+## Experimental DualSense → Sensa bridge (2026-11-05)
+
+The app now has **an opt-in prototype** behind the **“Deneysel Native Stereo Bridge”** button. It enumerates Windows render devices, requires a **4-channel 48 kHz DualSense UAC** source, reads the haptic channels separately (3/4), converts them into two left/right parametric amplitude streams and calls the Razer Interhaptics engine/provider. This is **lossy** and does not preserve the original 48 kHz HD waveform. It is neither physically tested nor a proof that a game authored the incoming samples.
+
+The separate **Haptic Test Lab** offers side-by-side XInput conventional motor tests, real 2-channel WASAPI sound→XInput tests and synthetic 48 kHz PCM fixture export. The **Native Bridge** window also offers direct left/right Interhaptics test pulses and genuine **4-channel UAC→Sensa end-to-end synthetic PCM playback**, independent of any game. A command accepted by the API is never called physical success unless the user confirms vibration, and that confirmation does not prove raw PCM fidelity.
+
+See [Native Bridge Implementation](docs/NATIVE_BRIDGE_IMPLEMENTATION.md). **Vendor HAR.dll / Interhaptics.RazerProvider.dll are not bundled.** You need their legally obtained official SDK copies and working Synapse/Chroma on Windows x64. No GitHub Actions build or hardware run has yet been independently verified.
+
 ## Three modes
 - **Normal Rumble** — the game handles its own native XInput vibration; app offers a voluntary quick motor test.
 - **Audio-to-Haptics** — opt-in WASAPI system-output capture, basic audio envelope to *standard* XInput vibration. For true Razer Sensa audio processing, use Synapse 4.
