@@ -164,8 +164,9 @@ public sealed class XInputHaptics : IDisposable
 
     private void OnAudioData(object? sender, WaveInEventArgs e)
     {
-        if (Volatile.Read(ref _captureFlag) != 1 || _capture is null) return;
-        var fmt = _capture.WaveFormat;
+        var capture = _capture;
+        if (Volatile.Read(ref _captureFlag) != 1 || capture is null) return;
+        var fmt = capture.WaveFormat;
         int bytes = fmt.BitsPerSample / 8;
         int frameBytes = fmt.Channels * bytes;
         if (frameBytes <= 0) return;
