@@ -103,6 +103,26 @@
 
     <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
       <StackPanel>
+        <TextBlock Text="CANLI KAYNAK / DOĞRULAMA" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
+        <TextBlock x:Name="ProvenanceText" TextWrapping="Wrap" Text="Kaynak henüz doğrulanmadı."
+                   FontSize="15" FontWeight="SemiBold" Margin="0,10,0,9"/>
+        <TextBlock x:Name="CaptureText" TextWrapping="Wrap" Foreground="#B4C0D5" Margin="0,0,0,7"/>
+        <TextBlock x:Name="DeliveryText" TextWrapping="Wrap" Foreground="#B4C0D5" Margin="0,0,0,7"/>
+        <TextBlock x:Name="PhysicalText" TextWrapping="Wrap" Foreground="#E9BC80" Margin="0,0,0,12"/>
+        <Separator Background="#30425D" Margin="0,0,0,12"/>
+        <TextBlock Text="PERFORMANS KORUMASI" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
+        <TextBlock x:Name="ResourceText" Text="Ölçüm hazırlanıyor…" Foreground="#B4C0D5"
+                   FontSize="13" Margin="0,8,0,6" TextWrapping="Wrap"/>
+        <TextBlock Text="2 saniyede bir ölçüm. Ses işleme en fazla 20 komut/sn; 3 örnek üst üste CPU sınırı aşılırsa ses modu durdurulur."
+                   Foreground="#778BAA" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <TextBlock x:Name="DiagnosticsText" Foreground="#FDBA8B" Text="Son hata: yok" TextWrapping="Wrap" Margin="0,0,0,9"/>
+        <Button Content="Tanılama günlüğünü aç" Style="{StaticResource ActionButton}"
+                HorizontalAlignment="Left" Click="OpenLog_Click"/>
+      </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
         <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel><TextBlock Text="GÜNCELLEMELER" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
             <TextBlock x:Name="VersionText" Text="v0.1.0" FontSize="18" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
