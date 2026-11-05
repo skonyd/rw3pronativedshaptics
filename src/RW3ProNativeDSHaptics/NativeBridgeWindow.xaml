@@ -1,0 +1,81 @@
+<Window x:Class="RW3ProNativeDSHaptics.NativeBridgeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RW3 Pro · Native Stereo Bridge (experimental)"
+        Width="800" Height="720" MinWidth="690" MinHeight="600"
+        Background="#0A1120" Foreground="#F1F5FF" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterOwner" Closing="Window_Closing">
+  <Window.Resources>
+    <Style x:Key="Btn" TargetType="Button">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Background" Value="#26577E"/>
+      <Setter Property="Padding" Value="14,11"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+  </Window.Resources>
+  <ScrollViewer>
+    <StackPanel Margin="28">
+      <TextBlock Text="EXPERIMENTAL • NATIVE SOURCE BRIDGE" Foreground="#FEBF83" FontWeight="Bold"/>
+      <TextBlock Text="DualSense UAC → Razer Sensa" FontSize="27" FontWeight="Bold" Margin="0,9,0,7"/>
+      <TextBlock TextWrapping="Wrap" Foreground="#ACBCD4" LineHeight="21">
+        Gerçek oyun tarafından DualSense haptic ses aygıtına gönderilen 4 kanallı 48 kHz sesin 3. ve 4. kanallarını yakalar.
+        Bunları iki ayrı Razer Interhaptics parametrik efektine dönüştürür. Bu dönüşüm KAYIPLIDIR:
+        orijinal HD PCM dalga biçimini birebir oynatmaz.
+      </TextBlock>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,18,0,12">
+        <StackPanel>
+          <TextBlock Text="1 • DUALSENSE SES KAYNAĞI" FontWeight="Bold" Foreground="#A6CBFF"/>
+          <TextBlock Text="4 kanallı DualSense USB/UAC veya sanal DualSense render aygıtını seç. Hoparlör çıkışını seçme."
+                     Margin="0,8,0,9" TextWrapping="Wrap"/>
+          <ComboBox x:Name="EndpointPicker" Height="34" Foreground="#12213C" DisplayMemberPath="Display"/>
+          <Button Content="Ses aygıtlarını yenile" Style="{StaticResource Btn}" HorizontalAlignment="Left"
+                  Margin="0,10,0,0" Click="Refresh_Click"/>
+        </StackPanel>
+      </Border>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="2 • RAZER INTERHAPTICS ÇIKIŞI" Foreground="#A6CBFF" FontWeight="Bold"/>
+          <TextBlock TextWrapping="Wrap" Margin="0,8,0,7" Foreground="#B7C5DC">
+            Synapse 4 + Chroma kurulu, Wolverine PC modunda ve Haptic Source = Sensa HD Games olmalı.
+            HAR.dll ve Interhaptics.RazerProvider.dll dosyaları lisanslı resmî SDK'dan temin edilmeli;
+            bu uygulama dosyaları indirmez veya paketlemez.
+          </TextBlock>
+          <TextBlock x:Name="OutputStateText" TextWrapping="Wrap" Foreground="#F2C58A"/>
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <Button x:Name="StartButton" Content="Deneysel köprüyü başlat" Click="Start_Click" Style="{StaticResource Btn}"/>
+            <Button x:Name="StopButton" Content="Durdur / motorları sıfırla" Click="Stop_Click"
+                    Style="{StaticResource Btn}" Background="#743848"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="3 • OYUN AÇMADAN GERÇEK SENSA MOTOR DENEYİ" FontWeight="Bold" Foreground="#A6CBFF"/>
+          <TextBlock TextWrapping="Wrap" Margin="0,8,0,12" Foreground="#B7C5DC">
+            Bunlar sahici Interhaptics parametrik sol/sağ cihaz komutlarıdır; bir oyundan alınmış DualSense verisi değildir.
+            Uygulama fiziksel hareketi kendi başına ölçemez, ayrı ayrı sana sorar.
+          </TextBlock>
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="TestLeftButton" Content="Sol Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestLeft_Click"/>
+            <Button x:Name="TestRightButton" Content="Sağ Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestRight_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="PhysicalTestText" Margin="0,10,0,0" Foreground="#E2C59A" TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="CANLI SİNYAL PROVENANCE" FontWeight="Bold" Foreground="#A6CBFF"/>
+          <TextBlock x:Name="SourceStateText" Margin="0,10,0,5" TextWrapping="Wrap"/>
+          <TextBlock x:Name="RenderStateText" Margin="0,0,0,5" TextWrapping="Wrap"/>
+          <TextBlock x:Name="TruthStateText" TextWrapping="Wrap" Foreground="#FEBF83"/>
+        </StackPanel>
+      </Border>
+      <TextBlock TextWrapping="Wrap" Foreground="#8AA0BE" FontSize="11">
+        Bu arayüz eski XInput titreşimi ile özgün DualSense PCM'yi birbirine karıştırmaz.
+        Sensa motorlarından titreşim hissetmek, birebir DualSense HD kalitesini kanıtlamaz.
+        Gerçek oyundan kaynak geldiğini ayrıca ölçmek gerekir.
+      </TextBlock>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
