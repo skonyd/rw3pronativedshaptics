@@ -16,6 +16,21 @@ public partial class NativeBridgeWindow : Window
     private CancellationTokenSource _lifetime = new();
     private bool _busy;
     private bool _leftPhysical, _rightPhysical;
+    public string StatusForParent =>
+        "UAC haptic 3./4. kanal etkin=" + _source.IsCapturing +
+        " | alınan PCM çerçevesi=" + _source.CapturedFrames +
+        " | sol haptic blok=" + _source.LeftActiveBlocks +
+        " | sağ haptic blok=" + _source.RightActiveBlocks +
+        " | Razer provider başlatıldı=" + _sensa.IsActive +
+        " | parametric render tick=" + _sensa.EngineTicks +
+        " | fiziksel teyit (sol/sağ)=" + _leftPhysical + "/" + _rightPhysical +
+        ". Gerçek oyun kaynağı ve bit-perfect aktarım DOĞRULANMADI.";
+
+    public bool HasRecentHapticChannelSamples =>
+        _source.IsCapturing && _source.LastFrameTick > 0 &&
+        Environment.TickCount64 - _source.LastFrameTick < 2500 &&
+        (_source.LeftActiveBlocks > 0 || _source.RightActiveBlocks > 0);
+
 
     public NativeBridgeWindow()
     {
