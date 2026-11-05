@@ -387,19 +387,19 @@ public partial class MainWindow : Window
         try
         {
             var snap = _rumble.Snapshot();
-            string report = "RW3 Pro Haptics Diagnostics\\n" +
-                "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\\n" +
-                "Mode: " + _settings.Mode + "\\n" +
-                "Evidence: " + ProvenanceText.Text + "\\n" +
-                "Capture: " + CaptureText.Text + "\\n" +
-                "Delivery: " + DeliveryText.Text + "\\n" +
-                "Physical: " + PhysicalText.Text + "\\n" +
-                "Performance: " + ResourceText.Text + "\\n" +
-                "AudioCallbacks: " + snap.Callbacks + "\\n" +
-                "AudioFrames: " + snap.AudioFrames + "\\n" +
-                "NativeDualSensePcmReceived: 0 (backend not implemented)\\n" +
-                "RazerSensaNativeOutput: 0 (backend not implemented)\\n" +
-                "LastProblem: " + DiagnosticsText.Text + "\\n";
+            string report = "RW3 Pro Haptics Diagnostics\n" +
+                "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\n" +
+                "Mode: " + _settings.Mode + "\n" +
+                "Evidence: " + ProvenanceText.Text + "\n" +
+                "Capture: " + CaptureText.Text + "\n" +
+                "Delivery: " + DeliveryText.Text + "\n" +
+                "Physical: " + PhysicalText.Text + "\n" +
+                "Performance: " + ResourceText.Text + "\n" +
+                "AudioCallbacks: " + snap.Callbacks + "\n" +
+                "AudioFrames: " + snap.AudioFrames + "\n" +
+                "NativeDualSensePcmReceived: 0 (backend not implemented)\n" +
+                "RazerSensaNativeOutput: 0 (backend not implemented)\n" +
+                "LastProblem: " + DiagnosticsText.Text + "\n";
             System.Windows.Clipboard.SetText(report);
         }
         catch (Exception ex) { NoteError("Copy diagnostics", ex); }
