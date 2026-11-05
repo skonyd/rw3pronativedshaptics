@@ -36,6 +36,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = _store.Load();
+        _rumble.PreferredIndex = _settings.PreferredXInputSlot;
+        DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
+            ? _settings.PreferredXInputSlot + 1 : 0;
         try { using var self = Process.GetCurrentProcess(); _originalPriority = self.PriorityClass; }
         catch (Exception ex) { DiagnosticsService.Error("Priority lookup", ex); }
         InitializeTray();
@@ -144,10 +147,10 @@ public partial class MainWindow : Window
 
     private void RefreshDevice()
     {
-        int index = XInputHaptics.DetectIndex();
+        int index = _rumble.DetectTargetIndex();
         DeviceStatus.Text = index >= 0 ?
-            "XInput cihazı algılandı · Slot " + index + " (Wolverine olduğu doğrulanmadı)" :
-            "XInput cihazı bulunamadı · Windows PC modunu kontrol et";
+            "Seçili XInput · Slot " + index + " (Wolverine olduğu henüz doğrulanmadı)" :
+            "Seçilen XInput slotu bağlı değil; cihaz ve PC modunu kontrol et";
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e) => RefreshDevice();
@@ -187,6 +190,21 @@ public partial class MainWindow : Window
             _tray = null;
         }
         System.Windows.Application.Current.Shutdown();
+    }
+
+    private void DeviceSlot_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_initialized || DeviceSlotCombo.SelectedIndex < 0) return;
+        int slot = DeviceSlotCombo.SelectedIndex - 1;
+        _settings.PreferredXInputSlot = slot;
+        _rumble.PreferredIndex = slot;
+        _manualPulseConfirmed = false;
+        try { _store.Save(_settings); }
+        catch (Exception ex) { NoteError("XInput slot settings", ex); }
+        if (_settings.Mode == HapticMode.Audio)
+            SetMode(HapticMode.Normal); // Do not continue writing rumble to a changed target.
+        else UpdateDiagnostics();
+        DiagnosticsService.Info("User selected XInput slot: " + (slot < 0 ? "auto" : slot.ToString()));
     }
 
     private void Normal_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Normal);
