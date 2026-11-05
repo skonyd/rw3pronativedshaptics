@@ -149,6 +149,63 @@ public partial class NativeBridgeWindow : Window
         }
     }
 
+    private async void LoopLeft_Click(object sender, RoutedEventArgs e) =>
+        await RunFullPathTestAsync(HapticTestChannel.Left);
+
+    private async void LoopRight_Click(object sender, RoutedEventArgs e) =>
+        await RunFullPathTestAsync(HapticTestChannel.Right);
+
+    private async Task RunFullPathTestAsync(HapticTestChannel side)
+    {
+        if (_busy) return;
+        _busy = true;
+        LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = false;
+        string label = side == HapticTestChannel.Left ? "SOL" : "SAĞ";
+        try
+        {
+            if (!_source.IsCapturing || !_sensa.IsActive || _source.EndpointId is not string id)
+                throw new InvalidOperationException(
+                    "Önce 4-kanallı DualSense endpoint'ini seç ve deneysel köprüyü başlat.");
+            if (!NativePcmTestPlayer.VerifyIsolatedChannel(side))
+                throw new InvalidOperationException("Sentetik test dalga biçiminde kanallar karışmış!");
+            long before = side == HapticTestChannel.Left ?
+                _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            int beforeRender = _sensa.EngineTicks;
+            await NativePcmTestPlayer.PlayAsync(id, side, _lifetime.Token);
+            await Task.Delay(100, _lifetime.Token);
+            long after = side == HapticTestChannel.Left ?
+                _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            bool observed = after > before;
+            bool rendered = _sensa.IsActive && _sensa.EngineTicks > beforeRender;
+            bool felt = observed && rendered && MessageBox.Show(this,
+                label + " haptic kanalı sentetik UAC PCM gönderdi.\n" +
+                "PCM kanalda görüldü: " + observed + "\n" +
+                "Razer motor efekt render çağrıları ilerledi: " + rendered + "\n\n" +
+                "Wolverine kolunda " + label + " tarafta titreşim hissettin mi?\n" +
+                "(Bu bir oyun efekti değildir ve ham PCM aktarımı değildir.)",
+                "4-channel UAC → Sensa full path",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+            FullPathTestText.Text = label + " test: UAC kaynak=" + (observed ? "ALINDI" : "YOK") +
+                " | Sensa render=" + (rendered ? "ÇAĞRILDI" : "YOK") +
+                " | Kullanıcı fiziksel his=" + (felt ? "EVET" : "HAYIR") +
+                " | Dalga sadakati=DOĞRULANMADI";
+            DiagnosticsService.Info("Full UAC->Sensa " + label + " observed=" + observed +
+                " provider-rendered=" + rendered + " physical-reported=" + felt);
+        }
+        catch (Exception ex)
+        {
+            FullPathTestText.Text = "Tam yol test hatası: " + ex.Message;
+            DiagnosticsService.Error("Full path " + label, ex);
+        }
+        finally
+        {
+            _busy = false;
+            LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = true;
+            RefreshStatus();
+        }
+    }
+
     private void RefreshStatus()
     {
         bool source = _source.IsCapturing;
