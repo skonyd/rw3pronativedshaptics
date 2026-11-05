@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
 namespace RW3ProNativeDSHaptics;
@@ -25,16 +26,27 @@ public partial class MainWindow : Window
     private UpdateInfo? _availableUpdate;
     private bool _realExit;
     private bool _initialized;
+    private bool _manualPulseConfirmed;
+    private string? _lastErrorNoted;
+    private readonly PerformanceMonitor _performance = new();
+    private readonly DispatcherTimer _diagnosticsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private ProcessPriorityClass? _originalPriority;
 
     public MainWindow()
     {
         InitializeComponent();
         _settings = _store.Load();
+        try { using var self = Process.GetCurrentProcess(); _originalPriority = self.PriorityClass; }
+        catch (Exception ex) { DiagnosticsService.Error("Priority lookup", ex); }
         InitializeTray();
         VersionText.Text = "v" + UpdateService.InstalledVersion;
         AutostartCheckbox.IsChecked = StartupService.IsEnabled;
         _initialized = true;
         SetMode(_settings.Mode, fromUser: false);
+        _diagnosticsTimer.Tick += DiagnosticsTick;
+        _diagnosticsTimer.Start();
+        UpdateDiagnostics();
+        DiagnosticsService.Info("Application opened; audio capture requires manual consent.");
     }
 
     private void InitializeTray()
@@ -69,8 +81,9 @@ public partial class MainWindow : Window
     private void SetMode(HapticMode requested, bool fromUser = true)
     {
         _rumble.StopAudio();
-        var selected = requested;
-        if (requested == HapticMode.Audio)
+        SetAudioPriority(false);
+        var selected = requested == HapticMode.Audio && !fromUser ? HapticMode.Normal : requested;
+        if (selected == HapticMode.Audio)
         {
             if (fromUser && System.Windows.MessageBox.Show(
                 "Audio modu Windows ses çıkışını yakalar ve NORMAL XInput rumble oluşturur.\n" +
@@ -81,10 +94,11 @@ public partial class MainWindow : Window
             }
             else
             {
-                try { _rumble.StartAudio(); }
+                try { _rumble.StartAudio(); SetAudioPriority(true); }
                 catch (Exception e)
                 {
                     selected = HapticMode.Normal;
+                    NoteError("Audio capture startup", e);
                     if (fromUser) System.Windows.MessageBox.Show(e.Message, "Audio modu başlatılamadı",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
@@ -92,7 +106,8 @@ public partial class MainWindow : Window
         }
 
         _settings.Mode = selected;
-        try { _store.Save(_settings); } catch { }
+        try { _store.Save(_settings); }
+        catch (Exception ex) { NoteError("Settings save", ex); }
 
         NormalIndicator.Visibility = selected == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
         AudioIndicator.Visibility = selected == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
@@ -122,7 +137,9 @@ public partial class MainWindow : Window
                 "aktaran doğrulanmış bir gerçek zamanlı donanım çıkışı henüz yok. Burada sahte rumble oynatılmıyor. " +
                 "Araştırma ve donanım doğrulama durumu GitHub dokümanlarında.";
         }
+        DiagnosticsService.Info("Selected mode: " + selected + "; Native is unavailable pending verified hardware bridge.");
         RefreshDevice();
+        UpdateDiagnostics();
     }
 
     private void RefreshDevice()
@@ -157,7 +174,11 @@ public partial class MainWindow : Window
     private void ExitCompletely()
     {
         _realExit = true;
+        _diagnosticsTimer.Stop();
         _rumble.Dispose();
+        SetAudioPriority(false);
+        _performance.Dispose();
+        DiagnosticsService.Info("Application exit; requested motor stop.");
         if (_tray != null)
         {
             _tray.Visible = false;
@@ -179,14 +200,23 @@ public partial class MainWindow : Window
         {
             bool success = await _rumble.TestAsync();
             if (!success)
-                System.Windows.MessageBox.Show("Bir XInput kontrolcüsü bağlayın. Birden fazla kol bağlıysa ilk slot kullanılacaktır.",
+                System.Windows.MessageBox.Show("Bir XInput kontrolcüsü bağlayın. Birden fazla kol bağlıysa ilk slot kullanılacaktır. Fiziksel titreşim doğrulanmadı.",
                     "Motor testi", MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+            {
+                _manualPulseConfirmed = System.Windows.MessageBox.Show(
+                    "Windows XInput titreşim komutunu kabul etti. Kolda titreşimi bizzat hissettin mi?\n" +
+                    "Bu onay NORMAL rumble içindir, Native DualSense haptic kanıtı değildir.",
+                    "Fiziksel titreşim teyidi", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                DiagnosticsService.Info(_manualPulseConfirmed ? "User confirmed short conventional pulse." : "User did NOT confirm physical motor pulse.");
+            }
         }
         catch (Exception ex)
         {
+            NoteError("Motor test", ex);
             System.Windows.MessageBox.Show(ex.Message, "Motor testi", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        finally { TestButton.IsEnabled = _settings.Mode == HapticMode.Normal; }
+        finally { TestButton.IsEnabled = _settings.Mode == HapticMode.Normal; UpdateDiagnostics(); }
     }
 
     private async Task CheckForUpdatesAsync()
@@ -205,7 +235,7 @@ public partial class MainWindow : Window
                 DownloadUpdateButton.Visibility = Visibility.Visible;
             }
         }
-        catch (Exception ex) { UpdateStatusText.Text = "Güncelleme kontrol edilemedi: " + ex.Message; }
+        catch (Exception ex) { NoteError("Release check", ex); UpdateStatusText.Text = "Güncelleme kontrol edilemedi: " + ex.Message; }
     }
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync();
@@ -235,7 +265,7 @@ public partial class MainWindow : Window
                 ExitCompletely();
             }
         }
-        catch (Exception ex) { UpdateStatusText.Text = "Güncelleme başarısız: " + ex.Message; }
+        catch (Exception ex) { NoteError("Release download", ex); UpdateStatusText.Text = "Güncelleme başarısız: " + ex.Message; }
         finally { DownloadUpdateButton.IsEnabled = true; }
     }
 
@@ -245,9 +275,113 @@ public partial class MainWindow : Window
         try { StartupService.SetEnabled(AutostartCheckbox.IsChecked == true); }
         catch (Exception ex)
         {
+            NoteError("Autostart", ex);
             System.Windows.MessageBox.Show(ex.Message, "Otomatik başlatma", MessageBoxButton.OK, MessageBoxImage.Warning);
             AutostartCheckbox.IsChecked = StartupService.IsEnabled;
         }
+    }
+
+
+    private void SetAudioPriority(bool enabled)
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            process.PriorityClass = enabled ? ProcessPriorityClass.BelowNormal :
+                (_originalPriority ?? ProcessPriorityClass.Normal);
+        }
+        catch (Exception ex) { DiagnosticsService.Error("Process priority", ex); }
+    }
+
+    private void NoteError(string where, Exception ex)
+    {
+        _lastErrorNoted = where + ": " + ex.Message;
+        DiagnosticsService.Error(where, ex);
+        DiagnosticsText.Text = "Son hata: " + _lastErrorNoted;
+    }
+
+    private void DiagnosticsTick(object? sender, EventArgs e)
+    {
+        try
+        {
+            _performance.Sample();
+            if (_settings.Mode == HapticMode.Audio && _performance.SustainedHighSamples >= 3)
+            {
+                const string warning = "İşlemci bütçesi (%3) 3 ardışık ölçüm aşıldı; Audio durduruldu ve Normal moda geçildi.";
+                DiagnosticsService.Info(warning);
+                SetMode(HapticMode.Normal);
+                _lastErrorNoted = warning;
+            }
+            var snap = _rumble.Snapshot();
+            if (_settings.Mode == HapticMode.Audio && !snap.IsCapturing)
+            {
+                var message = snap.LastError ?? "WASAPI yakalama beklenmedik biçimde durdu.";
+                DiagnosticsService.Info("Audio mode stopped: " + message);
+                SetMode(HapticMode.Normal);
+                _lastErrorNoted = message;
+            }
+            UpdateDiagnostics();
+        }
+        catch (Exception ex) { NoteError("Status refresh", ex); }
+    }
+
+    private void UpdateDiagnostics()
+    {
+        var snap = _rumble.Snapshot();
+        var now = Environment.TickCount64;
+        bool framesRecent = snap.LastAudioTick > 0 && now - snap.LastAudioTick < 3500;
+        bool activeSoundRecent = snap.LastActiveSoundTick > 0 && now - snap.LastActiveSoundTick < 3500;
+        bool outputRecent = snap.LastOutputTick > 0 && now - snap.LastOutputTick < 3500;
+        RefreshDevice();
+
+        switch (_settings.Mode)
+        {
+            case HapticMode.Normal:
+                ProvenanceText.Text = "KAYNAK: Oyunun standart XInput titreşimi (uygulama izlemiyor)";
+                CaptureText.Text = "Oyun tarafından gönderilen rumble olayları yakalanmıyor; etkin haptic kaynağı doğrulanamıyor.";
+                DeliveryText.Text = "Yalnızca isteğe bağlı 250 ms test: XInputSetState sonucu, fiziksel hareket sensörü değildir.";
+                break;
+            case HapticMode.Audio:
+                ProvenanceText.Text = "KAYNAK: WASAPI sistem sesi • Native DualSense PCM DEĞİL";
+                CaptureText.Text = !snap.IsCapturing ? "Ses yakalama DURDU" :
+                    framesRecent ? (activeSoundRecent ? "Ses veri akışı var; anlamlı ses algılandı." :
+                        "Ses verisi alındı; şu anda sessiz veya çok düşük seviyede.") :
+                    "WASAPI başlatıldı; ses çerçevesi henüz gelmedi veya veri bekleniyor.";
+                DeliveryText.Text = "Ses tamponları: " + snap.Callbacks +
+                    " | Çerçeve: " + snap.AudioFrames +
+                    " | XInput kabul: " + snap.OutputAccepted +
+                    " | Hata: " + snap.OutputRejected +
+                    (outputRecent ? " | Yakın zamanda motor komutu iletildi." : " | Güncel motor komutu yok.");
+                break;
+            default:
+                ProvenanceText.Text = "KAYNAK: Native DualSense PCM — DESTEKLENMİYOR";
+                CaptureText.Text = "Doğrulanmış DualSense PCM çerçevesi: 0 (yakalama backend'i YOK).";
+                DeliveryText.Text = "Razer Sensa stereo PCM cihaz aktarımı: 0 (donanım backend'i YOK).";
+                break;
+        }
+        PhysicalText.Text = _manualPulseConfirmed ?
+            "Fiziksel teyit: Kullanıcı standart 250ms XInput titreşimini hissettiğini bildirdi. Native HD kanıtı değil." :
+            "Fiziksel teyit: Kullanıcı tarafından henüz doğrulanmadı; API kabulü motor titreşimini kanıtlamaz.";
+
+        ResourceText.Text = "RW3 CPU: %" + _performance.CpuPercent.ToString("F2") +
+            " (toplam sistem bazında) | RAM: " + _performance.MemoryMb.ToString("F0") +
+            " MB | Bütçe: <%3 (3 ardışık ölçümde koruma)";
+        if (snap.OutputRejected > 0 && _lastErrorNoted == null)
+            DiagnosticsText.Text = "XInput komutları reddedildi: " + snap.OutputRejected;
+        else
+            DiagnosticsText.Text = _lastErrorNoted != null ? "Son hata/uyarı: " + _lastErrorNoted :
+                snap.LastError is not null ? "Son cihaz hatası: " + snap.LastError : "Son hata: yok";
+    }
+
+    private void OpenLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!File.Exists(DiagnosticsService.LogFile))
+                DiagnosticsService.Info("Log viewed.");
+            OpenPath(DiagnosticsService.LogFile);
+        }
+        catch (Exception ex) { NoteError("Open log", ex); }
     }
 
     private static void OpenPath(string target) =>
