@@ -98,6 +98,19 @@
           <Button x:Name="TestButton" Grid.Column="1" Content="Motoru test et · 250 ms"
                   Style="{StaticResource ActionButton}" Click="Test_Click"/>
         </Grid>
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <TextBlock Text="XInput hedefi:" VerticalAlignment="Center" Foreground="#AFBDD5" Margin="0,0,12,0"/>
+          <ComboBox x:Name="DeviceSlotCombo" Width="215" Height="30" Foreground="#142039"
+                    SelectionChanged="DeviceSlot_Changed">
+            <ComboBoxItem Content="Otomatik (ilk bağlı)"/>
+            <ComboBoxItem Content="Slot 0"/>
+            <ComboBoxItem Content="Slot 1"/>
+            <ComboBoxItem Content="Slot 2"/>
+            <ComboBoxItem Content="Slot 3"/>
+          </ComboBox>
+        </StackPanel>
+        <TextBlock Text="Birden çok gamepad/DSX+ sanal cihazı varsa doğru slotu seçip fiziksel titreşimi onayla."
+                   TextWrapping="Wrap" Foreground="#778BAA" Margin="0,6,0,0" FontSize="11"/>
       </StackPanel>
     </Border>
 
