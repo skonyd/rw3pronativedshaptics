@@ -1,4 +1,5 @@
 using NAudio.Wave;
+using NAudio.CoreAudioApi;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -10,7 +11,8 @@ namespace RW3ProNativeDSHaptics;
 public sealed record CaptureSnapshot(
     bool IsCapturing, int XInputSlot, long Callbacks, long AudioFrames, long LastAudioTick,
     long LastActiveSoundTick, long OutputAccepted, long OutputRejected, long LastOutputTick,
-    string? LastError);
+    string? LastError, long LeftSoundTick, long RightSoundTick,
+    long LeftOutputAcknowledged, long RightOutputAcknowledged, string? AudioEndpointId);
 
 /// <summary>
 /// Low-overhead WASAPI loopback to ordinary XInput rumble.
@@ -59,6 +61,8 @@ public sealed class XInputHaptics : IDisposable
     private long _audioCallbacks, _audioFrames, _lastAudioTick, _lastActiveSoundTick;
     private long _outputAccepted, _outputRejected, _lastOutputTick, _lastUpdate;
     private string? _lastError;
+    private string? _audioEndpointId;
+    private long _leftSoundTick, _rightSoundTick, _leftOutputAck, _rightOutputAck;
 
     public static int DetectIndex()
     {
@@ -77,7 +81,10 @@ public sealed class XInputHaptics : IDisposable
         Interlocked.Read(ref _audioCallbacks), Interlocked.Read(ref _audioFrames),
         Interlocked.Read(ref _lastAudioTick), Interlocked.Read(ref _lastActiveSoundTick),
         Interlocked.Read(ref _outputAccepted), Interlocked.Read(ref _outputRejected),
-        Interlocked.Read(ref _lastOutputTick), Volatile.Read(ref _lastError));
+        Interlocked.Read(ref _lastOutputTick), Volatile.Read(ref _lastError),
+        Interlocked.Read(ref _leftSoundTick), Interlocked.Read(ref _rightSoundTick),
+        Interlocked.Read(ref _leftOutputAck), Interlocked.Read(ref _rightOutputAck),
+        Volatile.Read(ref _audioEndpointId));
 
     private bool SendMotor(int index, double strong, double weak)
     {
@@ -93,6 +100,8 @@ public sealed class XInputHaptics : IDisposable
             {
                 Interlocked.Increment(ref _outputAccepted);
                 Interlocked.Exchange(ref _lastOutputTick, Environment.TickCount64);
+                if (strong > 0.025) Interlocked.Increment(ref _leftOutputAck);
+                if (weak > 0.025) Interlocked.Increment(ref _rightOutputAck);
                 return true;
             }
             Interlocked.Increment(ref _outputRejected);
@@ -106,7 +115,25 @@ public sealed class XInputHaptics : IDisposable
         return false;
     }
 
-    /// <summary>Returns XInput API acknowledgement, not hardware sensor evidence.</summary>
+    /// <summary>Test one conventional XInput motor. Does not address Sensa VCM directly.</summary>
+    public async Task<bool> TestChannelAsync(HapticTestChannel channel, CancellationToken token)
+    {
+        if (Volatile.Read(ref _captureFlag) == 1) return false;
+        int index = DetectTargetIndex();
+        if (index < 0) return false;
+        bool acknowledged = false;
+        try
+        {
+            acknowledged = channel == HapticTestChannel.Left
+                ? SendMotor(index, 0.34, 0)
+                : SendMotor(index, 0, 0.26);
+            if (acknowledged) await Task.Delay(450, token);
+        }
+        finally { SendMotor(index, 0, 0); }
+        return acknowledged;
+    }
+
+    /// <summary>Returns XInput API acknowledgment, not hardware sensor evidence.</summary>
     public async Task<bool> TestAsync()
     {
         if (Volatile.Read(ref _captureFlag) == 1) return false;
@@ -128,7 +155,11 @@ public sealed class XInputHaptics : IDisposable
         int index = DetectTargetIndex();
         if (index < 0) throw new InvalidOperationException(
             "XInput cihazı yok. Oyun kollarını kontrol edin; algılanan slot Wolverine olarak doğrulanmış değildir.");
-        var capture = new WasapiLoopbackCapture();
+        // Pin the test tone and captured system audio to the same output endpoint.
+        using var enumerator = new MMDeviceEnumerator();
+        using var defaultEndpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+        string endpointId = defaultEndpoint.ID;
+        var capture = new WasapiLoopbackCapture(defaultEndpoint);
         // WASAPI shared-mode frequently reports WAVEFORMATEXTENSIBLE rather than plain IEEE float.
         var format = capture.WaveFormat;
         bool float32 = format.BitsPerSample == 32 &&
@@ -154,6 +185,11 @@ public sealed class XInputHaptics : IDisposable
         Interlocked.Exchange(ref _outputRejected, 0);
         Interlocked.Exchange(ref _lastOutputTick, 0);
         Interlocked.Exchange(ref _lastUpdate, 0);
+        Interlocked.Exchange(ref _leftSoundTick, 0);
+        Interlocked.Exchange(ref _rightSoundTick, 0);
+        Interlocked.Exchange(ref _leftOutputAck, 0);
+        Interlocked.Exchange(ref _rightOutputAck, 0);
+        Volatile.Write(ref _audioEndpointId, endpointId);
         Volatile.Write(ref _selectedIndex, index);
         _capture = capture;
         Volatile.Write(ref _captureFlag, 1);
@@ -196,32 +232,50 @@ public sealed class XInputHaptics : IDisposable
         // Avoid per-sample allocations and expensive full-buffer processing.
         // At most ~256 samples regardless of audio sample rate or buffer size.
         int stride = Math.Max(1, (frames + 255) / 256);
-        double energy = 0, change = 0, last = 0;
+        double leftEnergy = 0, rightEnergy = 0;
+        double lastLeft = 0, lastRight = 0;
+        double changeLeft = 0, changeRight = 0;
         int n = 0;
         for (int frame = 0; frame < frames; frame += stride)
         {
             int offset = frame * frameBytes;
-            double value = fmt.BitsPerSample == 16
+            double left = fmt.BitsPerSample == 16
                 ? BitConverter.ToInt16(e.Buffer, offset) / 32768.0
                 : BitConverter.ToSingle(e.Buffer, offset);
-            if (!double.IsFinite(value)) continue;
-            value = Math.Clamp(value, -1, 1);
-            energy += value * value;
-            change += Math.Abs(value - last);
-            last = value;
-            n++;
+            double right = fmt.Channels > 1
+                ? (fmt.BitsPerSample == 16
+                    ? BitConverter.ToInt16(e.Buffer, offset + bytes) / 32768.0
+                    : BitConverter.ToSingle(e.Buffer, offset + bytes))
+                : left;
+            if (!double.IsFinite(left) || !double.IsFinite(right)) continue;
+            left = Math.Clamp(left, -1, 1);
+            right = Math.Clamp(right, -1, 1);
+            leftEnergy += left * left;
+            rightEnergy += right * right;
+            changeLeft += Math.Abs(left - lastLeft);
+            changeRight += Math.Abs(right - lastRight);
+            lastLeft = left;
+            lastRight = right;
+            ++n;
         }
         if (n == 0) return;
-        double rms = Math.Sqrt(energy / n);
-        if (rms > 0.006) Interlocked.Exchange(ref _lastActiveSoundTick, now);
+        double rmsLeft = Math.Sqrt(leftEnergy / n);
+        double rmsRight = Math.Sqrt(rightEnergy / n);
+        if (Math.Max(rmsLeft, rmsRight) > 0.006)
+            Interlocked.Exchange(ref _lastActiveSoundTick, now);
+        // Evidence of distinct stereo system-audio channels, NOT native DualSense PCM.
+        if (rmsLeft > 0.015 && rmsLeft > rmsRight * 3)
+            Interlocked.Exchange(ref _leftSoundTick, now);
+        if (rmsRight > 0.015 && rmsRight > rmsLeft * 3)
+            Interlocked.Exchange(ref _rightSoundTick, now);
 
-        // <=20 XInput updates/s, do not queue; no disk IO or UI work in callback.
+        // Bound processing & write frequency. At most 20 XInput commands/s.
         if (now - Interlocked.Read(ref _lastUpdate) < 50) return;
         Interlocked.Exchange(ref _lastUpdate, now);
         if (Volatile.Read(ref _captureFlag) != 1) return;
         SendMotor(Volatile.Read(ref _selectedIndex),
-            Math.Min(0.36, rms * 2.5),
-            Math.Min(0.25, (change / n) * 2.0));
+            Math.Min(0.36, rmsLeft * 2.5),
+            Math.Min(0.25, rmsRight * 2.5));
     }
 
     public void StopAudio()
@@ -231,6 +285,7 @@ public sealed class XInputHaptics : IDisposable
         _capture = null;
         int index = Volatile.Read(ref _selectedIndex);
         Volatile.Write(ref _selectedIndex, -1);
+        Volatile.Write(ref _audioEndpointId, null);
         if (capture != null)
         {
             capture.DataAvailable -= OnAudioData;
