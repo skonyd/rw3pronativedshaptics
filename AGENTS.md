@@ -10,6 +10,15 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 - Windows 11 double-click desktop app; clicking X minimizes to notification area, tray right-click changes mode; modern UX; portable ZIP and installer; version/update management.
 - Public GitHub repo: https://github.com/skonyd/rw3pronativedshaptics
 
+## Current experimental code (read before changing source/output)
+- `NativeDualSenseCapture.cs` explicitly captures **only 4ch/48k** UAC audio and extracts rear haptic channels 3/4, not system stereo audio. It cannot prove the data comes from the game merely by receiving samples.
+- `SensaStereoPrototype.cs` creates **two parametric Interhaptics events** targeting Palm Left and Palm Right, then modulates intensity from the captured waveform envelopes at 50 Hz. It is NOT direct PCM and not proven physically.
+- `NativeBridgeWindow.xaml(.cs)` exposes source selection, status, side pulses and end-to-end **synthetic 4ch PCM** tests via `NativePcmTestPlayer.cs`. Tests must distinguish source capture, provider render and user physical sensation.
+- `TestLabWindow.xaml(.cs)` provides game-free Normal XInput and Audio→XInput tests; no native synthetic data is ever mislabeled an actual game signal.
+- Read `docs/NATIVE_BRIDGE_IMPLEMENTATION.md` and `interop/README.md` before relying on the native prototype. No third-party native DLLs are present in the repo.
+- Current Windows app **has not passed an observed clean Windows CI build or actual Wolverine validation**; do not overstate readiness.
+- Contract tests currently cover 13 rules: 7 provenance + 6 stereo isolation/gating; run them on Windows/CI.
+
 ## Engineering integrity
 - Never present native PCM rendering through the physical Wolverine as operational until measured on actual hardware.
 - Read each source in RESEARCH_AND_REFERENCES; distinguish confirmed hardware facts from hypotheses and external third-party project claims.
