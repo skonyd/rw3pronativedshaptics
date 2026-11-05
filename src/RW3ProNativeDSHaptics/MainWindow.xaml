@@ -1,0 +1,129 @@
+<Window x:Class="RW3ProNativeDSHaptics.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RW3 Pro · Native DS Haptics"
+        Width="850" Height="750" MinWidth="730" MinHeight="670"
+        Background="#0A1120" Foreground="#F1F5FF" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterScreen" Loaded="Window_Loaded"
+        Closing="Window_Closing" StateChanged="Window_StateChanged">
+  <Window.Resources>
+    <Style x:Key="ActionButton" TargetType="Button">
+      <Setter Property="Background" Value="#263553"/>
+      <Setter Property="Foreground" Value="#F1F5FF"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="16,11"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="Button">
+          <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.40"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="ModeButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+      <Setter Property="Background" Value="#142039"/>
+      <Setter Property="Padding" Value="19,16"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style x:Key="PanelBorder" TargetType="Border">
+      <Setter Property="Background" Value="#10192C"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="Padding" Value="20"/>
+    </Style>
+  </Window.Resources>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+  <StackPanel Margin="32,27,32,32">
+    <Grid Margin="0,0,0,20">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="RW3 / HAPTICS" FontWeight="Bold" FontSize="13" Foreground="#6BA6FF" LetterSpacing="1.2"/>
+        <TextBlock Text="Native DS Haptics" FontSize="31" FontWeight="Bold" Margin="0,6,0,0"/>
+        <TextBlock Text="Wolverine V3 Pro • Windows 11" FontSize="14" Foreground="#9CAAC4" Margin="0,4,0,0"/>
+      </StackPanel>
+      <Border Grid.Column="1" Background="#163C3D" CornerRadius="13" Padding="14,8" VerticalAlignment="Top">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Width="8" Height="8" Fill="#53DBAE" Margin="0,0,9,0"/>
+          <TextBlock Text="Masaüstü hazır" Foreground="#A9F6D5" FontSize="12" FontWeight="SemiBold"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
+        <TextBlock Text="TİTREŞİM KAYNAĞI" Foreground="#9CAAC4" FontSize="11" FontWeight="Bold"/>
+        <TextBlock Text="Bir mod seçin" FontSize="21" FontWeight="SemiBold" Margin="0,8,0,14"/>
+
+        <Button x:Name="NormalButton" Style="{StaticResource ModeButton}" Click="Normal_Click" Margin="0,0,0,10">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="◉" FontSize="26" Foreground="#6BA6FF" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1"><TextBlock Text="Normal Rumble" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="Oyunun normal titreşimi • kısa motor testi" Foreground="#AFBDD5" Margin="0,4,0,0" FontSize="12"/></StackPanel>
+            <TextBlock x:Name="NormalIndicator" Grid.Column="2" Text="SEÇİLİ" Foreground="#80DBBB" FontSize="11" VerticalAlignment="Center"/>
+          </Grid>
+        </Button>
+        <Button x:Name="AudioButton" Style="{StaticResource ModeButton}" Click="Audio_Click" Margin="0,0,0,10">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="≋" FontSize="29" Foreground="#B39DFF" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1"><TextBlock Text="Audio-to-Haptics" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="Sistem sesinden standart XInput titreşimi" Foreground="#AFBDD5" Margin="0,4,0,0" FontSize="12"/></StackPanel>
+            <TextBlock x:Name="AudioIndicator" Grid.Column="2" Text="SEÇİLİ" Foreground="#80DBBB" FontSize="11" VerticalAlignment="Center"/>
+          </Grid>
+        </Button>
+        <Button x:Name="NativeButton" Style="{StaticResource ModeButton}" Click="Native_Click">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="⌁" FontSize="30" Foreground="#F5B971" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1"><TextBlock Text="Native DualSense Haptics" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="Orijinal stereo PCM • deneysel donanım köprüsü" Foreground="#AFBDD5" Margin="0,4,0,0" FontSize="12"/></StackPanel>
+            <TextBlock x:Name="NativeIndicator" Grid.Column="2" Text="SEÇİLİ" Foreground="#F5B971" FontSize="11" VerticalAlignment="Center"/>
+          </Grid>
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
+        <TextBlock Text="DURUM / DONANIM" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
+        <TextBlock x:Name="StatusHeading" Text="Hazır" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,5"/>
+        <TextBlock x:Name="StatusDescription" TextWrapping="Wrap" Foreground="#B4C0D5" FontSize="13" LineHeight="21"/>
+        <Grid Margin="0,14,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="DeviceStatus" VerticalAlignment="Center" Foreground="#87A2CA" Text="XInput: kontrol ediliyor…"/>
+          <Button x:Name="TestButton" Grid.Column="1" Content="Motoru test et · 250 ms"
+                  Style="{StaticResource ActionButton}" Click="Test_Click"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="GÜNCELLEMELER" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
+            <TextBlock x:Name="VersionText" Text="v0.1.0" FontSize="18" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
+          <Button Grid.Column="1" Content="Güncelleme kontrolü" Click="CheckUpdate_Click" Style="{StaticResource ActionButton}"/>
+        </Grid>
+        <TextBlock x:Name="UpdateStatusText" Foreground="#AFBDD5" TextWrapping="Wrap" Margin="0,8,0,10"/>
+        <Button x:Name="DownloadUpdateButton" Content="Doğrulanmış güncellemeyi indir" Click="DownloadUpdate_Click" Visibility="Collapsed"
+                Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Background="#2C6894"/>
+        <CheckBox x:Name="AutostartCheckbox" Content="Windows açıldığında arka planda başlat"
+                  IsChecked="False" Checked="Autostart_Changed" Unchecked="Autostart_Changed"
+                  Foreground="#C0CBE0" Margin="0,15,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="Razer Synapse 4" Click="Synapse_Click" Style="{StaticResource ActionButton}" Margin="0,0,9,0"/>
+      <Button Content="GitHub / Teknik notlar" Click="Github_Click" Style="{StaticResource ActionButton}" Background="#1D4566" />
+    </StackPanel>
+
+    <TextBlock Text="Native HD çıkış henüz donanımda doğrulanmadı. Ses modu yalnızca klasik titreşim üretir. Veriler yerel tutulur."
+               Foreground="#7183A3" TextWrapping="Wrap" FontSize="11" Margin="0,20,0,0"/>
+  </StackPanel>
+  </ScrollViewer>
+</Window>
