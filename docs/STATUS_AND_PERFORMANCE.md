@@ -9,6 +9,7 @@
 | --- | --- | --- | --- |
 | Mode selected | App settings | Requested route | Capture/output active |
 | XInput slot detected | XInputGetState return == 0 | Some XInput controller connected | That it is a Wolverine |
+| Selected XInput slot (Auto or 0–3) | User-selected slot, persisted in settings | Motor test and Audio output target the requested slot; no silent fallback when explicit slot is absent | Physical identity of Razer; confirm manual pulse |
 | XInput command accepted | XInputSetState == 0 | OS accepted vibration command | Motor physically moved; HD voice-coil playback |
 | User confirms pulse | Voluntary Yes/No after 250ms test | User reports feeling vibration | Automatic proof of any waveform |
 | WASAPI capture running | IsCaptureRunning | Default audio loopback started | Audible samples are present |
@@ -31,6 +32,7 @@
 
 ## Test plan
 - Test with no controller, disconnected controller, silence, actual sound, output switch mid-recording, device reconnection and XInput command failure.
+- Test with Wolverine + DualSense + DSX+ virtual XInput simultaneously: explicit slot selection must never silently choose another slot. Manual 250 ms pulse confirmation remains required for physical identity.
 - Assert no audio callback logs, no growing queue, counters are monotonic and stale data is shown as stale.
 - Measure frame timing in Gears and Death Stranding 2 before/after enabling audio, including 1% low FPS; 3% process CPU threshold is only an upper guard, not a frame-time guarantee.
 - Verify user-confirmed physical pulse after API acknowledgment; native mode remains disabled in actual path until stereo PCM receive + independent Sensa output + hardware validation.
