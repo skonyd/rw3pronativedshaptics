@@ -1,0 +1,10 @@
+<Application x:Class="RW3ProNativeDSHaptics.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#10192C"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#EFF4FF"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#9CAAC4"/>
+  </Application.Resources>
+</Application>
