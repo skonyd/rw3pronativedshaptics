@@ -9,6 +9,7 @@ public enum HapticMode { Normal, Audio, Native }
 public sealed class UserSettings
 {
     public HapticMode Mode { get; set; } = HapticMode.Normal;
+    public int PreferredXInputSlot { get; set; } = -1; // -1 auto, 0..3 explicit; do not infer device identity
 }
 
 public sealed class SettingsStore
