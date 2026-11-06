@@ -42,6 +42,12 @@ public sealed class XInputHaptics : IDisposable
     private static extern uint XInputSetState(uint userIndex, ref XInputVibration vibration);
 
     private readonly object _motorGate = new();
+    private int _outputLevelPercent = 100;
+    public int OutputLevelPercent
+    {
+        get => Volatile.Read(ref _outputLevelPercent);
+        set => Volatile.Write(ref _outputLevelPercent, HapticOutputLevel.Limit(value));
+    }
     private Timer? _silenceWatchdog;
     private int _motorNonzero;
     private int _preferredIndex = -1;
@@ -95,6 +101,8 @@ public sealed class XInputHaptics : IDisposable
         lock (_motorGate)
         {
         if (index < 0) return false;
+        strong = HapticOutputLevel.Apply(strong, OutputLevelPercent);
+        weak = HapticOutputLevel.Apply(weak, OutputLevelPercent);
         var vibration = new XInputVibration
         {
             LeftMotorSpeed = (ushort)(Math.Clamp(strong, 0, 1) * ushort.MaxValue),

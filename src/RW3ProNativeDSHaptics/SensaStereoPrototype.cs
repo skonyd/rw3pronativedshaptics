@@ -53,6 +53,14 @@ public sealed class SensaStereoPrototype : IDisposable
 
     private Thread? _worker;
     private int _stop, _leftAmplitudeBits, _rightAmplitudeBits;
+    private int _outputLevelPercent = 100;
+    // Safe user intensity applies to Wolverine parametric events ONLY.
+    // It must never modify the USB DualSense's original PCM frames.
+    public int OutputLevelPercent
+    {
+        get => Volatile.Read(ref _outputLevelPercent);
+        set => Volatile.Write(ref _outputLevelPercent, HapticOutputLevel.Limit(value));
+    }
     private long _lastSignalTick;
     private int _providerActive, _renderTicks;
     private string _status = "Stopped";
@@ -148,8 +156,8 @@ public sealed class SensaStereoPrototype : IDisposable
                 bool fresh = Environment.TickCount64 - Interlocked.Read(ref _lastSignalTick) <= 140;
                 float la = fresh ? BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftAmplitudeBits)) : 0;
                 float ra = fresh ? BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightAmplitudeBits)) : 0;
-                Engine.SetEventIntensity(left, la);
-                Engine.SetEventIntensity(right, ra);
+                Engine.SetEventIntensity(left, HapticOutputLevel.Apply(la, OutputLevelPercent));
+                Engine.SetEventIntensity(right, HapticOutputLevel.Apply(ra, OutputLevelPercent));
                 Engine.ComputeAllEvents(clock.Elapsed.TotalSeconds);
                 if (Provider.ProviderIsPresent())
                 {

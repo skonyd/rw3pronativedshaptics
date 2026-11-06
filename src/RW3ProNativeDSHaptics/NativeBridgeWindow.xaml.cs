@@ -41,9 +41,11 @@ public partial class NativeBridgeWindow : Window
             _source.LastRightEnergyTick, Environment.TickCount64);
 
 
-    public NativeBridgeWindow(HapticRoute route = HapticRoute.NativeManualUac)
+    public NativeBridgeWindow(HapticRoute route = HapticRoute.NativeManualUac,
+        int outputLevelPercent = 100)
     {
         _route = HapticRouteCatalog.IsNative(route) ? route : HapticRoute.NativeManualUac;
+        _sensa.OutputLevelPercent = outputLevelPercent;
         InitializeComponent();
         var info = HapticRouteCatalog.Get(_route);
         SelectedRouteText.Text = "Kaynak tercihi: " + info.DisplayName;
@@ -54,6 +56,9 @@ public partial class NativeBridgeWindow : Window
         _timer.Start();
         RefreshStatus();
     }
+
+    public void UpdateOutputLevel(int percent) =>
+        _sensa.OutputLevelPercent = percent;
 
     private void RefreshSources()
     {

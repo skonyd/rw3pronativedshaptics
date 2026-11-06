@@ -166,4 +166,12 @@ try
     throw new Exception("Invalid output gain was accepted");
 }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: Gain above safe limit rejected"); }
-Console.WriteLine("105+ scenario and safety assertions passed.");
+Check(HapticOutputLevel.Limit(-5) == 0 && HapticOutputLevel.Limit(145) == 100,
+    "RW3 level control is clamped to 0-100 percent");
+Check(HapticOutputLevel.Apply(0.35f, 0) == 0 &&
+      HapticOutputLevel.Apply(0.35f, 100) == 0.35f,
+    "RW3 output gain has a safe zero and unity setting");
+Check(HapticOutputLevel.Apply(double.NaN, 100) == 0 &&
+      HapticOutputLevel.Apply(float.PositiveInfinity, 100) == 0,
+    "Nonfinite output levels cannot leak to motor APIs");
+Console.WriteLine("108+ scenario, gain and reliability assertions passed.");

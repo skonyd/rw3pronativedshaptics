@@ -111,6 +111,18 @@
 
     <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
       <StackPanel>
+        <TextBlock Text="RW3 GENEL TİTREŞİM SEVİYESİ" FontWeight="Bold" Foreground="#A8D8BC"/>
+        <TextBlock x:Name="OutputLevelLabel" Text="100% • RW3 çıkışı" Foreground="#D5E5F8"
+                   FontWeight="SemiBold" Margin="0,8,0,6"/>
+        <Slider x:Name="OutputLevelSlider" Minimum="0" Maximum="100" Value="100"
+                TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="OutputLevel_Changed"/>
+        <TextBlock TextWrapping="Wrap" Foreground="#B4C0D5" FontSize="12" Margin="0,9,0,0"
+                   Text="Bu seviye yalnızca RW3'ün gönderdiği Wolverine Sensa ve XInput komutlarını sınırlar. Karşılaştırmadaki gerçek USB DualSense ham PCM'sine veya başka uygulamaların titreşimine dokunmaz."/>
+      </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
         <TextBlock Text="DURUM / DONANIM" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
         <TextBlock x:Name="StatusHeading" Text="Hazır" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,5"/>
         <TextBlock x:Name="StatusDescription" TextWrapping="Wrap" Foreground="#B4C0D5" FontSize="13" LineHeight="21"/>
