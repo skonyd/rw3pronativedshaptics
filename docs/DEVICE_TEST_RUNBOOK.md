@@ -38,3 +38,15 @@ The CI pipeline verifies build, portable startup, synthetic stereo channel isola
 
 ## Evidence record
 Record: date/time; app commit; Windows build; controller firmware; Synapse/Chroma and DSX+ version; XInput slot; endpoint ID/channel format; game/scene; left/right capture block increments; opposite-channel isolation; provider ticks; physical test Yes/No; CPU/FPS/p99; error log; final pass/fail. Never upload raw game audio or credentials.
+
+## External input adapter pilot (only after device smoke passes)
+
+PadForge is currently the better **hypothesis** for Wolverine -> virtual DualSense Full because it maps arbitrary physical pads, while DSX+ targets its supported DualSense hardware. This must be confirmed physically, not inferred from product pages.
+
+1. Save original working Windows/gamepad configuration. Review PadForge HIDMaestro/usbip-win2 driver requirements. External virtual controller drivers are explicitly user-installed; some USB/IP setups reset USB root hubs during installation. Do not install automatically or disable signature checks.
+2. On a per-game profile, assign Wolverine inputs to ONE virtual DualSense Full slot; review raw device hiding with PadForge's supported controls to avoid double input. Verify button/stick response before attempting native haptics.
+3. On games with true DualSense authored haptic output, select the matching four-channel virtual render endpoint if necessary. Leave normal speakers as default unless the game specifically requires otherwise.
+4. In RW3 source picker, identify the exact 4ch/48k endpoint. Run synthetic left/right first; speaker-only front energy is not haptic evidence.
+5. Disable any competing PadForge-to-Sensa or virtual haptics-to-XInput translation while measuring RW3, otherwise duplicate feedback may confound results. Independently test PadForge's own lower-fidelity baseline as a comparison.
+6. Confirm actual game haptic origin with a reproducible scene and independently observe physical left/right vibration. Do not call API acknowledgment proof of equivalent tactile waveform.
+7. Close RW3 and restore original input mapping and virtual device settings after each A/B trial.

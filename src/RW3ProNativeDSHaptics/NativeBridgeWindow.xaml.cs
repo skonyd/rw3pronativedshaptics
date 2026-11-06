@@ -9,7 +9,7 @@ namespace RW3ProNativeDSHaptics;
 
 public partial class NativeBridgeWindow : Window
 {
-    private sealed record EndpointOption(string Id, string Display);
+    private sealed record EndpointOption(string Id, string Display, bool CanCapture);
     private readonly SensaStereoPrototype _sensa = new();
     private readonly NativeDualSenseCapture _source = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -21,6 +21,8 @@ public partial class NativeBridgeWindow : Window
         " | alınan PCM çerçevesi=" + _source.CapturedFrames +
         " | sol haptic blok=" + _source.LeftActiveBlocks +
         " | sağ haptic blok=" + _source.RightActiveBlocks +
+        " | speaker RMS=" + _source.SpeakerRms.ToString("F3") +
+        " | rear L/R RMS=" + _source.LeftRms.ToString("F3") + "/" + _source.RightRms.ToString("F3") +
         " | Razer provider başlatıldı=" + _sensa.IsActive +
         " | parametric render tick=" + _sensa.EngineTicks +
         " | fiziksel teyit (sol/sağ)=" + _leftPhysical + "/" + _rightPhysical +
@@ -51,7 +53,10 @@ public partial class NativeBridgeWindow : Window
             {
                 // The user must select a real 4-ch DualSense USB/UAC output.
                 EndpointPicker.Items.Add(new EndpointOption(item.Id,
-                    item.Name + " | " + item.Channels + " channels"));
+                    item.Name + " | " + item.Channels + "ch/" + item.SampleRate + "Hz/" +
+                    item.BitsPerSample + "bit | " +
+                    (item.CanCapture ? "UAC format adayı (kimlik doğrulanmalı)" : "UYUMSUZ FORMAT"),
+                    item.CanCapture));
             }
             foreach (EndpointOption entry in EndpointPicker.Items)
                 if (entry.Id == old) { EndpointPicker.SelectedItem = entry; break; }
@@ -73,6 +78,14 @@ public partial class NativeBridgeWindow : Window
         if (EndpointPicker.SelectedItem is not EndpointOption selected)
         {
             System.Windows.MessageBox.Show(this, "4 kanallı DualSense ses aygıtını seç.", "DualSense UAC");
+            return;
+        }
+        if (!selected.CanCapture)
+        {
+            System.Windows.MessageBox.Show(this,
+                "Bu aygıt 4 kanallı 48kHz PCM16/Float32 formatını sağlamıyor. " +
+                "İşlemi başlatmadan doğru DualSense UAC/Virtual DS aygıtını seç.",
+                "UAC formatı uyumsuz", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (System.Windows.MessageBox.Show(this,
@@ -242,7 +255,11 @@ public partial class NativeBridgeWindow : Window
             " | Captured frames: " + _source.CapturedFrames +
             " | Last frame: " + (recent ? "recent" : "none/stale") +
             " | Left active blocks: " + _source.LeftActiveBlocks +
-            " | Right active blocks: " + _source.RightActiveBlocks;
+            " | Right active blocks: " + _source.RightActiveBlocks +
+            " | Speaker RMS: " + _source.SpeakerRms.ToString("F3") +
+            " | Haptic L/R RMS: " + _source.LeftRms.ToString("F3") + "/" + _source.RightRms.ToString("F3") +
+            " | Haptic L/R peaks: " + _source.LeftPeak.ToString("F3") + "/" + _source.RightPeak.ToString("F3") +
+            " | Invalid PCM samples: " + _source.InvalidSamples;
         RenderStateText.Text = "Razer provider initialized: " + _sensa.IsActive +
             " | Provider render ticks: " + _sensa.EngineTicks +
             " | User-confirmed left/right pulse: " + _leftPhysical + " / " + _rightPhysical;

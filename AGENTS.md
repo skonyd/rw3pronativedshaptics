@@ -17,7 +17,7 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 - `TestLabWindow.xaml(.cs)` provides game-free Normal XInput and Audio→XInput tests; no native synthetic data is ever mislabeled an actual game signal.
 - Read `docs/NATIVE_BRIDGE_IMPLEMENTATION.md` and `interop/README.md` before relying on the native prototype. No third-party native DLLs are present in the repo.
 - Current Windows app **has not passed an observed clean Windows CI build or actual Wolverine validation**; do not overstate readiness.
-- Contract tests now cover 23 deterministic rules for provenance, stereo channel isolation and safe WASAPI silence handling; run them on Windows/CI.
+- Contract tests now cover 30 deterministic checks for provenance, stereo PCM16/Float32 isolation, speaker-only negative cases, malformed input and safe WASAPI silence handling; run them on Windows/CI.
 
 ## Engineering integrity
 - Never present native PCM rendering through the physical Wolverine as operational until measured on actual hardware.
@@ -46,3 +46,6 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 
 ## Definition of done — native mode
 Validated stereo DualSense game-authored signal captured, transmitted to Razer left/right VC actuators with no accidental mono collapse, measured latency/response and repeatable tests against a real DualSense. As of 2026-11-05 **not done**.
+
+## v2 route / source truth (2026-11-06)
+Read `docs/ADR-002-NATIVE-BRIDGE-ROUTE.md`. Do not write a new Windows audio driver while existing supported virtual DualSense Full endpoints are untested. Never bundle/inject/auto-install external drivers or proprietary Wwise runtimes. Source instrumentation distinguishes front speaker from rear haptic channels; 4ch PCM alone is not game-authored proof. Wwise offline WAV capability is NOT proof of supported live arbitrary PCM. Keep the experimental Interhaptics output flagged lossy. New CI coverage includes malformed Float32 frames and silent speaker-only negative tests.

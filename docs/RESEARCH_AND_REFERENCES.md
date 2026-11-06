@@ -29,3 +29,10 @@ Evidence tags: **VERIFIED** = official source or teardown; **THIRD-PARTY** = aut
 
 ## Research caution
 Previous chat discussed “two VCM” based on teardown and speculated that a high-fidelity mapping is feasible. Motor count **alone** cannot establish PCM acceptance or subjective quality. No APEX “8–9/10”, Wolverine “7–8/10” or firmware latency score is an experimentally established metric. Do not turn these into facts.
+
+## Follow-up research (2026-11-06) — decision record
+
+See [ADR-002](ADR-002-NATIVE-BRIDGE-ROUTE.md) for date-qualified alternatives, caveats and physical gates. In particular:
+- [PadForge 5.2](https://padforge.org/) advertises virtual DualSense Full with controller audio; it also translates generic rumble to mono Interhaptics Razer Sensa. These are **distinct paths**, not proof of a built-in stereo DualSense→Wolverine bridge.
+- [DSX+ 3.2 beta notes](https://steamcommunity.com/app/1812620/announcements/) indicate virtual DualSense audio/haptics support, while the Steam DLC store description may still say upcoming. Wolverine as input is not established.
+- [Official Wwise Sensa HD plugin](https://doc.wyvrn.com/docs/interhaptics-sdk/razer-sensa-hd-haptics-wwise/) documents 2-channel WAV-to-Motion rendering, but runtime arbitrary PCM, output waveform identity and commercial distribution require separate proof/license.
