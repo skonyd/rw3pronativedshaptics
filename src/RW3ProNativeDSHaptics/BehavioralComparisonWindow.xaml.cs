@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
+using WpfControls = System.Windows.Controls;
 
 namespace RW3ProNativeDSHaptics;
 
@@ -21,12 +21,15 @@ public partial class BehavioralComparisonWindow : Window
     private sealed record UsbOption(string Id, string Display, string FriendlyName, bool Compatible);
 
     private readonly SensaStereoPrototype _sensa = new();
-    private readonly ComboBox[] _ratings;
+    private readonly WpfControls.ComboBox[] _ratings;
     private CancellationTokenSource? _running;
     private ComparisonResult? _lastResult;
     private string? _lastUsbName;
     private int _globalLevelPercent;
     private bool _busy;
+    private Task? _activePlaybackTask;
+    private bool _waitingToClose;
+    private bool _safeToClose;
 
     public BehavioralComparisonWindow(int globalLevelPercent)
     {
@@ -104,12 +107,12 @@ public partial class BehavioralComparisonWindow : Window
         return s.Contains("dualsense") || s.Contains("wireless controller");
     }
 
-    private void UsbEndpoint_Changed(object sender, SelectionChangedEventArgs e)
+    private void UsbEndpoint_Changed(object sender, WpfControls.SelectionChangedEventArgs e)
     {
         if (ConfirmUsbCheck != null) ConfirmUsbCheck.IsChecked = false;
     }
 
-    private void Scene_Changed(object sender, SelectionChangedEventArgs e)
+    private void Scene_Changed(object sender, WpfControls.SelectionChangedEventArgs e)
     {
         if (SceneBox.SelectedItem is BehavioralScene scene && SceneDetails != null)
             SceneDetails.Text = scene.Feel + " • " + scene.DurationMs +
@@ -119,7 +122,10 @@ public partial class BehavioralComparisonWindow : Window
         if (_ratings != null) foreach (var r in _ratings) r.SelectedItem = null;
     }
 
-    private void Play_Click(object sender, RoutedEventArgs e) => _ = RunAsync();
+    private void Play_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_waitingToClose) _activePlaybackTask = RunAsync();
+    }
 
     private async Task RunAsync()
     {
@@ -213,7 +219,7 @@ public partial class BehavioralComparisonWindow : Window
         PlaybackStatus.Text = "Durdurma istendi; tüm etkin test görevleri iptal ediliyor.";
     }
 
-    private static int? GetRating(ComboBox box) =>
+    private static int? GetRating(WpfControls.ComboBox box) =>
         box.SelectedItem is int i ? i : null;
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -281,10 +287,29 @@ public partial class BehavioralComparisonWindow : Window
         }
     }
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        _running?.Cancel();
-        _sensa.Submit(0, 0);
-        _sensa.Dispose();
+        if (_safeToClose)
+        {
+            _sensa.Submit(0, 0);
+            _sensa.Dispose();
+            return;
+        }
+        if (_busy || _activePlaybackTask?.IsCompleted == false)
+        {
+            e.Cancel = true;
+            if (_waitingToClose) return;
+            _waitingToClose = true;
+            PlayButton.IsEnabled = false;
+            _running?.Cancel();
+            _sensa.Submit(0, 0);
+            if (_activePlaybackTask != null)
+            {
+                try { await _activePlaybackTask; }
+                catch (Exception ex) { DiagnosticsService.Error("A/B shutdown wait", ex); }
+            }
+        }
+        _safeToClose = true;
+        Close();
     }
 }
