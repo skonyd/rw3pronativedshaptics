@@ -77,3 +77,6 @@ StereoPcmDiscardProbe reader (960 48k frames / ~20ms tick)
 ```
 
 The source transport is intentionally distinct from `SensaStereoPrototype` 50Hz RMS→Interhaptics, which remains the only experimental live Razer backend and remains lossy. The ring does not convert full PCM into a supported Razer voice-coil signal. See [REALTIME_PCM_TRANSPORT](REALTIME_PCM_TRANSPORT.md) and M3/M4 gates.
+
+## Delay-sensitive source transport (preliminary)
+Native source-only `ConfigurableWasapiLoopbackCapture` requests a 10–100ms NAudio2 polling buffer (20ms default), preserving 4ch/48k source identity. `NativeDualSenseCapture.OnAudio` timestamps/copies original rear ch3/4 sample bits and notifies a coalesced background null-sink reader that drains at most 240 original frames per chunk, with **no 20ms PeriodicTimer wait**. This removes deliberate null-sink polling latency but does not bypass Windows' earlier WASAPI loopback buffering or implement output to a real Razer device. `RealtimeStereoPcmTransport` reports both loss/age metrics and does not silently trade waveform fidelity for a small buffer. [Latency tuning](LATENCY_BUDGET.md).

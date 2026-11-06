@@ -61,3 +61,6 @@ As of 2026-11-06, `main` `ad2aed3b` passed Windows CI run 42214409530. M0–M2 r
 
 ## New realtime transport prerequisite (source-only)
 `RealtimeStereoPcmTransport.cs` implements a bounded stereo 48k PCM ring and `StereoPcmDiscardProbe` independently drains original 960-sample blocks approximately every 20ms, without converting to 50Hz RMS or invoking Razer. `NativeDualSenseCapture.AttachTransport` must be allowed **only** when source-only capture is active, no recording is active, and no Sensa sink is attached. Detach before stopping/disposal and clear retained PCM. This is **not** a physical Sensa output backend, do not mark M4 complete. See docs/REALTIME_PCM_TRANSPORT.md.
+
+## Low-latency source pipeline safeguard
+`ConfigurableWasapiLoopbackCapture` requests explicit 10/20/50/100ms **shared WASAPI loopback** buffers; it does NOT use IAudioClient3 low-latency mode (incompatible with loopback). `StereoPcmDiscardProbe` is event-woken and consumes 5ms/240-frame blocks without fake silence on absent source callbacks. Maintain byte-identical source PCM, actual callback→dequeue Stopwatch timing and all loss counters. A smaller queue capacity can discard original samples on large WASAPI bursts and is **not** itself a latency-reduction guarantee. Do not equate queue age with game-to-motor latency. See docs/LATENCY_BUDGET.md.

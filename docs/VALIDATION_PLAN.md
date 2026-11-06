@@ -59,8 +59,18 @@ Reference: [current implementation stage and evidence](IMPLEMENTATION_STATUS.md)
 - [x] Contract test: 4ch 48k PCM16/Float32 rear 3/4 → stereo original sample bits; front speaker content never leaks to output.
 - [x] Contract test: 20–500ms bounded RAM queue, oversized callbacks and previously buffered overflow cause exact counted oldest drops.
 - [x] Contract test: underrun zero-padding, no replay of stale source, full reset, invalid-frame rejection, ring wrap and simultaneous writer/reader pairing.
-- [x] Source-only UI transport probe consumes complete 960-frame blocks, records only offered/consumed/dropped/underrun statistics, **no actual motor output** or WAV file.
+- [x] Source-only UI transport probe wakes after PCM callbacks and consumes available complete 240-frame (5ms) blocks without inventing zero-filled underrun samples during source silence; reports offered/consumed/dropped, queue age and callback spacing, **no actual motor output** or WAV file.
 - [ ] Windows physical test: start source-only/transport; confirm buffer counters under real USB/virtual 4ch game traffic and silence, no sample distortion and no accumulating unbounded backlog.
 - [ ] Windows physical test: verify switching endpoint/bridge mode/closing cancels reader, zeroes retained PCM, and recording mode and probe remain mutually exclusive.
 - [ ] Source clock, buffer jitter/dropout and eventual physical hardware latency need independent measurement; discard-sink counters are **not** end-to-end latency.
 - [ ] Confirm vendor-supported legal real-time waveform sink before substituting the null/discard consumer.
+
+## F — low-latency engineering acceptance (2026-11-06)
+- [x] Software test: original 4ch→rear stereo PCM bytes remain unchanged when queued and drained in source-notified 5ms blocks.
+- [x] Software test: deterministic monotonic 5/10ms callback timestamps produce accurate queue age, average/maximum residence and callback-gap metrics; reset clears latency history.
+- [x] Software test: event-driven null sink wakes on input without a 20ms timer and drains without artificial underrun padding.
+- [x] Software test: validate explicit 10/20/50/100ms WASAPI legacy loopback capture buffer requests; reject other values.
+- [ ] Physical Windows test: verify which requested WASAPI buffer is granted or approximated, measure source callback distribution and compare PCM drop counts at 10/20/50/100ms.
+- [ ] Performance test: 10-minute actual game run and baseline capture of CPU, frame times and source callback gaps; choose smallest **stable** buffer and capacity without dropped samples.
+- [ ] External sensor test: original game-to-physical DualSense and Wolverine onset p50/p95/p99 and physical L/R isolation. The current app has no supported HD sink and cannot provide this evidence.
+See [LATENCY_BUDGET](LATENCY_BUDGET.md).
