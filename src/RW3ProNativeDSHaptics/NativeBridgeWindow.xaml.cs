@@ -19,6 +19,7 @@ public partial class NativeBridgeWindow : Window
     private enum SessionMode { Off, SourceOnly, SensaBridge }
     private SessionMode _session = SessionMode.Off;
     private int _cancelGeneration;
+    private CancellationTokenSource? _activeTest;
     private bool _leftPhysical, _rightPhysical;
     public string StatusForParent =>
         "Kaynak tercihi=" + _route +
@@ -105,6 +106,7 @@ public partial class NativeBridgeWindow : Window
         if (_source.IsCapturing)
         {
             Interlocked.Increment(ref _cancelGeneration);
+            _activeTest?.Cancel();
             _session = SessionMode.Off;
             _source.Stop();
             _sensa.Stop();
@@ -244,6 +246,7 @@ public partial class NativeBridgeWindow : Window
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
         Interlocked.Increment(ref _cancelGeneration);
+        _activeTest?.Cancel();
         _session = SessionMode.Off;
         _source.Stop();
         _sensa.Stop();
@@ -261,6 +264,8 @@ public partial class NativeBridgeWindow : Window
     {
         if (_busy) return;
         _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
         TestLeftButton.IsEnabled = TestRightButton.IsEnabled = false;
         string label = side == HapticTestChannel.Left ? "Sol" : "Sağ";
         try
@@ -271,10 +276,10 @@ public partial class NativeBridgeWindow : Window
             if (!_sensa.IsActive && !_sensa.Start())
                 throw new InvalidOperationException(_sensa.Status);
             for (int i = 0; i < 25 && !_sensa.IsActive && _sensa.IsRunning; ++i)
-                await Task.Delay(80, _lifetime.Token);
+                await Task.Delay(80, testCancellation.Token);
             if (!_sensa.IsActive) throw new InvalidOperationException(_sensa.Status);
 
-            bool accepted = await _sensa.TestSideAsync(side, _lifetime.Token);
+            bool accepted = await _sensa.TestSideAsync(side, testCancellation.Token);
             bool felt = accepted && System.Windows.MessageBox.Show(this,
                 label + " Sensa parametrik efekt komutu gönderildi.\n" +
                 "Wolverine V3 Pro'nun " + label.ToLowerInvariant() +
@@ -287,6 +292,10 @@ public partial class NativeBridgeWindow : Window
                 ". Yalnızca kullanıcı bildirimi; bağımsız motor ayrımı ayrıca ölçülmeli.";
             DiagnosticsService.Info("Sensa physical " + label + " reported=" + felt);
         }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
+        }
         catch (Exception ex)
         {
             PhysicalTestText.Text = "Hata: " + ex.Message;
@@ -294,7 +303,9 @@ public partial class NativeBridgeWindow : Window
         }
         finally
         {
+            _sensa.Stop();
             _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
             TestLeftButton.IsEnabled = TestRightButton.IsEnabled = true;
             RefreshStatus();
         }
@@ -310,6 +321,8 @@ public partial class NativeBridgeWindow : Window
     {
         if (_busy) return;
         _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
         ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = false;
         string label = side == HapticTestChannel.Left ? "SOL" : "SAĞ";
         try
@@ -318,14 +331,22 @@ public partial class NativeBridgeWindow : Window
                 !_source.IsCapturing || _source.EndpointId is not string id)
                 throw new InvalidOperationException(
                     "Önce 'Yalnızca 4ch PCM kaynağını izle' düğmesini kullan.");
+            // Playing synthetic rear-channel PCM to a real USB DualSense may
+            // cause that controller's physical actuators to vibrate.
+            if (System.Windows.MessageBox.Show(this,
+                "Bu test seçilen USB ses aygıtına kısa SENTETİK PCM çalar. " +
+                "Fiziksel DualSense titreşebilir; RW3 Wolverine'a çıkış yapmaz. " +
+                "Bu veri oyun tarafından üretilmedi. Devam?",
+                "Sentetik USB ses oynatma onayı", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             if (!NativePcmTestPlayer.VerifyIsolatedChannel(side))
                 throw new InvalidOperationException("Sentetik test örneği kanalları karıştırıyor.");
             long ownBefore = side == HapticTestChannel.Left
                 ? _source.LeftActiveBlocks : _source.RightActiveBlocks;
             long otherBefore = side == HapticTestChannel.Left
                 ? _source.RightActiveBlocks : _source.LeftActiveBlocks;
-            await NativePcmTestPlayer.PlayAsync(id, side, _lifetime.Token);
-            await Task.Delay(100, _lifetime.Token);
+            await NativePcmTestPlayer.PlayAsync(id, side, testCancellation.Token);
+            await Task.Delay(100, testCancellation.Token);
             long ownAfter = side == HapticTestChannel.Left
                 ? _source.LeftActiveBlocks : _source.RightActiveBlocks;
             long otherAfter = side == HapticTestChannel.Left
@@ -334,10 +355,15 @@ public partial class NativeBridgeWindow : Window
                 ownBefore, ownAfter, otherBefore, otherAfter);
             SourceProbeText.Text = label + " sentetik PCM kaynak testi: " +
                 (isolated ? "SEÇİLEN KANAL AYRI GÖZLENDİ" : "BAŞARISIZ/KARŞI KANAL AKTİF") +
-                ". Razer provider, motor çıkışı ve gerçek oyun kaynağı doğrulanmadı.";
+                ". RW3 Razer'a komut vermedi; seçilen USB DualSense fiziksel olarak titreşebilir. " +
+                "Gerçek oyun kaynağı doğrulanmadı.";
             DiagnosticsService.Info("UAC source-only side=" + side + " isolated=" + isolated +
                 " selectedDelta=" + (ownAfter - ownBefore) +
                 " oppositeDelta=" + (otherAfter - otherBefore));
+        }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
         }
         catch (Exception ex)
         {
@@ -347,6 +373,7 @@ public partial class NativeBridgeWindow : Window
         finally
         {
             _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
             ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = true;
             RefreshStatus();
         }
@@ -362,6 +389,8 @@ public partial class NativeBridgeWindow : Window
     {
         if (_busy) return;
         _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
         LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = false;
         string label = side == HapticTestChannel.Left ? "SOL" : "SAĞ";
         try
@@ -377,8 +406,8 @@ public partial class NativeBridgeWindow : Window
             long oppositeBefore = side == HapticTestChannel.Left ?
                 _source.RightActiveBlocks : _source.LeftActiveBlocks;
             int beforeRender = _sensa.EngineTicks;
-            await NativePcmTestPlayer.PlayAsync(id, side, _lifetime.Token);
-            await Task.Delay(100, _lifetime.Token);
+            await NativePcmTestPlayer.PlayAsync(id, side, testCancellation.Token);
+            await Task.Delay(100, testCancellation.Token);
             long after = side == HapticTestChannel.Left ?
                 _source.LeftActiveBlocks : _source.RightActiveBlocks;
             long oppositeAfter = side == HapticTestChannel.Left ?
@@ -406,6 +435,10 @@ public partial class NativeBridgeWindow : Window
                 " isolated=" + isolated + " provider-loop=" + rendered +
                 " physical-reported=" + felt);
         }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
+        }
         catch (Exception ex)
         {
             FullPathTestText.Text = "Tam yol test hatası: " + ex.Message;
@@ -414,6 +447,7 @@ public partial class NativeBridgeWindow : Window
         finally
         {
             _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
             LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = true;
             RefreshStatus();
         }
@@ -464,8 +498,9 @@ public partial class NativeBridgeWindow : Window
             " | Kullanıcı fiziksel sol/sağ teyidi: " + _leftPhysical + "/" + _rightPhysical;
         TruthStateText.Text = _session switch
         {
-            SessionMode.SourceOnly => "YALNIZCA KAYNAK: Stereo PCM gözlemi mümkündür. " +
-                "Motor çıkışı YOK, oyun kaynaklı olduğu doğrulanmadı.",
+            SessionMode.SourceOnly => "YALNIZCA KAYNAK: Stereo PCM izleme pasiftir. " +
+                "Sentetik kaynak testleri seçilen ses aygıtını titreştirebilir. " +
+                "RW3 Razer'a çıkış yapmaz; gerçek oyun kaynağı doğrulanmadı.",
             SessionMode.SensaBridge => "DENEYSEL: 50Hz parametrik Razer çıkışı. " +
                 "Fiziksel stereo ayrımı ve orijinal DualSense sadakati doğrulanmadı.",
             _ => "Native DualSense → Wolverine HD doğrulanmadı; şu anda aktif köprü oturumu yok."
@@ -478,6 +513,7 @@ public partial class NativeBridgeWindow : Window
         Interlocked.Increment(ref _cancelGeneration);
         _session = SessionMode.Off;
         _lifetime.Cancel();
+        _activeTest?.Cancel();
         _source.Dispose();
         _sensa.Dispose();
         _lifetime.Dispose();
