@@ -88,6 +88,19 @@ public partial class NativeBridgeWindow : Window
         }
     }
 
+    private void EndpointPicker_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // An acknowledgement applies only to the *specific* selected endpoint.
+        EndpointAcknowledgement.IsChecked = false;
+        if (_source.IsCapturing)
+        {
+            _source.Stop();
+            _sensa.Stop();
+            _leftPhysical = _rightPhysical = false;
+            RefreshStatus();
+        }
+    }
+
     private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshSources();
 
     private async void Start_Click(object sender, RoutedEventArgs e)
