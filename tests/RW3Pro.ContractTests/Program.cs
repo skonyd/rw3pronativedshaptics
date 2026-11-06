@@ -129,4 +129,41 @@ Check(NativeCaptureHealth.Evaluate(true, 5000, 0, 0, 4000) == NativeCaptureState
     "Invalid monotonic timestamp is treated as stale");
 Check(NativeCaptureHealth.Describe(NativeCaptureState.RearChannelEnergyObserved).Contains("doğrulanmadı"),
     "Even observed rear PCM cannot claim source provenance");
-Console.WriteLine("52 hardware-free evidence, route and capture reliability checks passed.");
+Check(BehavioralHapticFixtures.All.Count == 10, "Ten reproducible tactile scenarios exist");
+Check(BehavioralHapticFixtures.All.Select(s => s.Id).Distinct().Count() == 10,
+    "Every behavior has one unique user-facing scenario");
+foreach (var scene in BehavioralHapticFixtures.All)
+{
+    byte[] pcm = BehavioralHapticFixtures.Generate(scene.Id);
+    int frames = scene.DurationMs * BehavioralHapticFixtures.SampleRate / 1000;
+    Check(pcm.Length == frames * BehavioralHapticFixtures.BytesPerFrame,
+        "Scene " + scene.Id + " exact 4ch 48k frame count");
+    Check(BehavioralHapticFixtures.Generate(scene.Id).AsSpan().SequenceEqual(pcm),
+        "Scene " + scene.Id + " deterministic across runs");
+    bool frontSilent = true, bounded = true;
+    for (int o = 0; o < pcm.Length; o += 8)
+    {
+        if (pcm[o] != 0 || pcm[o+1] != 0 || pcm[o+2] != 0 || pcm[o+3] != 0)
+            frontSilent = false;
+        if (Math.Abs(BitConverter.ToInt16(pcm, o + 4)) > 7300 ||
+            Math.Abs(BitConverter.ToInt16(pcm, o + 6)) > 7300)
+            bounded = false;
+    }
+    Check(frontSilent && bounded, "Scene " + scene.Id +
+        " silent speakers and <=22% haptic PCM peak");
+    var rms = BehavioralHapticFixtures.RmsWindow(pcm, frames / 3, 960);
+    Check(float.IsFinite(rms.Left) && float.IsFinite(rms.Right),
+        "Scene " + scene.Id + " has finite independent RMS envelopes");
+    var scaled = BehavioralHapticFixtures.ScaleForDualSense(pcm, 0.5f);
+    Check(scaled.Length == pcm.Length && scaled[0] == 0 && scaled[2] == 0,
+        "Scene " + scene.Id + " scales safely without speaker channel leakage");
+}
+Check(BehavioralHapticFixtures.Generate(HapticBehavior.Pistol)
+    .AsSpan().IndexOf((byte)0xff) >= 0, "Procedural impulse scene contains data");
+try
+{
+    BehavioralHapticFixtures.ScaleForDualSense(new byte[8], 2);
+    throw new Exception("Invalid output gain was accepted");
+}
+catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: Gain above safe limit rejected"); }
+Console.WriteLine("105+ scenario and safety assertions passed.");
