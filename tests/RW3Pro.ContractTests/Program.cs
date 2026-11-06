@@ -287,6 +287,21 @@ try { new HapticStereoRecorder(HapticPcmFormat.Float32, 11);
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: capture length <=10s"); }
 Console.WriteLine("Stereo 48k WAV export and bounded opt-in recording passed.");
 
+// Explicit capture-buffer requests: legacy WASAPI loopback formerly used 100ms.
+Check(WasapiLoopbackBufferPolicy.DefaultRequestMs == 20 &&
+      WasapiLoopbackBufferPolicy.Validate(10) == 10 &&
+      WasapiLoopbackBufferPolicy.Validate(20) == 20 &&
+      WasapiLoopbackBufferPolicy.Validate(50) == 50 &&
+      WasapiLoopbackBufferPolicy.Validate(100) == 100,
+    "WASAPI low-latency buffer requests are explicit, validated and default to 20ms");
+foreach (int unsupportedMs in new[] { 0, 1, 5, 15, 30, 40, 99, 101, 1000 })
+{
+    bool rejected = false;
+    try { WasapiLoopbackBufferPolicy.Validate(unsupportedMs); }
+    catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected, "Unsupported WASAPI loopback buffer value " + unsupportedMs + "ms rejected");
+}
+
 // ===== Loss-visible raw 48k stereo transport (NO Razer output or PCM DSP) =====
 var ring = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 20);
 Check(ring.CapacityFrames == 960 && ring.Snapshot().CapacityMs == 20,
