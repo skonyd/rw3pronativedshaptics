@@ -55,6 +55,11 @@ public sealed class NativeDualSenseCapture : IDisposable
         get { lock (_captureGate) return _recording?.IsFull == true; }
     }
 
+    public bool PcmRecordingTimedOut
+    {
+        get { lock (_captureGate) return _recording?.IsTimedOut == true; }
+    }
+
     /// <summary>
     /// Capture only, never on a live Razer sink. Does not affect the USB
     /// DualSense original rendering/driver pipeline.
