@@ -3,12 +3,11 @@ using NAudio.Wave;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace RW3ProNativeDSHaptics;
-
-public enum ComparisonTarget { Both, DualSenseOnly, WolverineOnly }
 
 public sealed record ComparisonResult(
     HapticBehavior Scene, ComparisonTarget Target,
@@ -40,9 +39,15 @@ public static class BehavioralComparisonPlayer
             throw new InvalidOperationException("Gerçek USB DualSense 4ch/48k aygıtını seç.");
         cancel.ThrowIfCancellationRequested();
 
-        // The ONLY scene generation is before the split. The USB reference is
-        // passed directly to RawSourceWaveStream, with no gain processing.
+        // One deterministic source. USB receives the same unmodified PCM byte[].
         byte[] rawReference = BehavioralHapticFixtures.Generate(scene);
+        // Reserve the physical USB output BEFORE energizing either controller.
+        // A failing exclusive-format check must not produce a one-sided A/B run.
+        using var preparedUsb = usb
+            ? new PreparedUsbPlayback(usbEndpointId!, rawReference, exclusiveUsb)
+            : null;
+        cancel.ThrowIfCancellationRequested();
+
         int before = sensa.EngineTicks;
         if (razer)
         {
@@ -57,12 +62,12 @@ public static class BehavioralComparisonPlayer
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         try
         {
-            Task usbTask = usb ? PlayUsbReferenceAsync(usbEndpointId!, rawReference,
-                exclusiveUsb, linked.Token) : Task.CompletedTask;
+            cancel.ThrowIfCancellationRequested();
+            // The start calls are close in time, but motor output is not
+            // guaranteed sample-aligned across independent device clocks.
+            Task usbTask = usb ? preparedUsb!.PlayAsync(linked.Token) : Task.CompletedTask;
             Task razerTask = razer ? PlayRazerEnvelopeAsync(rawReference,
                 wolverineTestLevelPercent, sensa, linked.Token) : Task.CompletedTask;
-            // Near-simultaneous async starts. WASAPI and vendor scheduling cannot
-            // guarantee sample-locked onset between physically different devices.
             try { await Task.WhenAll(usbTask, razerTask); }
             catch
             {
@@ -79,36 +84,80 @@ public static class BehavioralComparisonPlayer
         }
     }
 
-    private static async Task PlayUsbReferenceAsync(
-        string endpointId, byte[] unmodifiedPcm, bool exclusive, CancellationToken cancel)
+    // Prepares WASAPI and validates the selected endpoint before playback begins.
+    // A/R failures no longer leave the USB DualSense playing by itself.
+    private sealed class PreparedUsbPlayback : IDisposable
     {
-        using var enumerator = new MMDeviceEnumerator();
-        using var device = enumerator.GetDevice(endpointId);
-        if (device.State != DeviceState.Active)
-            throw new InvalidOperationException("Seçilen USB DualSense aygıtı bağlı/aktif değil.");
-        var mix = device.AudioClient.MixFormat;
-        if (mix.Channels != 4 || mix.SampleRate != BehavioralHapticFixtures.SampleRate)
-            throw new InvalidOperationException("Gerçek DualSense 4-kanal/48kHz formatı gerekli.");
-        var format = new WaveFormat(BehavioralHapticFixtures.SampleRate, 16, 4);
-        var mode = exclusive ? AudioClientShareMode.Exclusive : AudioClientShareMode.Shared;
-        if (exclusive && !device.AudioClient.IsFormatSupported(mode, format))
-            throw new NotSupportedException(
-                "Exclusive 4ch/48k PCM16 aygıt tarafından desteklenmiyor. " +
-                "Referans veriyi dönüştürmeden korumak için sessiz fallback yapılmaz. " +
-                "İstersen Windows Shared modunu açıkça seç.");
-        using var memory = new MemoryStream(unmodifiedPcm, writable: false);
-        using var provider = new RawSourceWaveStream(memory, format);
-        using var output = new WasapiOut(device, mode, true, 50);
-        output.Init(provider);
-        try
+        private readonly List<IDisposable> _resources = new();
+        private WasapiOut? _output;
+        private readonly int _durationMs;
+
+        public PreparedUsbPlayback(string endpointId, byte[] unchangedPcm, bool exclusive)
         {
-            cancel.ThrowIfCancellationRequested();
-            output.Play();
-            int lengthMs = unmodifiedPcm.Length * 1000 /
-                (BehavioralHapticFixtures.SampleRate * BehavioralHapticFixtures.BytesPerFrame);
-            await Task.Delay(lengthMs + 130, cancel);
+            try
+            {
+                var enumerator = Own(new MMDeviceEnumerator());
+                var device = Own(enumerator.GetDevice(endpointId));
+                if (device.State != DeviceState.Active)
+                    throw new InvalidOperationException("Seçilen USB DualSense aktif değil.");
+                var mix = device.AudioClient.MixFormat;
+                if (mix.Channels != 4 || mix.SampleRate != BehavioralHapticFixtures.SampleRate)
+                    throw new InvalidOperationException("USB DualSense için 4ch/48kHz aygıt gerekli.");
+
+                var format = new WaveFormat(BehavioralHapticFixtures.SampleRate, 16, 4);
+                var mode = exclusive ? AudioClientShareMode.Exclusive : AudioClientShareMode.Shared;
+                if (exclusive && !device.AudioClient.IsFormatSupported(mode, format))
+                    throw new NotSupportedException(
+                        "Exclusive 4ch/48k PCM16 bu aygıtta desteklenmiyor. " +
+                        "RW3 otomatik Shared moda geçmez; kullanıcı açıkça seçmelidir.");
+                var memory = Own(new MemoryStream(unchangedPcm, writable: false));
+                var source = Own(new RawSourceWaveStream(memory, format));
+                _output = Own(new WasapiOut(device, mode, true, 50));
+                _output.Init(source);
+                _durationMs = unchangedPcm.Length * 1000 /
+                    (BehavioralHapticFixtures.SampleRate *
+                     BehavioralHapticFixtures.BytesPerFrame);
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
         }
-        finally { output.Stop(); }
+
+        private T Own<T>(T resource) where T : IDisposable
+        {
+            _resources.Add(resource);
+            return resource;
+        }
+
+        public async Task PlayAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            var output = _output ?? throw new ObjectDisposedException(nameof(PreparedUsbPlayback));
+            try
+            {
+                output.Play();
+                // A WASAPI Play() call only proves dispatch; no actuator
+                // measurement or guaranteed full duration is implied.
+                await Task.Delay(_durationMs + 130, token);
+            }
+            finally
+            {
+                output.Stop();
+            }
+        }
+
+        public void Dispose()
+        {
+            for (int i = _resources.Count - 1; i >= 0; --i)
+            {
+                try { _resources[i].Dispose(); }
+                catch (Exception ex) { DiagnosticsService.Error("USB A/B output dispose", ex); }
+            }
+            _resources.Clear();
+            _output = null;
+        }
     }
 
     private static async Task PlayRazerEnvelopeAsync(

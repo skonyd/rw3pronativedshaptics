@@ -49,3 +49,15 @@ These scenes were written for this project. The comparison tests the **capabilit
 - [ ] Measure A/B onset latency with an external sensor and output actuator frequency response. UI subjective scores are not instrumented measurements.
 - [ ] Replace the Wolverine's lossy 50Hz parametric envelope route **only after** a documented/licensed higher-fidelity Razer streaming or authoring interface is available. Wwise's offline two-channel WAV plugin does not establish a real-time arbitrary-PCM API.
 - [ ] Repeat as a genuine supported game's haptics are captured from actual USB or virtual DualSense. A common synthetic reference alone cannot prove native game-authored parity.
+
+## Automatic USB presence checkmarks and evidence (2026-11-06)
+The two-controller lab displays independent **✓ USB node seen**, **✕ expected USB node not found**, or **○ Windows PnP scan unavailable** statuses, auto-refreshing every ~3 seconds with an explicit refresh button. It queries only **currently present** Windows USB PnP roots, not virtual XInput controllers, generic HID children, marketing names or disconnected historical entries.
+
+- **DualSense**: recognizes Sony USB vendor/product IDs `054C:0CE6` (base DualSense) and `054C:0DF2` (DualSense Edge). The source must *also* be manually mapped to the actual 4ch/48k USB UAC audio endpoint.
+- **Wolverine V3 Pro**: recognizes Razer `1532:0A3F`. This VID/PID may also appear on its wireless USB receiver: a green check is **USB presence, NOT a verified wired physical controller**. A separate checkbox requires the user to confirm the actual Wolverine is connected directly by USB cable. Successful PnP enumeration does not prove Sensa actuator response.
+- Active tests request cancellation if a previously present required device disappears. Device selection, endpoint refresh, target and intensity controls are locked while the scene plays.
+- Both devices must pass preflight before starting a combined trial. The real USB DualSense WASAPI endpoint is opened/initialized and its strict format checked **before** the Razer haptic provider is started; unsupported Exclusive mode never silently becomes Shared.
+
+**Per-device physical response validation:** For each device included in a successful software scene, select “Felt”, “Not felt” or “Unsure”. All three texture/impact/stereo 1–5 ratings are required only when “Felt” is selected. Negative and uncertain responses are valid evidence and must have **no numeric ratings**. A controller not included in playback cannot be assigned a sensation or score. The local JSONL format now uses `SchemaVersion=2`; older untyped records remain on disk but are ignored by the current aggregate, rather than being guessed into unsupported evidence.
+
+The local aggregate counts unique tested scenes and reports **paired subjective ratings** only for scenes with valid physical “Felt” confirmations on **both** controllers. It never claims that averaged impressions are objective tactile fidelity or original game-authored PCM parity.
