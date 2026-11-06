@@ -97,3 +97,11 @@ Date | Controller firmware | Synapse/Chroma | Source game/scene | Device slot | 
 - [ ] Run a one-device test and ensure other-device sensation and ratings are rejected.
 - [ ] Run a two-device trial with one side not felt: allow the negative result without invented scores.
 - [ ] Check aggregate summaries exclude outdated JSONL schema and non-paired reports and disclose subjective-only evidence.
+
+## Pure rear-PCM WAV offline verification
+- [x] Contract tests check PCM16 exact stereo rear sample equality across all ten scenes and PCM/fact WAV headers.
+- [x] Float32 rear sample bits are unchanged by export; explicit audio-format tag 3 and fact chunk.
+- [x] Recording caps both frame memory and elapsed wall clock to <=10s and discards on source shutdown.
+- [ ] Windows user test: record actual game rear-channel samples, save locally, compare extracted channel samples with raw WASAPI capture.
+- [ ] Windows user test: verify source disconnect discards pending clip and no file is written without explicit Save.
+- [ ] Licensed Wwise test: import stereo WAV with **Generic Haptics 2-Channel**; measure real Wolverine Sensa VCM drivers and test for fan-out to other Razer devices.

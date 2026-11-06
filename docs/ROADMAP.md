@@ -110,3 +110,12 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [x] Versioned local results and only valid paired 1–5 tactile dimension averages
 - [ ] Verify USB PnP identities on actual physically plugged controllers and Windows 11 variants
 - [ ] Measure real motor response, physical USB-dongle distinction, tactile latency and independent VCM stereo
+
+## Loss-minimizing stereo WAV path (independent of lossy 50Hz output)
+- [x] Bit-preserving rear ch3/ch4 extraction to 2ch signed PCM16 / IEEE_FLOAT 48k WAV
+- [x] Export ten synthetic A/B scenes as offline WAV for properly licensed Wwise Sensa Motion investigation
+- [x] Optional explicit 10-second RAM-only real-game UAC capture with save/discard; never intercepts/changes the physical USB DualSense's original playback
+- [x] Wwise 2025.1.6+ Generic Haptics 2-Channel Driver A/B setup documented; licensed Wwise plugin/banks not bundled
+- [ ] Test external licensed Wwise stereo WAV output on actual Wolverine and independently confirm hardware fidelity
+- [ ] Confirm authentic game source provenance; do not infer from virtual endpoint identity / PCM energy
+- [ ] Replace lossy 50Hz live sink only with a proven documented higher-fidelity dynamic waveform API
