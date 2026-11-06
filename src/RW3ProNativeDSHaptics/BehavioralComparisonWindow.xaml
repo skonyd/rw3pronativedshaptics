@@ -91,7 +91,8 @@
           <TextBlock x:Name="SceneDetails" TextWrapping="Wrap" Foreground="#BBCBDC"
                      Margin="0,5,0,10"/>
           <TextBlock Text="Hedef kontrolcü" Foreground="#D4DDEA" Margin="0,0,0,6"/>
-          <ComboBox x:Name="TargetBox" Height="34" Foreground="#142039">
+          <ComboBox x:Name="TargetBox" Height="34" Foreground="#142039"
+                    SelectionChanged="Target_Changed">
             <ComboBoxItem Content="İki kol birlikte • yaklaşık eşzamanlı A/B"/>
             <ComboBoxItem Content="Yalnızca USB DualSense • doğrudan PCM referansı"/>
             <ComboBoxItem Content="Yalnızca Wolverine • kayıplı Sensa karşılığı"/>
@@ -145,6 +146,23 @@
             <ComboBox Grid.Row="3" Grid.Column="1" x:Name="DsStereo" Margin="4" Foreground="#142039"/>
             <ComboBox Grid.Row="3" Grid.Column="2" x:Name="RwStereo" Margin="4" Foreground="#142039"/>
           </Grid>
+          <TextBlock Text="Fiziksel titreşim hissettin mi? Her kol için ayrı cevap ver."
+                     TextWrapping="Wrap" Foreground="#D3DFEE" Margin="0,12,0,5"/>
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,5,0">
+              <TextBlock Text="DualSense fiziksel his" Foreground="#A5E1CF" FontSize="11"/>
+              <ComboBox x:Name="DsFeelingBox" Height="31" Foreground="#142039"
+                        DisplayMemberPath="Label" Margin="0,5,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="5,0,0,0">
+              <TextBlock Text="Wolverine fiziksel his" Foreground="#B9C9FF" FontSize="11"/>
+              <ComboBox x:Name="RwFeelingBox" Height="31" Foreground="#142039"
+                        DisplayMemberPath="Label" Margin="0,5,0,0"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock Text="Hissetmedim / Emin değilim cevabı da sonuçtur; bu durumda puan alanlarını boş bırak. Tek kolda oynatılan sahnede diğer kola puan kaydedilemez."
+                     Foreground="#AAB9D0" FontSize="11" TextWrapping="Wrap" Margin="0,7,0,0"/>
           <TextBlock Text="Ek gözlemler / hangi kolun hangi elde olduğu:" Foreground="#C8D2E0"
                      Margin="0,12,0,5"/>
           <TextBox x:Name="NotesBox" AcceptsReturn="True" TextWrapping="Wrap"
@@ -156,6 +174,8 @@
             <Button Content="Yerel test kayıtlarını aç" Style="{StaticResource Action}" Click="OpenResults_Click"/>
           </WrapPanel>
           <TextBlock x:Name="SaveStatus" Foreground="#A5E1CF" TextWrapping="Wrap" Margin="0,6,0,0"/>
+          <TextBlock x:Name="SummaryText" Foreground="#D3DFEE" FontWeight="SemiBold"
+                     TextWrapping="Wrap" Margin="0,9,0,2"/>
           <TextBlock Text="Yalnızca puanlar, cihaz adı, yöntem ve yerel zaman saklanır; haptic PCM veya kişisel veri sunucuya gönderilmez."
                      FontSize="11" Foreground="#9AABC5" TextWrapping="Wrap" Margin="0,7,0,0"/>
         </StackPanel>
