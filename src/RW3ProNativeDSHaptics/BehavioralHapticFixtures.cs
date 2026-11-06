@@ -118,21 +118,9 @@ public static class BehavioralHapticFixtures
         return result;
     }
 
-    public static byte[] ScaleForDualSense(ReadOnlySpan<byte> source, float gain)
-    {
-        if (source.Length % BytesPerFrame != 0 || !float.IsFinite(gain) || gain < 0 || gain > 1)
-            throw new ArgumentOutOfRangeException(nameof(gain));
-        byte[] scaled = new byte[source.Length];
-        for (int i = 0; i < source.Length; i += BytesPerFrame)
-        {
-            // ch0/ch1 remain digital silence.
-            short l = BitConverter.ToInt16(source.Slice(i + 4, 2));
-            short r = BitConverter.ToInt16(source.Slice(i + 6, 2));
-            WritePcm(scaled, i + 4, (short)Math.Round(l * gain));
-            WritePcm(scaled, i + 6, (short)Math.Round(r * gain));
-        }
-        return scaled;
-    }
+    // The DualSense comparison receives Generate() output directly: no software
+    // volume, gain, stereo mixing, filtering or remapping. The Windows audio
+    // stack may still process shared-mode output; actual games own their stream.
 
     public static (float Left, float Right) RmsWindow(
         ReadOnlySpan<byte> samples, int firstFrame, int frames)
