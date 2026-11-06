@@ -19,6 +19,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     private SensaStereoPrototype? _sink;
     private HapticStereoRecorder? _recording;
     private RealtimeStereoPcmTransport? _realtimeTransport;
+    private Action? _transportDataArrived;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
@@ -58,7 +59,8 @@ public sealed class NativeDualSenseCapture : IDisposable
     // This link only exposes the ORIGINAL 48kHz rear PCM bytes to a
     // bounded, local, explicitly started discard/diagnostics probe.
     // It never opens Sensa hardware or calls Submit() on a vendor sink.
-    public void AttachTransport(RealtimeStereoPcmTransport transport)
+    public void AttachTransport(RealtimeStereoPcmTransport transport,
+        Action? onDataArrived = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         lock (_captureGate)
@@ -72,6 +74,7 @@ public sealed class NativeDualSenseCapture : IDisposable
             if (transport.Format != expected)
                 throw new InvalidOperationException("Stereo PCM taşımada veri formatı uyuşmuyor.");
             _realtimeTransport = transport;
+            _transportDataArrived = onDataArrived;
         }
     }
 
@@ -79,6 +82,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     {
         lock (_captureGate)
         {
+            _transportDataArrived = null;
             _realtimeTransport?.Reset();
             _realtimeTransport = null;
         }
@@ -269,6 +273,9 @@ public sealed class NativeDualSenseCapture : IDisposable
                 int frameBytes = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16 ? 8 : 16;
                 _realtimeTransport.WriteFourChannel(
                     args.Buffer.AsSpan(0, metrics.ReceivedFrames * frameBytes));
+                // Wake only the optional source-only diagnostic reader; no
+                // 20ms polling wait and no physical device output here.
+                _transportDataArrived?.Invoke();
             }
             if (_recording != null)
             {
@@ -339,6 +346,7 @@ public sealed class NativeDualSenseCapture : IDisposable
             _sink?.Submit(0, 0);
             _recording?.Abandon();
             _recording = null;
+            _transportDataArrived = null;
             _realtimeTransport?.Reset();
             _realtimeTransport = null;
             capture = _capture;
