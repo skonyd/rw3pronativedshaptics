@@ -147,6 +147,20 @@ public partial class BehavioralComparisonWindow : Window
         if (_ratings != null) foreach (var r in _ratings) r.SelectedItem = null;
     }
 
+    private void SetPlaybackInputLocked(bool locked)
+    {
+        // A changed scene/endpoint in mid-play cannot be saved as if it were
+        // the already-running reference and would invalidate the A/B record.
+        SceneBox.IsEnabled = !locked;
+        TargetBox.IsEnabled = !locked;
+        UsbEndpointBox.IsEnabled = !locked;
+        ExclusiveCheck.IsEnabled = !locked;
+        ConfirmUsbCheck.IsEnabled = !locked;
+        ConfirmSensaCheck.IsEnabled = !locked;
+        WolverineLevel.IsEnabled = !locked;
+        SaveButton.IsEnabled = !locked && _lastResult != null;
+    }
+
     private void Play_Click(object sender, RoutedEventArgs e)
     {
         if (!_waitingToClose) _activePlaybackTask = RunAsync();
@@ -195,6 +209,7 @@ public partial class BehavioralComparisonWindow : Window
             != MessageBoxResult.Yes) return;
         _busy = true;
         _lastResult = null;
+        SetPlaybackInputLocked(true);
         _lastUsbName = selected?.FriendlyName;
         _lastGlobalLevelPercent = _globalLevelPercent;
         _lastSceneLevelPercent = HapticOutputLevel.Limit((int)Math.Round(WolverineLevel.Value));
@@ -235,7 +250,8 @@ public partial class BehavioralComparisonWindow : Window
             if (ReferenceEquals(_running, cts)) _running = null;
             _busy = false;
             StopButton.IsEnabled = false;
-            PlayButton.IsEnabled = true;
+            PlayButton.IsEnabled = !_waitingToClose;
+            SetPlaybackInputLocked(false);
         }
     }
 
