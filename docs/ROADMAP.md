@@ -100,3 +100,13 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [ ] Run latest Windows CI with complete compare UI and package and inspect output
 - [ ] Validate dual-USB and Wolverine physical outcomes for all ten scenes; measure tactile latency and spectra
 - [ ] Obtain vendor-supported high-fidelity Razer waveform sink; replace/compare lossy current adapter only if API and license permit
+
+## USB presence and evidence validation
+- [x] Automatic Windows present-USB identity checkmarks for Sony DualSense and Razer Wolverine V3 Pro; no virtual XInput substitution
+- [x] Explicit dongle vs wired-cable caveat for Razer VID/PID and manual wired confirmation
+- [x] Live unplug detection requests scene cancellation; USB WASAPI preparation before any dual-device playback
+- [x] Lock physical source selection, endpoint refresh, target, sample mode and Wolverine level during playback
+- [x] Separate subjective Felt / NotFelt / Uncertain per tested device, reject phantom unplayed-device scores
+- [x] Versioned local results and only valid paired 1–5 tactile dimension averages
+- [ ] Verify USB PnP identities on actual physically plugged controllers and Windows 11 variants
+- [ ] Measure real motor response, physical USB-dongle distinction, tactile latency and independent VCM stereo

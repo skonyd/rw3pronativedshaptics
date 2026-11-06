@@ -86,3 +86,14 @@ Date | Controller firmware | Synapse/Chroma | Source game/scene | Device slot | 
 - [x] Store per-device subjective 1–5 texture, impact and stereo ratings in local JSONL, do not store raw game/USB PCM or cloud upload.
 - [ ] **Physical verification pending:** real USB DualSense playback, Wolverine Sensa actuator routing, simultaneous playback, stop/close cancellation and 10-scene feel comparisons.
 - [ ] **Measurement pending:** hardware-sensed latency/fidelity, authentic authored game signal provenance.
+
+## USB checkmark and paired evidence acceptance
+- [ ] Plug/unplug a physical USB DualSense and confirm its green check/ red absent statuses change with the PnP root node. Verify DualSense Edge variant separately if available.
+- [ ] Plug a wired Wolverine V3 Pro and confirm its USB presence; attach only the wireless receiver and verify the direct-cable checkbox prevents falsely claiming wired attachment.
+- [ ] Block real A/B start when required USB PnP node is not present or scan unavailable, and never substitute virtual XInput/HID or generic 4ch audio endpoints.
+- [ ] Attempt Both with unsupported Exclusive PCM16: **no** Sensa motor output should start, and there must be no silent Shared-mode fallback.
+- [ ] During a running two-device trial unplug each required device separately; ensure pending playback is canceled and outputs are stopped.
+- [ ] Change connection/scene/target/intensity selections during a running trial: controls must be disabled, preserving reporting identity.
+- [ ] Run a one-device test and ensure other-device sensation and ratings are rejected.
+- [ ] Run a two-device trial with one side not felt: allow the negative result without invented scores.
+- [ ] Check aggregate summaries exclude outdated JSONL schema and non-paired reports and disclose subjective-only evidence.
