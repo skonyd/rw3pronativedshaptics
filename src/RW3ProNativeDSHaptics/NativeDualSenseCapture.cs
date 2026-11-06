@@ -17,6 +17,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     private WasapiLoopbackCapture? _capture;
     private FourChannelHapticAnalyzer.PcmEncoding _encoding;
     private SensaStereoPrototype? _sink;
+    private HapticStereoRecorder? _recording;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
@@ -38,6 +39,66 @@ public sealed class NativeDualSenseCapture : IDisposable
     private long _invalidSamples;
     public string Status => Volatile.Read(ref _status);
     public string? EndpointId { get; private set; }
+
+    public bool IsPcmRecording
+    {
+        get { lock (_captureGate) return _recording != null; }
+    }
+
+    public int PcmRecordingFrames
+    {
+        get { lock (_captureGate) return _recording?.CapturedFrames ?? 0; }
+    }
+
+    public bool PcmRecordingFull
+    {
+        get { lock (_captureGate) return _recording?.IsFull == true; }
+    }
+
+    public bool PcmRecordingTimedOut
+    {
+        get { lock (_captureGate) return _recording?.IsTimedOut == true; }
+    }
+
+    /// <summary>
+    /// Capture only, never on a live Razer sink. Does not affect the USB
+    /// DualSense original rendering/driver pipeline.
+    /// </summary>
+    public void BeginPcmRecording(int seconds = 10)
+    {
+        lock (_captureGate)
+        {
+            if (!IsCapturing || _capture == null || _sink != null)
+                throw new InvalidOperationException(
+                    "WAV kayıt için yalnızca aktif 4ch source-only izleme kullanılabilir.");
+            if (_recording != null)
+                throw new InvalidOperationException("Bir haptic PCM kaydı zaten devam ediyor.");
+            var format = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16
+                ? HapticPcmFormat.Signed16
+                : HapticPcmFormat.Float32;
+            _recording = new HapticStereoRecorder(format, seconds);
+        }
+    }
+
+    public byte[] FinishPcmRecording()
+    {
+        lock (_captureGate)
+        {
+            var recorder = _recording ??
+                throw new InvalidOperationException("Aktif kayıt bulunamadı.");
+            _recording = null;
+            return recorder.End();
+        }
+    }
+
+    public void AbandonPcmRecording()
+    {
+        lock (_captureGate)
+        {
+            _recording?.Abandon();
+            _recording = null;
+        }
+    }
 
     public sealed record EndpointCandidate(
         string Id, string Name, int Channels, int SampleRate, int BitsPerSample, bool CanCapture);
@@ -156,6 +217,13 @@ public sealed class NativeDualSenseCapture : IDisposable
             // A callback that started before Stop/endpoint-switch may finish later.
             // Only the current capture can update telemetry or re-energize the sink.
             if (!IsCapturing || !ReferenceEquals(sender, _capture)) return;
+            if (_recording != null)
+            {
+                // Correct full-frame suffix is saved independently of our
+                // lossy RMS analyzer. Never disk-write in the audio callback.
+                int frameBytes = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16 ? 8 : 16;
+                _recording.Accept(args.Buffer.AsSpan(0, metrics.ReceivedFrames * frameBytes));
+            }
             Interlocked.Add(ref _frames, metrics.ReceivedFrames);
             Interlocked.Exchange(ref _lastFrameTick, Environment.TickCount64);
             Interlocked.Add(ref _invalidSamples, metrics.NonFiniteSamples);
@@ -216,6 +284,8 @@ public sealed class NativeDualSenseCapture : IDisposable
             // Stop wins even if DataAvailable has already decoded a buffer.
             Volatile.Write(ref _capturing, 0);
             _sink?.Submit(0, 0);
+            _recording?.Abandon();
+            _recording = null;
             capture = _capture;
             _capture = null;
             _sink = null;

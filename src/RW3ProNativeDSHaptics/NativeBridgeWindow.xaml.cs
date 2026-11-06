@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -243,8 +244,78 @@ public partial class NativeBridgeWindow : Window
         }
     }
 
+    private void RecordStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        if (_session != SessionMode.SourceOnly || !_source.IsCapturing)
+        {
+            RecordStatusText.Text =
+                "Önce 'Yalnızca 4ch PCM kaynağını izle' modunu başlat ve 4ch UAC aygıtını onayla.";
+            return;
+        }
+        if (_source.IsPcmRecording) return;
+        if (System.Windows.MessageBox.Show(this,
+            "Seçili DualSense/UAC aygıtının 3./4. kanallarını en fazla 10 saniye " +
+            "RAM'de tutacağım. Bu kanallarda oyun içeriği olabilir; izleme pasiftir, " +
+            "DualSense'in aldığı PCM değiştirilmez. " +
+            "Ancak 'Bitir ve kaydet' seçersen yerel WAV oluşturulur. Başlat?",
+            "İsteğe bağlı yerel PCM yakalama", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            != MessageBoxResult.Yes) return;
+        try
+        {
+            _source.BeginPcmRecording(10);
+            RecordStatusText.Text = "KAYIT AKTİF: 0 / 480000 stereo PCM kare; " +
+                "kaydetmek veya silmek için düğmeleri kullan.";
+            DiagnosticsService.Info("Explicit user opt-in rear-channel 10s RAM capture started");
+        }
+        catch (Exception ex)
+        {
+            RecordStatusText.Text = "Kayıt açılamadı: " + ex.Message;
+            DiagnosticsService.Error("Begin PCM recording", ex);
+        }
+        RefreshStatus();
+    }
+
+    private void RecordSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_source.IsPcmRecording) return;
+        try
+        {
+            byte[] wav = _source.FinishPcmRecording();
+            string basePath = Path.GetDirectoryName(new SettingsStore().FilePath)!;
+            string folder = Path.Combine(basePath, "haptic-captures");
+            Directory.CreateDirectory(folder);
+            string name = "DualSense-rear-stereo-48k-" +
+                DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + "-" +
+                Guid.NewGuid().ToString("N")[..6] + ".wav";
+            string fullPath = Path.Combine(folder, name);
+            File.WriteAllBytes(fullPath, wav);
+            RecordStatusText.Text = "Yerel haptic stereo WAV kaydedildi: " + fullPath +
+                " • " + (wav.Length - (wav[20] == 3 ? HapticStereoWave.FloatWaveHeaderLength :
+                    HapticStereoWave.PcmWaveHeaderLength)) +
+                " PCM bayt. Bu dosyanın gerçek oyun kaynaklı olduğu doğrulanmadı.";
+            DiagnosticsService.Info("User explicitly exported stereo UAC PCM to local WAV: " +
+                fullPath);
+        }
+        catch (Exception ex)
+        {
+            RecordStatusText.Text = "WAV kaydı başarısız: " + ex.Message;
+            DiagnosticsService.Error("Export captured PCM WAV", ex);
+        }
+        RefreshStatus();
+    }
+
+    private void RecordDiscard_Click(object sender, RoutedEventArgs e)
+    {
+        _source.AbandonPcmRecording();
+        RecordStatusText.Text = "RAM'deki stereo PCM kaydı silindi; dosya oluşturulmadı.";
+        RefreshStatus();
+    }
+
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
+        if (_source.IsPcmRecording)
+            RecordStatusText.Text = "Kaynak durduruldu; açık PCM kayıt tamponu silindi.";
         Interlocked.Increment(ref _cancelGeneration);
         _activeTest?.Cancel();
         _session = SessionMode.Off;
@@ -455,9 +526,22 @@ public partial class NativeBridgeWindow : Window
 
     private void RefreshStatus()
     {
+        bool recording = _source.IsPcmRecording;
+        RecordStartButton.IsEnabled = !recording && !_busy &&
+            _session == SessionMode.SourceOnly && _source.IsCapturing;
+        RecordSaveButton.IsEnabled = recording && !_busy && _source.PcmRecordingFrames > 0;
+        RecordDiscardButton.IsEnabled = recording && !_busy;
+        if (recording)
+            RecordStatusText.Text = "Kayıt aktif: " + _source.PcmRecordingFrames +
+                " / 480000 kare (maksimum 10 saniye, yalnızca RAM). " +
+                (_source.PcmRecordingFull || _source.PcmRecordingTimedOut
+                    ? "KAYIT SINIRI DOLDU • yeni PCM alınmıyor; kaydet veya sil."
+                    : "Gerçek oyun haptic kaynağı otomatik doğrulanmadı.");
         if (!_busy && _session != SessionMode.Off && !_source.IsCapturing)
         {
             string failure = _source.Status;
+            if (_source.IsPcmRecording)
+                RecordStatusText.Text = "UAC bağlantısı kayboldu; gizlilik için RAM kaydı silindi.";
             _session = SessionMode.Off;
             _source.Stop();
             _sensa.Stop();
@@ -480,6 +564,12 @@ public partial class NativeBridgeWindow : Window
         bool recent = state is NativeCaptureState.AudioSilentOrSpeakerOnly or
             NativeCaptureState.RearChannelEnergyObserved;
         CaptureHealthText.Text = "Kaynak sağlığı: " + NativeCaptureHealth.Describe(state);
+        if (!_busy)
+        {
+            TestLeftButton.IsEnabled = TestRightButton.IsEnabled = !recording;
+            ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = !recording;
+            LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = !recording;
+        }
         OutputStateText.Text = _session == SessionMode.SourceOnly
             ? "SOURCE ONLY: Razer DLL'i kullanılmıyor, motor komutu gönderilmiyor."
             : _sensa.Status;

@@ -67,6 +67,30 @@
       </Border>
       <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
         <StackPanel>
+          <TextBlock Text="2B • GERÇEK OYUN HAPTIC PCM KAYDI • İSTEĞE BAĞLI" FontWeight="Bold"
+                     Foreground="#A5E1CF"/>
+          <TextBlock TextWrapping="Wrap" Foreground="#B7C5DC" Margin="0,8,0,9">
+            Yalnızca Source-only izleme sırasında 4ch/48kHz aygıtından 3./4. kanal PCM
+            verisini en fazla 10 saniye RAM'e alır. Sinyali değiştirmez; gerçek DualSense'in
+            oynatımını veya oyunu yönetmez. Açıkça kaydetmedikçe WAV dosyası oluşturulmaz.
+            Oyun ses akışının haptic kanalı olduğu otomatik kanıtlanmaz.
+          </TextBlock>
+          <WrapPanel>
+            <Button x:Name="RecordStartButton" Content="● 10 sn haptic PCM kaydına başla"
+                    Style="{StaticResource Btn}" Background="#1F6860" Click="RecordStart_Click"/>
+            <Button x:Name="RecordSaveButton" Content="■ Bitir ve stereo WAV kaydet"
+                    Style="{StaticResource Btn}" Background="#28577C" Click="RecordSave_Click"/>
+            <Button x:Name="RecordDiscardButton" Content="Kaydı sil / vazgeç"
+                    Style="{StaticResource Btn}" Background="#744559" Click="RecordDiscard_Click"/>
+          </WrapPanel>
+          <TextBlock x:Name="RecordStatusText" Foreground="#B4E3D1" TextWrapping="Wrap"
+                     Margin="0,8,0,0" Text="Pasif • diske veya sunucuya PCM kaydedilmiyor."/>
+          <TextBlock Text="WAV çıktı: stereo 48k PCM16 veya IEEE Float32. Wwise Sensa Motion lisansı/eklenti kurulumu ayrı gereklidir; bu dosya Wolverine üzerinde otomatik oynatılmaz."
+                     Foreground="#96ABC7" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"/>
+        </StackPanel>
+      </Border>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
+        <StackPanel>
           <TextBlock Text="3 • OYUN AÇMADAN GERÇEK SENSA MOTOR DENEYİ" FontWeight="Bold" Foreground="#A6CBFF"/>
           <TextBlock TextWrapping="Wrap" Margin="0,8,0,12" Foreground="#B7C5DC">
             Bunlar sahici Interhaptics parametrik sol/sağ cihaz komutlarıdır; bir oyundan alınmış DualSense verisi değildir.
