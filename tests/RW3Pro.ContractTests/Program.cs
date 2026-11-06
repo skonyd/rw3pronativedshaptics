@@ -169,4 +169,24 @@ Check(HapticOutputLevel.Apply(0.35f, 0) == 0 &&
 Check(HapticOutputLevel.Apply(double.NaN, 100) == 0 &&
       HapticOutputLevel.Apply(float.PositiveInfinity, 100) == 0,
     "Nonfinite output levels cannot leak to motor APIs");
-Console.WriteLine("108+ scenario, gain and reliability assertions passed.");
+Check(UsbGamepadClassifier.IsDualSenseUsbNode(@"USB\VID_054C&PID_0CE6\A"),
+    "USB Sony DualSense base VID/PID recognized");
+Check(UsbGamepadClassifier.IsDualSenseUsbNode(@"usb\vid_054c&pid_0df2&mi_03\A"),
+    "USB Sony DualSense Edge VID/PID recognized");
+Check(UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"USB\VID_1532&PID_0A3F\B"),
+    "Wolverine V3 Pro expected Razer USB VID/PID recognized");
+Check(!UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"HID\VID_1532&PID_0A3F\B") &&
+      !UsbGamepadClassifier.IsDualSenseUsbNode(@"SWD\VID_054C&PID_0CE6\V"),
+    "Virtual/HID-only nodes cannot certify a present USB root device");
+Check(!UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"USB\VID_1532&PID_0A3FF\B"),
+    "PID prefix collision rejected");
+var absent = UsbGamepadClassifier.Classify(Array.Empty<string>());
+Check(absent.ScanSucceeded && !absent.DualSenseUsbNode && !absent.WolverineUsbNode,
+    "Empty scan means neither known USB device found, not automatically connected");
+var bothPresent = UsbGamepadClassifier.Classify(new[]
+    { @"USB\VID_054C&PID_0CE6\sony", @"USB\VID_1532&PID_0A3F\razer" });
+Check(bothPresent.ScanSucceeded && bothPresent.DualSenseUsbNode &&
+    bothPresent.WolverineUsbNode, "Two distinct USB VID/PID nodes count as present");
+Check(!UsbGamepadPresence.Unknown("WMI blocked").ScanSucceeded,
+    "Enumeration failure displayed as unverified, not disconnected");
+Console.WriteLine("USB PnP identity checks and behavioral fixtures passed.");
