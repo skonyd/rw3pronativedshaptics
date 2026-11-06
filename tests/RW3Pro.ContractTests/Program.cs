@@ -189,4 +189,36 @@ Check(bothPresent.ScanSucceeded && bothPresent.DualSenseUsbNode &&
     bothPresent.WolverineUsbNode, "Two distinct USB VID/PID nodes count as present");
 Check(!UsbGamepadPresence.Unknown("WMI blocked").ScanSucceeded,
     "Enumeration failure displayed as unverified, not disconnected");
-Console.WriteLine("USB PnP identity checks and behavioral fixtures passed.");
+Check(BehavioralEvidenceRules.CanSave(ComparisonTarget.Both,
+    PhysicalSensation.Felt, PhysicalSensation.Felt,
+    new TactileRatings(4, 3, 5), new TactileRatings(3, 2, 4)),
+    "Paired real-feel rating with all three dimensions can be saved");
+Check(!BehavioralEvidenceRules.CanSave(ComparisonTarget.DualSenseOnly,
+    PhysicalSensation.Felt, PhysicalSensation.Felt,
+    new TactileRatings(4, 4, 4), TactileRatings.Empty),
+    "An unplayed Wolverine cannot be claimed as felt");
+Check(!BehavioralEvidenceRules.CanSave(ComparisonTarget.Both,
+    PhysicalSensation.Felt, PhysicalSensation.NotEvaluated,
+    new TactileRatings(4, 4, 4), TactileRatings.Empty),
+    "Both-target run requires a separate physical response for both controllers");
+Check(BehavioralEvidenceRules.CanSave(ComparisonTarget.Both,
+    PhysicalSensation.NotFelt, PhysicalSensation.Uncertain,
+    TactileRatings.Empty, TactileRatings.Empty),
+    "Explicit negative and uncertain results are recordable without fabricated scores");
+Check(!BehavioralEvidenceRules.CanSave(ComparisonTarget.DualSenseOnly,
+    PhysicalSensation.Felt, PhysicalSensation.NotEvaluated,
+    new TactileRatings(4, null, 2), TactileRatings.Empty),
+    "Incomplete 1-5 rating set is rejected");
+var proof = new BehavioralEvidenceEntry(2, DateTimeOffset.UtcNow, HapticBehavior.Rain,
+    ComparisonTarget.Both, true, true, true, "USB DualSense", 50, 65,
+    PhysicalSensation.Felt, PhysicalSensation.Felt,
+    new TactileRatings(4,4,4), new TactileRatings(3,3,3), "test");
+var proof2 = proof with { Scene = HapticBehavior.Thunder,
+    DsRatings = new TactileRatings(5, 5, 5), RwRatings = new TactileRatings(2,2,2) };
+var summary = BehavioralEvidenceReport.Summarize(new [] { proof, proof2 });
+Check(summary.PairedSceneCount == 2 && summary.SceneCount == 2 &&
+    summary.DsMean == 4.5 && summary.RwMean == 2.5,
+    "Subjective summary aggregates only separate matched two-device scores");
+Check(BehavioralEvidenceReport.Summarize(Array.Empty<BehavioralEvidenceEntry>())
+    .PairedSceneCount == 0, "No prior sessions never imply fidelity");
+Console.WriteLine("USB PnP, matched subjective evidence and behavioral fixtures passed.");
