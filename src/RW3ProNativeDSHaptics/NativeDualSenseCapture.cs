@@ -18,6 +18,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     private FourChannelHapticAnalyzer.PcmEncoding _encoding;
     private SensaStereoPrototype? _sink;
     private HapticStereoRecorder? _recording;
+    private RealtimeStereoPcmTransport? _realtimeTransport;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
@@ -39,6 +40,49 @@ public sealed class NativeDualSenseCapture : IDisposable
     private long _invalidSamples;
     public string Status => Volatile.Read(ref _status);
     public string? EndpointId { get; private set; }
+
+    public HapticPcmFormat CurrentPcmFormat
+    {
+        get
+        {
+            lock (_captureGate)
+            {
+                if (!IsCapturing || _capture == null)
+                    throw new InvalidOperationException("Önce dört kanallı kaynak izlemesini başlat.");
+                return _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16
+                    ? HapticPcmFormat.Signed16 : HapticPcmFormat.Float32;
+            }
+        }
+    }
+
+    // This link only exposes the ORIGINAL 48kHz rear PCM bytes to a
+    // bounded, local, explicitly started discard/diagnostics probe.
+    // It never opens Sensa hardware or calls Submit() on a vendor sink.
+    public void AttachTransport(RealtimeStereoPcmTransport transport)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        lock (_captureGate)
+        {
+            if (!IsCapturing || _capture == null || _sink != null ||
+                _recording != null || _realtimeTransport != null)
+                throw new InvalidOperationException(
+                    "PCM aktarım provası sadece aktif ve boş source-only izlemede açılabilir.");
+            var expected = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16
+                ? HapticPcmFormat.Signed16 : HapticPcmFormat.Float32;
+            if (transport.Format != expected)
+                throw new InvalidOperationException("Stereo PCM taşımada veri formatı uyuşmuyor.");
+            _realtimeTransport = transport;
+        }
+    }
+
+    public void DetachTransport()
+    {
+        lock (_captureGate)
+        {
+            _realtimeTransport?.Reset();
+            _realtimeTransport = null;
+        }
+    }
 
     public bool IsPcmRecording
     {
@@ -71,8 +115,9 @@ public sealed class NativeDualSenseCapture : IDisposable
             if (!IsCapturing || _capture == null || _sink != null)
                 throw new InvalidOperationException(
                     "WAV kayıt için yalnızca aktif 4ch source-only izleme kullanılabilir.");
-            if (_recording != null)
-                throw new InvalidOperationException("Bir haptic PCM kaydı zaten devam ediyor.");
+            if (_recording != null || _realtimeTransport != null)
+                throw new InvalidOperationException(
+                    "WAV kaydı ve gerçek zamanlı PCM taşıma provası aynı anda kullanılamaz.");
             var format = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16
                 ? HapticPcmFormat.Signed16
                 : HapticPcmFormat.Float32;
@@ -217,6 +262,14 @@ public sealed class NativeDualSenseCapture : IDisposable
             // A callback that started before Stop/endpoint-switch may finish later.
             // Only the current capture can update telemetry or re-energize the sink.
             if (!IsCapturing || !ReferenceEquals(sender, _capture)) return;
+            if (_realtimeTransport != null)
+            {
+                // Only full-size original rear ch3/4 PCM frames reach the
+                // bounded transport; never normalized/analyzed RMS samples.
+                int frameBytes = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16 ? 8 : 16;
+                _realtimeTransport.WriteFourChannel(
+                    args.Buffer.AsSpan(0, metrics.ReceivedFrames * frameBytes));
+            }
             if (_recording != null)
             {
                 // Correct full-frame suffix is saved independently of our
@@ -286,6 +339,8 @@ public sealed class NativeDualSenseCapture : IDisposable
             _sink?.Submit(0, 0);
             _recording?.Abandon();
             _recording = null;
+            _realtimeTransport?.Reset();
+            _realtimeTransport = null;
             capture = _capture;
             _capture = null;
             _sink = null;
