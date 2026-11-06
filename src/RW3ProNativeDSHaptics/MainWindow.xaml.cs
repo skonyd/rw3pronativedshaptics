@@ -39,6 +39,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = _store.Load();
         _rumble.PreferredIndex = _settings.PreferredXInputSlot;
+        RouteCombo.ItemsSource = HapticRouteCatalog.All;
+        // Older settings only saved Mode; preserve their route without auto-starting capture.
+        if (_settings.Route == HapticRoute.NormalXInput && _settings.Mode != HapticMode.Normal)
+            _settings.Route = HapticRouteCatalog.DefaultForMode(_settings.Mode);
+        RouteCombo.SelectedItem = HapticRouteCatalog.Get(_settings.Route);
         DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
             ? _settings.PreferredXInputSlot + 1 : 0;
         try { using var self = Process.GetCurrentProcess(); _originalPriority = self.PriorityClass; }
@@ -47,7 +52,7 @@ public partial class MainWindow : Window
         VersionText.Text = "v" + UpdateService.InstalledVersion;
         AutostartCheckbox.IsChecked = StartupService.IsEnabled;
         _initialized = true;
-        SetMode(_settings.Mode, fromUser: false);
+        SetMode(_settings.Mode, fromUser: false, routeOverride: _settings.Route);
         _diagnosticsTimer.Tick += DiagnosticsTick;
         _diagnosticsTimer.Start();
         UpdateDiagnostics();
@@ -83,9 +88,10 @@ public partial class MainWindow : Window
         _tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(new Action(RestoreWindow));
     }
 
-    private void SetMode(HapticMode requested, bool fromUser = true)
+    private void SetMode(HapticMode requested, bool fromUser = true, HapticRoute? routeOverride = null)
     {
-        if (requested != _settings.Mode)
+        if (requested != _settings.Mode ||
+            (routeOverride.HasValue && routeOverride.Value != _settings.Route))
         {
             _testLab?.Close();
             _nativeBridge?.Close();
@@ -116,6 +122,12 @@ public partial class MainWindow : Window
         }
 
         _settings.Mode = selected;
+        var chosenRoute = routeOverride ?? HapticRouteCatalog.DefaultForMode(selected);
+        if (HapticRouteCatalog.Get(chosenRoute).Mode != selected)
+            chosenRoute = HapticRouteCatalog.DefaultForMode(selected);
+        _settings.Route = chosenRoute;
+        RouteCombo.SelectedItem = HapticRouteCatalog.Get(_settings.Route);
+        RefreshRoutePreview();
         try { _store.Save(_settings); }
         catch (Exception ex) { NoteError("Settings save", ex); }
 
@@ -127,7 +139,16 @@ public partial class MainWindow : Window
         if (_nativeMenu != null) _nativeMenu.Checked = selected == HapticMode.Native;
 
         TestButton.IsEnabled = true;
-        if (selected == HapticMode.Normal)
+        NativeBridgeButton.IsEnabled = HapticRouteCatalog.IsNative(_settings.Route);
+        if (_settings.Route is HapticRoute.OfficialRazerSensaGames or
+            HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab)
+        {
+            var routeInfo = HapticRouteCatalog.Get(_settings.Route);
+            StatusHeading.Text = routeInfo.DisplayName;
+            StatusDescription.Text = routeInfo.Guidance +
+                " RW3 bu haricî yöntemi kendi başına başlatmaz veya gerçekleşmiş saymaz.";
+        }
+        else if (selected == HapticMode.Normal)
         {
             StatusHeading.Text = "Normal Rumble · hazır";
             StatusDescription.Text = "Oyunun kendi Xbox/XInput titreşimi korunur. İsteğe bağlı kısa motor testi yapılabilir. " +
@@ -143,12 +164,16 @@ public partial class MainWindow : Window
         else
         {
             StatusHeading.Text = "Native DualSense · deneysel stereo bridge";
-            StatusDescription.Text = "Deneysel köprü: DualSense'in 4-kanallı UAC ses aygıtındaki haptic 3./4. kanallarını " +
+            StatusDescription.Text = "Seçili kaynak: " + HapticRouteCatalog.Get(_settings.Route).Source + ". " +
+                "Deneysel köprü: DualSense'in 4-kanallı UAC ses aygıtındaki haptic 3./4. kanallarını " +
                 "okuyup iki Interhaptics parametrik Sensa efektine dönüştürmeyi dener. " +
                 "Gerçek oyun komutu, bağımsız motor ayrımı ve bit-perfect PCM aktarımı henüz " +
                 "fiziksel olarak kanıtlanmadı. Başlatmak için 'Deneysel Native Stereo Bridge' düğmesini kullan.";
         }
-        DiagnosticsService.Info("Selected mode: " + selected + "; Native is unavailable pending verified hardware bridge.");
+        ActiveRouteText.Text = "Etkin tercih: " + HapticRouteCatalog.Get(_settings.Route).DisplayName +
+            " • " + HapticRouteCatalog.Get(_settings.Route).StageLabel;
+        DiagnosticsService.Info("Selected mode: " + selected + ", route: " + _settings.Route +
+            "; a preference is not physical playback evidence.");
         RefreshDevice();
         UpdateDiagnostics();
     }
@@ -217,6 +242,38 @@ public partial class MainWindow : Window
         DiagnosticsService.Info("User selected XInput slot: " + (slot < 0 ? "auto" : slot.ToString()));
     }
 
+    private void RouteCombo_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_initialized) RefreshRoutePreview();
+    }
+
+    private void RefreshRoutePreview()
+    {
+        if (RouteCombo.SelectedItem is not HapticRouteOption route) return;
+        RouteStageText.Text = route.StageLabel +
+            (route.RecommendedForOriginalSource ? " • ÖZGÜN KAYNAK İÇİN ÖNCELİKLİ ADAY" : "");
+        RouteDetailText.Text = "Giriş: " + route.Source + "\nÇıkış: " + route.Output +
+            "\n" + route.Guidance;
+    }
+
+    private void ApplyRoute_Click(object sender, RoutedEventArgs e)
+    {
+        if (RouteCombo.SelectedItem is not HapticRouteOption route) return;
+        SetMode(route.Mode, fromUser: true, routeOverride: route.Route);
+        // Native still requires an explicit endpoint and consent in the bridge.
+        // External and Wwise routes do not attempt device playback in this app.
+    }
+
+    private void RouteGuide_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (RouteCombo.SelectedItem is HapticRouteOption route)
+                OpenPath(route.ReferenceUrl);
+        }
+        catch (Exception ex) { NoteError("Route guide", ex); }
+    }
+
     private void Normal_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Normal);
     private void Audio_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Audio);
     private void Native_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Native);
@@ -241,7 +298,7 @@ public partial class MainWindow : Window
             _nativeBridge.Activate();
             return;
         }
-        _nativeBridge = new NativeBridgeWindow { Owner = this };
+        _nativeBridge = new NativeBridgeWindow(_settings.Route) { Owner = this };
         _nativeBridge.Closed += (_, _) => _nativeBridge = null;
         _nativeBridge.Show();
     }
@@ -364,7 +421,16 @@ public partial class MainWindow : Window
         switch (_settings.Mode)
         {
             case HapticMode.Normal:
-                ProvenanceText.Text = "KAYNAK: Oyunun standart XInput titreşimi (uygulama izlemiyor)";
+                ProvenanceText.Text = _settings.Route switch
+                {
+                    HapticRoute.OfficialRazerSensaGames =>
+                        "HARİCÎ: Razer Sensa HD Games tercih edildi. Oyun Sensa çıktısı RW3 tarafından izlenmiyor.",
+                    HapticRoute.OfficialRazerAudioToHaptics =>
+                        "HARİCÎ: Razer Synapse Audio-to-Haptics tercih edildi. DualSense PCM değildir.",
+                    HapticRoute.WwiseStereoMotionLab =>
+                        "ARAŞTIRMA: Wwise Motion tercih edildi. RW3 içinde canlı entegrasyon YOK.",
+                    _ => "KAYNAK: Oyunun standart XInput titreşimi (uygulama izlemiyor)"
+                };
                 CaptureText.Text = "Oyun tarafından gönderilen rumble olayları yakalanmıyor; etkin haptic kaynağı doğrulanamıyor.";
                 DeliveryText.Text = "Yalnızca isteğe bağlı 250 ms test: XInputSetState sonucu, fiziksel hareket sensörü değildir.";
                 break;
@@ -388,12 +454,14 @@ public partial class MainWindow : Window
                 DeliveryText.Text = "Sensa parametrik 2 kanal / 50 Hz prototipi. Ham DualSense 48k PCM birebir iletilmez.";
                 break;
         }
-        if (_settings.Mode != HapticMode.Native)
+        if (_settings.Mode != HapticMode.Native &&
+            _settings.Route is not (HapticRoute.OfficialRazerSensaGames or
+                HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab))
             ProvenanceText.Text = HapticEvidence.Evaluate(
                 _settings.Mode, framesRecent, outputRecent && snap.OutputAccepted > 0,
                 nativeStereoCaptured: false, nativeStereoOutputAcknowledged: false,
                 physicalNativePlaybackConfirmed: false);
-        else
+        else if (_settings.Mode == HapticMode.Native)
             ProvenanceText.Text = _nativeBridge?.HasRecentHapticChannelSamples == true
                 ? "Deneysel UAC stereo haptic sinyali GÖZLENDİ (kaynağın oyun olduğu kanıtlanmadı)"
                 : "Native DualSense 4-kanal PCM kaynağı henüz GÖZLENMEDİ / DOĞRULANMADI";
@@ -428,6 +496,8 @@ public partial class MainWindow : Window
             string report = "RW3 Pro Haptics Diagnostics\n" +
                 "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\n" +
                 "Mode: " + _settings.Mode + "\n" +
+                "SelectedRoute: " + _settings.Route + "\n" +
+                "RouteReadiness: " + HapticRouteCatalog.Get(_settings.Route).StageLabel + "\n" +
                 "Evidence: " + ProvenanceText.Text + "\n" +
                 "Capture: " + CaptureText.Text + "\n" +
                 "Delivery: " + DeliveryText.Text + "\n" +
