@@ -201,10 +201,13 @@ public sealed class SensaStereoPrototype : IDisposable
 
     public void Stop()
     {
-        Volatile.Write(ref _stop, 1);
-        Submit(0, 0);
         Thread? worker;
-        lock (_lifecycle) worker = _worker;
+        lock (_lifecycle)
+        {
+            Volatile.Write(ref _stop, 1);
+            Submit(0, 0);
+            worker = _worker;
+        }
         if (worker == null || worker == Thread.CurrentThread) return;
         // On timeout retain the live worker reference; Start must never spawn a second one.
         if (!worker.Join(1800))
