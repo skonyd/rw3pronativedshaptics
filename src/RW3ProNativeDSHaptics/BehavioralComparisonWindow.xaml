@@ -51,7 +51,7 @@
               </StackPanel>
             </Border>
           </Grid>
-          <Button Content="Bağlantıyı şimdi kontrol et ↻" Style="{StaticResource Action}"
+          <Button x:Name="CheckConnectionsButton" Content="Bağlantıyı şimdi kontrol et ↻" Style="{StaticResource Action}"
                   Click="CheckConnections_Click" HorizontalAlignment="Left"/>
           <CheckBox x:Name="WiredWolverineConfirmed" Foreground="#D6E3F2" Margin="0,5,0,4">
             <TextBlock TextWrapping="Wrap"
@@ -68,7 +68,7 @@
                      Foreground="#BEC9DD" Margin="0,9,0,7" TextWrapping="Wrap"/>
           <ComboBox x:Name="UsbEndpointBox" DisplayMemberPath="Display" Foreground="#152039"
                     Height="33" SelectionChanged="UsbEndpoint_Changed"/>
-          <Button Content="USB / UAC aygıtlarını yenile" Style="{StaticResource Action}"
+          <Button x:Name="RefreshUsbButton" Content="USB / UAC aygıtlarını yenile" Style="{StaticResource Action}"
                   Click="RefreshUsb_Click" HorizontalAlignment="Left" Margin="0,9,0,5"/>
           <CheckBox x:Name="ConfirmUsbCheck" Foreground="#D6E3F2" Margin="0,4,0,6">
             <TextBlock Text="Bu ses çıkışının fiziksel USB DualSense'e ait olduğunu kontrol ettim."
