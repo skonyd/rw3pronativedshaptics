@@ -16,7 +16,8 @@ public enum HapticPcmFormat { Signed16, Float32 }
 public static class HapticStereoWave
 {
     public const int SampleRate = 48000;
-    public const int WaveHeaderLength = 44;
+    public const int PcmWaveHeaderLength = 44;
+    public const int FloatWaveHeaderLength = 56;
     public const int MaximumSeconds = 10;
 
     public static int BytesPerSample(HapticPcmFormat format) => format switch
@@ -48,8 +49,10 @@ public static class HapticStereoWave
             throw new ArgumentException("Stereo PCM must contain whole nonempty frames.", nameof(rearStereo));
         if (rearStereo.Length > MaximumSeconds * SampleRate * stride)
             throw new ArgumentOutOfRangeException(nameof(rearStereo), "WAV export limited to 10s.");
-        byte[] wav = new byte[checked(WaveHeaderLength + rearStereo.Length)];
-        var header = wav.AsSpan(0, WaveHeaderLength);
+        bool floating = format == HapticPcmFormat.Float32;
+        int headerLength = floating ? FloatWaveHeaderLength : PcmWaveHeaderLength;
+        byte[] wav = new byte[checked(headerLength + rearStereo.Length)];
+        var header = wav.AsSpan(0, headerLength);
         "RIFF"u8.CopyTo(header);
         BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(4), (uint)(wav.Length - 8));
         "WAVE"u8.CopyTo(header.Slice(8));
@@ -62,9 +65,19 @@ public static class HapticStereoWave
         BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(28), (uint)(SampleRate * stride));
         BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(32), (ushort)stride);
         BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(34), (ushort)(bytes * 8));
-        "data"u8.CopyTo(header.Slice(36));
-        BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(40), (uint)rearStereo.Length);
-        rearStereo.CopyTo(wav.AsSpan(WaveHeaderLength));
+        int dataOffset = 36;
+        if (floating)
+        {
+            // IEEE_FLOAT WAVE requires the standard fact sample-count chunk.
+            "fact"u8.CopyTo(header.Slice(36));
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(40), 4);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(44),
+                (uint)(rearStereo.Length / stride));
+            dataOffset = 48;
+        }
+        "data"u8.CopyTo(header.Slice(dataOffset));
+        BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(dataOffset + 4), (uint)rearStereo.Length);
+        rearStereo.CopyTo(wav.AsSpan(headerLength));
         return wav;
     }
 
