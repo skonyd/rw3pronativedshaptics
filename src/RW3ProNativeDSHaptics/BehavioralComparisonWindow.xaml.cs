@@ -147,6 +147,21 @@ public partial class BehavioralComparisonWindow : Window
         if (_ratings != null) foreach (var r in _ratings) r.SelectedItem = null;
     }
 
+    private void SetPlaybackInputLocked(bool locked)
+    {
+        // A scene, endpoint or intensity change during playback would invalidate
+        // the user's A/B rating and could send the source to the wrong device.
+        SceneBox.IsEnabled = !locked;
+        TargetBox.IsEnabled = !locked;
+        UsbEndpointBox.IsEnabled = !locked;
+        RefreshUsbButton.IsEnabled = !locked;
+        ExclusiveCheck.IsEnabled = !locked;
+        ConfirmUsbCheck.IsEnabled = !locked;
+        ConfirmSensaCheck.IsEnabled = !locked;
+        WolverineLevel.IsEnabled = !locked;
+        SaveButton.IsEnabled = !locked && _lastResult != null;
+    }
+
     private void Play_Click(object sender, RoutedEventArgs e)
     {
         if (!_waitingToClose) _activePlaybackTask = RunAsync();
@@ -195,6 +210,7 @@ public partial class BehavioralComparisonWindow : Window
             != MessageBoxResult.Yes) return;
         _busy = true;
         _lastResult = null;
+        SetPlaybackInputLocked(true);
         _lastUsbName = selected?.FriendlyName;
         _lastGlobalLevelPercent = _globalLevelPercent;
         _lastSceneLevelPercent = HapticOutputLevel.Limit((int)Math.Round(WolverineLevel.Value));
@@ -235,7 +251,8 @@ public partial class BehavioralComparisonWindow : Window
             if (ReferenceEquals(_running, cts)) _running = null;
             _busy = false;
             StopButton.IsEnabled = false;
-            PlayButton.IsEnabled = true;
+            PlayButton.IsEnabled = !_waitingToClose;
+            SetPlaybackInputLocked(false);
         }
     }
 
