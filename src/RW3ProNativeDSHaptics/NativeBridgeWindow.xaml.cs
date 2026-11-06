@@ -9,7 +9,8 @@ namespace RW3ProNativeDSHaptics;
 
 public partial class NativeBridgeWindow : Window
 {
-    private sealed record EndpointOption(string Id, string Display, bool CanCapture);
+    private sealed record EndpointOption(string Id, string Display, bool CanCapture, string FriendlyName);
+    private readonly HapticRoute _route;
     private readonly SensaStereoPrototype _sensa = new();
     private readonly NativeDualSenseCapture _source = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -17,7 +18,8 @@ public partial class NativeBridgeWindow : Window
     private bool _busy;
     private bool _leftPhysical, _rightPhysical;
     public string StatusForParent =>
-        "UAC haptic 3./4. kanal etkin=" + _source.IsCapturing +
+        "Kaynak tercihi=" + _route +
+        " | UAC haptic 3./4. kanal etkin=" + _source.IsCapturing +
         " | alınan PCM çerçevesi=" + _source.CapturedFrames +
         " | sol haptic blok=" + _source.LeftActiveBlocks +
         " | sağ haptic blok=" + _source.RightActiveBlocks +
@@ -34,9 +36,14 @@ public partial class NativeBridgeWindow : Window
             _source.LastRightEnergyTick, Environment.TickCount64);
 
 
-    public NativeBridgeWindow()
+    public NativeBridgeWindow(HapticRoute route = HapticRoute.NativeManualUac)
     {
+        _route = HapticRouteCatalog.IsNative(route) ? route : HapticRoute.NativeManualUac;
         InitializeComponent();
+        var info = HapticRouteCatalog.Get(_route);
+        SelectedRouteText.Text = "Kaynak tercihi: " + info.DisplayName;
+        RouteInstructionsText.Text = info.Guidance +
+            " RW3 haricî sanal kontrolcü yazılımını veya sürücülerini kurmaz ve başlatmaz.";
         RefreshSources();
         _timer.Tick += (_, _) => RefreshStatus();
         _timer.Start();
@@ -47,6 +54,7 @@ public partial class NativeBridgeWindow : Window
     {
         string? old = (EndpointPicker.SelectedItem as EndpointOption)?.Id;
         EndpointPicker.Items.Clear();
+        EndpointAcknowledgement.IsChecked = false;
         try
         {
             foreach (var item in NativeDualSenseCapture.EnumeratePossibleSources())
@@ -56,12 +64,22 @@ public partial class NativeBridgeWindow : Window
                     item.Name + " | " + item.Channels + "ch/" + item.SampleRate + "Hz/" +
                     item.BitsPerSample + "bit | " +
                     (item.CanCapture ? "UAC format adayı (kimlik doğrulanmalı)" : "UYUMSUZ FORMAT"),
-                    item.CanCapture));
+                    item.CanCapture, item.Name));
             }
             foreach (EndpointOption entry in EndpointPicker.Items)
                 if (entry.Id == old) { EndpointPicker.SelectedItem = entry; break; }
-            if (EndpointPicker.SelectedItem == null && EndpointPicker.Items.Count > 0)
-                EndpointPicker.SelectedIndex = 0;
+            if (EndpointPicker.SelectedItem == null)
+            {
+                // A friendly-name match is advisory, never a source identity certificate.
+                foreach (EndpointOption entry in EndpointPicker.Items)
+                    if (entry.CanCapture && HapticRouteCatalog.NameMayMatch(_route, entry.FriendlyName))
+                    { EndpointPicker.SelectedItem = entry; break; }
+                if (EndpointPicker.SelectedItem == null)
+                    foreach (EndpointOption entry in EndpointPicker.Items)
+                        if (entry.CanCapture) { EndpointPicker.SelectedItem = entry; break; }
+                if (EndpointPicker.SelectedItem == null && EndpointPicker.Items.Count > 0)
+                    EndpointPicker.SelectedIndex = 0;
+            }
         }
         catch (Exception ex)
         {
@@ -88,6 +106,23 @@ public partial class NativeBridgeWindow : Window
                 "UAC formatı uyumsuz", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        if (!HapticRouteCatalog.CanStartBridge(_route, selected.CanCapture,
+            EndpointAcknowledgement.IsChecked == true))
+        {
+            System.Windows.MessageBox.Show(this,
+                "Seçtiğin 4ch/48k ses aygıtını ve haricî kaynak eşlemesini doğruladığını " +
+                "onaylamadan köprü başlatılamaz.",
+                "Kaynak doğrulaması gerekli", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!HapticRouteCatalog.NameMayMatch(_route, selected.FriendlyName) &&
+            System.Windows.MessageBox.Show(this,
+                "Ses aygıtı adı (" + selected.FriendlyName +
+                ") seçilen yöntemin tipik adıyla eşleşmiyor. " +
+                "Aygıt ismi kimlik kanıtı değildir; kendin doğruladıysan devam edebilirsin. Devam?",
+                "Kaynak adını kontrol et", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                != MessageBoxResult.Yes)
+            return;
         if (System.Windows.MessageBox.Show(this,
             "Deneysel sistem 48 kHz dört kanallı DualSense UAC sesini okur ve " +
             "Razer Sensa'ya KAYIPLI sol/sağ titreşim efektleri iletir.\n\n" +
@@ -110,7 +145,9 @@ public partial class NativeBridgeWindow : Window
             if (!_sensa.IsActive)
                 throw new InvalidOperationException(_sensa.Status);
             _source.Start(selected.Id, _sensa);
-            DiagnosticsService.Info("Experimental DualSense UAC source started; raw PCM → stereo envelopes, not lossless.");
+            DiagnosticsService.Info("Experimental UAC route=" + _route +
+                ", endpoint=" + selected.FriendlyName +
+                "; raw PCM → stereo envelopes, not lossless or verified game provenance.");
         }
         catch (Exception ex)
         {
