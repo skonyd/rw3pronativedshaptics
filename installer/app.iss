@@ -38,3 +38,23 @@ Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescript
 
 [Run]
 Filename: "{app}\RW3ProNativeDSHaptics.exe"; Description: "RW3 Pro Haptics'i başlat"; Flags: postinstall nowait skipifsilent
+
+; Only clean the Run entry if it still points at this installation.
+; Never remove a portable/other installation's startup preference.
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  RunCommand: string;
+  InstalledExe: string;
+begin
+  if CurUninstallStep <> usUninstall then
+    Exit;
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+      'RW3ProNativeDSHaptics', RunCommand) then
+  begin
+    InstalledExe := ExpandConstant('{app}\RW3ProNativeDSHaptics.exe');
+    if Pos(Lowercase(InstalledExe), Lowercase(RunCommand)) > 0 then
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+        'RW3ProNativeDSHaptics');
+  end;
+end;

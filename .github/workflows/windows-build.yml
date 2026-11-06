@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -30,10 +32,25 @@ jobs:
       - name: Build Windows desktop application
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           dotnet restore src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj
+          if ($LASTEXITCODE -ne 0) { throw "Restore failed" }
           dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Contract tests failed" }
           dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release --no-restore -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw "Windows WPF build failed" }
           dotnet publish src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.version }} -o publish
+          if ($LASTEXITCODE -ne 0) { throw "Windows publish failed" }
+          if (-not (Test-Path publish/RW3ProNativeDSHaptics.exe)) { throw "Published executable missing" }
+      - name: Smoke test packaged application without hardware
+        shell: pwsh
+        run: |
+          # WinExe is a GUI subsystem process: PowerShell's call operator need not wait.
+          # Start-Process -Wait gives a reliable exit code even on a headless runner.
+          $exe = (Resolve-Path publish/RW3ProNativeDSHaptics.exe).Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          Write-Host "Published executable self-test exit code: $($process.ExitCode)"
+          if ($process.ExitCode -ne 0) { throw "Published executable self-test failed: $($process.ExitCode)" }
       - name: Prepare portable ZIP
         shell: pwsh
         run: |
@@ -54,6 +71,30 @@ jobs:
           $publish = (Resolve-Path publish).Path
           & $compiler "/DAppVersion=${{ steps.version.outputs.version }}" "/DPublishDir=$publish" "installer\app.iss"
           if ($LASTEXITCODE -ne 0) { throw "Installer packaging failed" }
+      - name: Test portable ZIP and user-scoped installer without hardware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $portable = Join-Path $env:RUNNER_TEMP 'rw3-portable-smoke'
+          Expand-Archive -Path dist/RW3ProNativeDSHaptics-Portable-win-x64.zip -DestinationPath $portable -Force
+          if (-not (Test-Path (Join-Path $portable 'portable.flag'))) { throw "Portable marker missing" }
+          $portableExe = Join-Path $portable 'RW3ProNativeDSHaptics.exe'
+          if (-not (Test-Path $portableExe)) { throw "Portable executable missing" }
+          $process = Start-Process -FilePath $portableExe -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Portable ZIP self-test failed: $($process.ExitCode)" }
+
+          $setup = (Resolve-Path dist/RW3ProNativeDSHaptics-Setup-win-x64.exe).Path
+          $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer smoke installation failed: $($process.ExitCode)" }
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs/RW3ProNativeDSHaptics'
+          $installedExe = Join-Path $installed 'RW3ProNativeDSHaptics.exe'
+          $uninstaller = Join-Path $installed 'unins000.exe'
+          if (-not (Test-Path $installedExe) -or -not (Test-Path $uninstaller)) { throw "Installed files missing" }
+          $process = Start-Process -FilePath $installedExe -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installed app self-test failed: $($process.ExitCode)" }
+          $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Uninstall smoke failed: $($process.ExitCode)" }
+          if (Test-Path $installedExe) { throw "Uninstall did not remove application executable" }
       - name: Generate SHA256 manifests
         shell: pwsh
         run: |

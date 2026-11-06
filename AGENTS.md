@@ -17,7 +17,7 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 - `TestLabWindow.xaml(.cs)` provides game-free Normal XInput and Audio→XInput tests; no native synthetic data is ever mislabeled an actual game signal.
 - Read `docs/NATIVE_BRIDGE_IMPLEMENTATION.md` and `interop/README.md` before relying on the native prototype. No third-party native DLLs are present in the repo.
 - Current Windows app **has not passed an observed clean Windows CI build or actual Wolverine validation**; do not overstate readiness.
-- Contract tests currently cover 13 rules: 7 provenance + 6 stereo isolation/gating; run them on Windows/CI.
+- Contract tests now cover 23 deterministic rules for provenance, stereo channel isolation and safe WASAPI silence handling; run them on Windows/CI.
 
 ## Engineering integrity
 - Never present native PCM rendering through the physical Wolverine as operational until measured on actual hardware.
@@ -33,7 +33,7 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 ## Live diagnostics and performance requirements
 - Read docs/STATUS_AND_PERFORMANCE.md before changing mode labels, counters or backend implementations.
 - App CPU/memory observations, WASAPI frame counts and XInput acknowledgements are telemetry evidence, **not** measured physical HD haptic output. Never mark native successful without three independent proofs.
-- Keep WASAPI callbacks allocation-/I/O-light; bound processing and command rate; log only transitions/errors; retain below-normal priority and watchdog or document alternatives.
+- Keep WASAPI callbacks allocation-/I/O-light; bound processing and command rate; log only transitions/errors; retain below-normal priority and independent 250 ms silence watchdog. Test opposite-channel isolation, not just selected-channel activity.
 - Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj` and WPF build on Windows runner. Any original motor response needs real Windows 11 + Wolverine user confirmation.
 
 ## Development workflow

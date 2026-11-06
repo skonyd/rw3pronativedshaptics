@@ -6,9 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticEvidence.cs" Link="HapticEvidence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/SettingsStore.cs" Link="SettingsStore.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/ChannelTestEvidence.cs" Link="ChannelTestEvidence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativeStereoFixture.cs" Link="NativeStereoFixture.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticSafetyRules.cs" Link="HapticSafetyRules.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmTestPlayer.cs" Link="NativePcmTestPlayer.cs" />
   </ItemGroup>
 </Project>

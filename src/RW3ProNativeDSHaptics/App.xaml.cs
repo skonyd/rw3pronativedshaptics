@@ -6,7 +6,7 @@ using System.Windows;
 
 namespace RW3ProNativeDSHaptics;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private Mutex? _singleInstance;
 
@@ -16,12 +16,22 @@ public partial class App : Application
         _singleInstance = new Mutex(true, mutexName, out bool created);
         if (!created)
         {
-            MessageBox.Show("RW3 Pro Haptics zaten çalışıyor. Sistem tepsisindeki simgesini açın.", "RW3 Pro Haptics",
+            System.Windows.MessageBox.Show("RW3 Pro Haptics zaten çalışıyor. Sistem tepsisindeki simgesini açın.", "RW3 Pro Haptics",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
         base.OnStartup(e);
+        // CI / packaged-app smoke check: no device, window or vendor DLL needed.
+        if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
+        {
+            bool valid = NativeStereoFixture.ValidateSeparation(HapticTestChannel.Left) &&
+                NativeStereoFixture.ValidateSeparation(HapticTestChannel.Right) &&
+                NativePcmTestPlayer.VerifyIsolatedChannel(HapticTestChannel.Left) &&
+                NativePcmTestPlayer.VerifyIsolatedChannel(HapticTestChannel.Right);
+            Shutdown(valid ? 0 : 1);
+            return;
+        }
         DispatcherUnhandledException += (_, args) =>
         {
             DiagnosticsService.Error("Unhandled UI exception", args.Exception);

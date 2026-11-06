@@ -22,12 +22,12 @@
 - [ ] Change modes/exit always stops loopback and rumble.
 
 ## Provenance and game-performance validation — new
-- [ ] Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`: all 7 pure truth-model checks must pass.
+- [ ] Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`: all 23 hardware-free provenance, audio safety and stereo isolation checks must pass.
 - [ ] No XInput device: status warns; no false vibration or Sensa success.
 - [ ] Motor test: Windows acknowledges command, only mark *physically confirmed* if the user actually feels the short pulse.
 - [ ] Silent loopback: initialized vs received data vs meaningful sound are differentiated.
 - [ ] Real game audio: callback/frame counters increase; XInput accepted/rejected counts distinguish command status; do not label as DualSense PCM.
-- [ ] Native selection: always shows 0 original PCM received and 0 hardware stereo output, not an active HD indicator.
+- [ ] Native selection without experimental capture shows no original game signal. In experimental UAC capture, show observed source-channel counters explicitly as unverified game provenance and never declare 48 kHz Wolverine fidelity.
 - [ ] Disconnect controller or change Windows audio endpoint: log/show error and gracefully stop capture.
 - [ ] Capture performance for 10 minutes under a demanding game; compare FPS, 1% lows, p95/p99 frame times and audio quality with mode off/on.
 - [ ] Measure idle CPU (<1% preferred), RAM stability, bounded 20/s motor calls, callback samples ≤256, log max 1MiB + 1 backup.

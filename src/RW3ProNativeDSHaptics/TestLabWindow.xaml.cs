@@ -136,7 +136,7 @@ public partial class TestLabWindow : Window
     }
 
     private bool AskUser(string label, string question) =>
-        MessageBox.Show(this, question, label + " kanal fiziksel teyidi",
+        System.Windows.MessageBox.Show(this, question, label + " kanal fiziksel teyidi",
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
     private void UpdateResults()
@@ -186,7 +186,7 @@ public partial class TestLabWindow : Window
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetText("RW3 Haptic Test Lab\nMode: " + _mode +
+        System.Windows.Clipboard.SetText("RW3 Haptic Test Lab\nMode: " + _mode +
             "\nLeft: " + (_left?.ToString() ?? "untested") +
             "\nRight: " + (_right?.ToString() ?? "untested") +
             "\nNativeDualSenseHapticsOutputVerified: false\n");

@@ -1,0 +1,19 @@
+# Visual Studio / .NET
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+TestResults/
+publish/
+portable/
+dist/
+*.log
+*.tmp
+
+# Local runtime state and licensed vendor SDK binaries
+data/
+portable.flag
+HAR.dll
+Interhaptics.RazerProvider.dll
+RzInterHaptics.dll
