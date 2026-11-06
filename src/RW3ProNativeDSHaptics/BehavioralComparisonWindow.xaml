@@ -31,6 +31,38 @@
                  Text="USB DualSense'i bir eline, Wolverine'ı diğerine al. 10 farklı davranışsal SENTETİK sahneyi iki cihazda ayrı ayrı veya yaklaşık eşzamanlı deneyebilirsin. DualSense'e 4ch/48 kHz PCM16 referans tamponu yazılım kazancı/EQ uygulanmadan verilir. Wolverine'da aynı kaynak, mevcut KAYIPLI 50 Hz Interhaptics yöntemine dönüştürülür. Bunlar gerçek oyunlardan alınmış Sony efektleri değildir."/>
       <Border Style="{StaticResource Tile}" Margin="0,16,0,12">
         <StackPanel>
+          <TextBlock Text="USB KONTROLCÜ BAĞLANTILARI" FontWeight="Bold" Foreground="#A1C8FF"/>
+          <Grid Margin="0,10,0,8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="#192841" CornerRadius="8" Padding="10" Margin="0,0,5,0">
+              <StackPanel>
+                <TextBlock x:Name="DualSenseConnectedText" Text="○ DualSense: bağlantı kontrol ediliyor..."
+                           Foreground="#EBCB99" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="DualSenseUsbDetail" FontSize="11" Foreground="#AABBD2"
+                           TextWrapping="Wrap" Margin="0,5,0,0"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Background="#192841" CornerRadius="8" Padding="10" Margin="5,0,0,0">
+              <StackPanel>
+                <TextBlock x:Name="WolverineConnectedText" Text="○ Wolverine V3 Pro: kontrol ediliyor..."
+                           Foreground="#EBCB99" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="WolverineUsbDetail" FontSize="11" Foreground="#AABBD2"
+                           TextWrapping="Wrap" Margin="0,5,0,0"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+          <Button Content="Bağlantıyı şimdi kontrol et ↻" Style="{StaticResource Action}"
+                  Click="CheckConnections_Click" HorizontalAlignment="Left"/>
+          <CheckBox x:Name="WiredWolverineConfirmed" Foreground="#D6E3F2" Margin="0,5,0,4">
+            <TextBlock TextWrapping="Wrap"
+              Text="Wolverine V3 Pro kolunun USB kablosuyla doğrudan bağlı olduğunu doğruladım (kablosuz dongle aynı USB kimliğini gösterebilir)."/>
+          </CheckBox>
+          <TextBlock Text="Yeşil ✓ yalnızca Windows'un mevcut USB PnP VID/PID kaydını gösterir. Sanal XInput/HID adı yeterli değildir. Fiziksel kablo ve haptic motor hareketi ayrıca doğrulanmalıdır."
+                     TextWrapping="Wrap" Foreground="#9AABC5" FontSize="11"/>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Tile}" Margin="0,0,0,12">
+        <StackPanel>
           <TextBlock Text="1 • USB DUALSENSE REFERANS AYARI" Foreground="#A1C8FF" FontWeight="Bold"/>
           <TextBlock Text="Fiziksel DualSense'in Windows dört kanallı 48 kHz ses aygıtını seç:"
                      Foreground="#BEC9DD" Margin="0,9,0,7" TextWrapping="Wrap"/>
