@@ -8,6 +8,8 @@ namespace RW3ProNativeDSHaptics;
 /// Reports subjective tactile response, never a hardware sensor measurement.
 /// No rating can be assigned to a controller that was not included in playback.
 /// </summary>
+public enum ComparisonTarget { Both, DualSenseOnly, WolverineOnly }
+
 public enum PhysicalSensation { NotEvaluated, Felt, NotFelt, Uncertain }
 
 public sealed record TactileRatings(int? Texture, int? Impact, int? Stereo)
