@@ -95,6 +95,8 @@ public sealed class HapticStereoRecorder
     private readonly object _gate = new();
     private readonly byte[] _buffer;
     private readonly HapticPcmFormat _format;
+    private readonly long _startTick;
+    private readonly int _timeoutMs;
     private int _written;
     private bool _ended;
 
@@ -103,6 +105,8 @@ public sealed class HapticStereoRecorder
         if (seconds is < 1 or > HapticStereoWave.MaximumSeconds)
             throw new ArgumentOutOfRangeException(nameof(seconds));
         _format = format;
+        _timeoutMs = checked(seconds * 1000);
+        _startTick = Environment.TickCount64;
         _buffer = new byte[checked(seconds * HapticStereoWave.SampleRate *
             2 * HapticStereoWave.BytesPerSample(format))];
     }
@@ -117,6 +121,7 @@ public sealed class HapticStereoRecorder
         get { lock (_gate) return _written == _buffer.Length; }
     }
 
+    public bool IsTimedOut => Environment.TickCount64 - _startTick >= _timeoutMs;
     public bool HasSamples => CapturedFrames > 0;
 
     public void Accept(ReadOnlySpan<byte> fourChannelFrames)
@@ -127,7 +132,7 @@ public sealed class HapticStereoRecorder
             throw new ArgumentException("Only complete four-channel source frames are allowed.");
         lock (_gate)
         {
-            if (_ended || _written == _buffer.Length) return;
+            if (_ended || _written == _buffer.Length || IsTimedOut) return;
             int acceptedFrames = Math.Min(fourChannelFrames.Length / stride,
                 (_buffer.Length - _written) / rearStride);
             for (int i = 0; i < acceptedFrames; i++)
