@@ -91,6 +91,26 @@
       </Border>
       <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
         <StackPanel>
+          <TextBlock Text="2C • 48kHz ORİJİNAL STEREO PCM TAŞIMA PROVASI" FontWeight="Bold"
+                     Foreground="#A5E1CF"/>
+          <TextBlock Foreground="#B7C5DC" Margin="0,8,0,9" TextWrapping="Wrap">
+            Yalnızca kaynak izlemede dört kanallı UAC verisinin 3./4. kanalını hiçbir örneği
+            işlemden geçirmeden 120 ms sınırlı stereo PCM tamponuna aktarır. Bağımsız
+            yazılım alıcısı 20 ms'de 960 özgün PCM kare okuyup SİLER; hiçbir kontrolcüye
+            titreşim, WAV kaydı veya ağ gönderimi yapılmaz. Bu test Razer çıkışı değildir.
+          </TextBlock>
+          <Button x:Name="TransportProbeButton" Content="▶ Stereo PCM tampon testini başlat"
+                  Style="{StaticResource Btn}" HorizontalAlignment="Left"
+                  Background="#245B71" Click="TransportProbe_Click"/>
+          <TextBlock x:Name="TransportProbeStatus" Margin="0,8,0,0"
+                     Foreground="#A8DBD3" TextWrapping="Wrap"
+                     Text="Pasif • gerçek zamanlı PCM çıkışı veya motor sürücüsü bağlı değil."/>
+          <TextBlock FontSize="11" Foreground="#AAB9D0" TextWrapping="Wrap" Margin="0,8,0,0"
+                     Text="Tampon taşarsa eski kareler atılır; veri yetmezse sessizlik doldurulur. Kayıplar ölçülür, gizlenmez. Yazılım tüketici zamanlaması yaklaşık olup haptic motor gecikmesini ölçmez. Canlı Wwise/Sensa HD sink entegrasyonu ve donanım doğrulaması hâlâ eksiktir."/>
+        </StackPanel>
+      </Border>
+      <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
+        <StackPanel>
           <TextBlock Text="3 • OYUN AÇMADAN GERÇEK SENSA MOTOR DENEYİ" FontWeight="Bold" Foreground="#A6CBFF"/>
           <TextBlock TextWrapping="Wrap" Margin="0,8,0,12" Foreground="#B7C5DC">
             Bunlar sahici Interhaptics parametrik sol/sağ cihaz komutlarıdır; bir oyundan alınmış DualSense verisi değildir.
