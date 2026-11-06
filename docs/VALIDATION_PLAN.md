@@ -77,3 +77,12 @@ Date | Controller firmware | Synapse/Chroma | Source game/scene | Device slot | 
 - [ ] Razer Sensa Games and Synapse Audio-to-Haptics selections leave RW3 capture stopped and link to official setup.
 - [ ] RW3 Audio-to-Haptics still requires explicit capture permission and never resumes silently after Windows boot.
 - [ ] Legacy Mode-only preferences and system tray menu remain compatible.
+
+## Dual-device A/B acceptance (2026-11-06)
+- [x] Deterministic fixtures for 10 short behavioral textures, silent speaker channels and maximum bounded PCM amplitude; assertions for repeatability and output safety.
+- [x] Separate in-app reference path: no software gain/EQ/compression on DualSense's raw 4ch 48kHz reference; optional exclusive WASAPI with fail-fast on unsupported format, not silent shared fallback.
+- [x] Separate Wolverine-specific additional test level with persisted RW3 global output level. Shared reference driver processing is disclosed.
+- [x] Physical A/B interface: both, DualSense only, Wolverine only; user confirmation before Razer provider or physical USB playback.
+- [x] Store per-device subjective 1–5 texture, impact and stereo ratings in local JSONL, do not store raw game/USB PCM or cloud upload.
+- [ ] **Physical verification pending:** real USB DualSense playback, Wolverine Sensa actuator routing, simultaneous playback, stop/close cancellation and 10-scene feel comparisons.
+- [ ] **Measurement pending:** hardware-sensed latency/fidelity, authentic authored game signal provenance.

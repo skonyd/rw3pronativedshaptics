@@ -90,3 +90,13 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [x] Contract coverage extended to 45 deterministic checks for route options, safe defaults, consent and fallbacks
 - [ ] Verify each physical pathway, Wolverine input mapping, authentic game source signal, latency and L/R physical actuators
 - [ ] Determine vendor-documented real-time Sensa waveform sink; Wwise offline authoring is not live stream integration
+
+## Physical A/B comparison increment
+- [x] Add 10 original deterministic behavioral scenes (rain/sand/gravel/grass/pistol/automatic rifle/engine idle/acceleration/explosion/thunder)
+- [x] Add direct physical USB DualSense 4ch PCM reference with NO software gain or processing; strict Exclusive option, explicitly selectable Shared
+- [x] Add Wolverine 50Hz Interhaptics parametric A/B rendering with separate test and persisted RW3 output intensity
+- [x] Add dual-device A/B window, independent/both playback, safe cancellation, 1–5 texture/transient/stereo user scoring and local report
+- [x] Independent 4ch native source capture-only mode without requiring Razer DLL or running motors
+- [ ] Run latest Windows CI with complete compare UI and package and inspect output
+- [ ] Validate dual-USB and Wolverine physical outcomes for all ten scenes; measure tactile latency and spectra
+- [ ] Obtain vendor-supported high-fidelity Razer waveform sink; replace/compare lossy current adapter only if API and license permit

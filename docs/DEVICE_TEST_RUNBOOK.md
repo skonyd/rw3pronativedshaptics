@@ -53,3 +53,6 @@ PadForge is currently the better **hypothesis** for Wolverine -> virtual DualSen
 
 ## Route method choice (before testing)
 Use [method selection guide](ROUTE_SELECTION.md). Select PadForge for the preferred authentic-source *hypothesis*, not for guaranteed physical equivalence. For supported Razer games test official Sensa HD Games independently as the best established Razer reference. DSX+ is an alternative only if Wolverine physical-input interoperability can be established. Wwise Motion is an **independent offline waveform experiment**, not a working route for continuous native game PCM. The bridge must be explicitly acknowledged per endpoint and no third-party driver should be installed automatically.
+
+## Ten-scene physical comparison lab
+The main screen now launches a [DualSense vs Wolverine behavioral A/B lab](AB_BEHAVIORAL_TEST_LAB.md). Its WAV/PCM tests are project-authored synthetic textures, not Sony game recordings. For each scene the USB DualSense receives an unchanged four-channel 48kHz PCM16 source buffer; Wolverine receives the lossy current Interhaptics 50Hz envelope. Start with exclusive WASAPI if the real USB DualSense endpoint supports it. The A/B window records user ratings locally and is **not a motor sensor or automatic native-fidelity certification**.
