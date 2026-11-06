@@ -19,16 +19,24 @@
       <TextBlock Text="EXPERIMENTAL • NATIVE SOURCE BRIDGE" Foreground="#FEBF83" FontWeight="Bold"/>
       <TextBlock Text="DualSense UAC → Razer Sensa" FontSize="27" FontWeight="Bold" Margin="0,9,0,7"/>
       <TextBlock TextWrapping="Wrap" Foreground="#ACBCD4" LineHeight="21">
-        Gerçek oyun tarafından DualSense haptic ses aygıtına gönderilen 4 kanallı 48 kHz sesin 3. ve 4. kanallarını yakalar.
+        Oyunlar DualSense haptic ses aygıtına 4 kanallı 48 kHz ses gönderebilir. Bu köprü seçtiğin aygıtın 3. ve 4. kanallarını yakalar; oyun kaynağını otomatik ispatlamaz.
         Bunları iki ayrı Razer Interhaptics parametrik efektine dönüştürür. Bu dönüşüm KAYIPLIDIR:
         orijinal HD PCM dalga biçimini birebir oynatmaz.
       </TextBlock>
       <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,18,0,12">
         <StackPanel>
           <TextBlock Text="1 • DUALSENSE SES KAYNAĞI" FontWeight="Bold" Foreground="#A6CBFF"/>
-          <TextBlock Text="4 kanallı DualSense USB/UAC veya sanal DualSense render aygıtını seç. Hoparlör çıkışını seçme."
+          <TextBlock x:Name="SelectedRouteText" FontWeight="SemiBold" Foreground="#80DBBB"
+                      Margin="0,8,0,6" TextWrapping="Wrap"/>
+           <TextBlock x:Name="RouteInstructionsText" Foreground="#B7C5DC" TextWrapping="Wrap" Margin="0,0,0,7"/>
+           <TextBlock Text="4 kanallı DualSense USB/UAC veya sanal DualSense render aygıtını seç. Hoparlör çıkışını seçme."
                      Margin="0,8,0,9" TextWrapping="Wrap"/>
           <ComboBox x:Name="EndpointPicker" Height="34" Foreground="#12213C" DisplayMemberPath="Display"/>
+           <CheckBox x:Name="EndpointAcknowledgement" Foreground="#D0DCEC" Margin="0,10,0,4">
+             <TextBlock TextWrapping="Wrap" Text="Bu ses aygıtının seçtiğim yönteme ait olduğunu kontrol ettim. Oyunun gerçekten haptic veri gönderdiğini ayrıca doğrulayacağım."/>
+           </CheckBox>
+           <TextBlock Text="Aygıt adı ve 4 kanallı biçim tek başına özgün DualSense oyun sinyali kanıtı değildir."
+                      Foreground="#C3A781" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,5"/>
           <Button Content="Ses aygıtlarını yenile" Style="{StaticResource Btn}" HorizontalAlignment="Left"
                   Margin="0,10,0,0" Click="Refresh_Click"/>
         </StackPanel>
