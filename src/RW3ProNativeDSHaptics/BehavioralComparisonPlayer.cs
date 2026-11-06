@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 
 namespace RW3ProNativeDSHaptics;
 
-public enum ComparisonTarget { Both, DualSenseOnly, WolverineOnly }
-
 public sealed record ComparisonResult(
     HapticBehavior Scene, ComparisonTarget Target,
     bool UsbPcmSubmitted, bool RazerProviderTicked, bool ExclusiveUsbMode);
