@@ -281,6 +281,7 @@ public partial class BehavioralComparisonWindow : Window
     private void SetTestControlsEnabled(bool enabled)
     {
         SceneBox.IsEnabled = TargetBox.IsEnabled = UsbEndpointBox.IsEnabled = enabled;
+        ExportSelectedWavButton.IsEnabled = ExportAllWavButton.IsEnabled = enabled;
         CheckConnectionsButton.IsEnabled = RefreshUsbButton.IsEnabled = enabled;
         ExclusiveCheck.IsEnabled = ConfirmUsbCheck.IsEnabled = ConfirmSensaCheck.IsEnabled = enabled;
         WiredWolverineConfirmed.IsEnabled = WolverineLevel.IsEnabled = enabled;
@@ -290,6 +291,47 @@ public partial class BehavioralComparisonWindow : Window
         {
             DsFeelingBox.IsEnabled = RwFeelingBox.IsEnabled = false;
             foreach (var rating in _ratings) rating.IsEnabled = false;
+        }
+    }
+
+    private void ExportSelectedWav_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || SceneBox.SelectedItem is not BehavioralScene scene) return;
+        ExportReferenceScenes(new[] { scene });
+    }
+
+    private void ExportAllWav_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        ExportReferenceScenes(BehavioralHapticFixtures.All);
+    }
+
+    private void ExportReferenceScenes(
+        System.Collections.Generic.IEnumerable<BehavioralScene> scenes)
+    {
+        try
+        {
+            string folder = Path.Combine(ResultsDirectory(), "wwise-stereo-references");
+            Directory.CreateDirectory(folder);
+            int exported = 0;
+            foreach (var scene in scenes)
+            {
+                byte[] original = BehavioralHapticFixtures.Generate(scene.Id);
+                byte[] wave = HapticStereoWave.FromFourChannel(original, HapticPcmFormat.Signed16);
+                string file = Path.Combine(folder,
+                    "RW3-" + scene.Id + "-stereo-48k-pcm16.wav");
+                File.WriteAllBytes(file, wave);
+                exported++;
+            }
+            WwiseExportStatus.Text = exported + " stereo WAV başarıyla yazıldı: " + folder +
+                ". Bu işlem Razer'a ses/titreşim göndermez; Wwise oynatımı ayrı lisanslı uygulamadadır.";
+            DiagnosticsService.Info("Exported " + exported +
+                " unscaled stereo WAV fixtures for offline Wwise evaluation.");
+        }
+        catch (Exception ex)
+        {
+            WwiseExportStatus.Text = "Offline WAV export başarısız: " + ex.Message;
+            DiagnosticsService.Error("Stereo reference WAV export", ex);
         }
     }
 
