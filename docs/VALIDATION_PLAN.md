@@ -22,7 +22,7 @@
 - [ ] Change modes/exit always stops loopback and rumble.
 
 ## Provenance and game-performance validation — new
-- [ ] Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`: all 23 hardware-free provenance, audio safety and stereo isolation checks must pass.
+- [ ] Run `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`: all 30 hardware-free provenance, audio safety and stereo isolation checks must pass.
 - [ ] No XInput device: status warns; no false vibration or Sensa success.
 - [ ] Motor test: Windows acknowledges command, only mark *physically confirmed* if the user actually feels the short pulse.
 - [ ] Silent loopback: initialized vs received data vs meaningful sound are differentiated.

@@ -40,3 +40,17 @@ Primary user goal: reproduce **game-authored DualSense** stereo haptics on Wolve
 
 ## Release criterion
 CI green and hardware-free suite passing = **software ready for physical R&D**. Real end-to-end gameplay quality and streaming remain **hardware-blocked** until recorded evidence meets all gates above.
+
+## Decision comparison and exit criteria (avoid false guarantees)
+
+| Route | Authored Sony signal? | Razer native actuator output? | Deployment friction | Decision |
+| --- | --- | --- | --- | --- |
+| Razer Sensa integrated game / Dynamic Haptics | **No** (different game integration) | Official supported Razer path | Low: Synapse 4, Chroma, PC mode | **Reliable baseline and useful everyday option** |
+| PadForge virtual DS Full -> RW3 4ch WASAPI -> Interhaptics | **Possible** where game writes genuine UAC rear channels | **Experimental**, currently lossy two-effect L/R mapping | Medium-high: opt-in signed virtual device stack, input mapping, possible double-input | **Preferred native-source pilot** |
+| DSX+ 3.2 beta virtual DS -> RW3 UAC -> Interhaptics | **Possible** in supported DSX configurations | **Experimental**, same output blocker | Medium: paid/proprietary DLC; Wolverine input unverified | Alternative pilot, no default dependency |
+| Official Wwise Sensa stereo WAV authored motion bus | Offline *synthetic/recorded* waveform, **not live game provenance** | Official 2-driver playback workflow, physical routing TBD | High: Wwise authoring/runtime licensing; manual project setup | **High-fidelity output feasibility spike only** |
+| Current plain XInput Audio-to-Haptics | **No**, general system sound | Conventional XInput rumble | Low | Explicit fallback, not native |
+
+**Key physical limit:** 48 kHz is the PCM *transport/sample rate*, not proof the actuators can reproduce every frequency in an audio waveform. The official Wwise guide itself recommends focusing on low-frequency (e.g. sub-200 Hz) content. Frame accuracy, perceived texture and physical motor bandwidth need measurements.
+
+**Go/no-go:** If true left/right Sensa body actuator addressing fails on actual Wolverine, suspend the native bridge and do not spend effort on new virtual-driver code. If side routing passes but 50 Hz envelopes feel poor, prioritize the Wwise/offline or supported pitch/transient pilot before investing in broad game compatibility. If the proprietary API still cannot support sufficiently faithful low-latency output, retain the app as an honest experimental tool and use first-party Sensa for supported games; never promise DualSense-equivalent quality.

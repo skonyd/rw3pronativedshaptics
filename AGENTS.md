@@ -17,7 +17,7 @@ Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STAT
 - `TestLabWindow.xaml(.cs)` provides game-free Normal XInput and Audio→XInput tests; no native synthetic data is ever mislabeled an actual game signal.
 - Read `docs/NATIVE_BRIDGE_IMPLEMENTATION.md` and `interop/README.md` before relying on the native prototype. No third-party native DLLs are present in the repo.
 - Current Windows app **has not passed an observed clean Windows CI build or actual Wolverine validation**; do not overstate readiness.
-- Contract tests now cover 23 deterministic rules for provenance, stereo channel isolation and safe WASAPI silence handling; run them on Windows/CI.
+- Contract tests now cover 30 deterministic checks for provenance, stereo PCM16/Float32 isolation, speaker-only negative cases, malformed input and safe WASAPI silence handling; run them on Windows/CI.
 
 ## Engineering integrity
 - Never present native PCM rendering through the physical Wolverine as operational until measured on actual hardware.

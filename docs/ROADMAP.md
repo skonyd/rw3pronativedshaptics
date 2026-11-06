@@ -11,8 +11,8 @@
 - [x] Source implementation: live provenance panel, error log, manual motor confirmation, CPU/RAM display
 - [x] Source implementation: WASAPI frame counters and acknowledged XInput motor commands
 - [x] Source implementation: 3% normalized process CPU guard for 3 successive 2-second samples; audio callback bounded to ≤256 sample points and 20 command/s
-- [x] Source implementation: 7 contract-check source tests and CI invocation
-- [ ] Successful Windows CI build and packaging **requires verification after push**
+- [x] Source implementation: 30 hardware-free contract checks with CI verification
+- [x] Successful Windows CI build and packaging verified after PR #6/main (2026-11-06)
 - [ ] Windows 11 user device smoke test
 
 ## Phase 2 — conventional physical motor pipeline
@@ -22,7 +22,7 @@
 - [ ] Per-device XInput slot selection and UI meter/limiter control
 
 ## Phase 2b — truthful status and performance
-- [ ] Run Windows build and provenance contract checks in Actions; inspect logs
+- [x] Windows build, contract checks, published EXE, portable ZIP and installer installation/removal passed in Actions
 - [ ] Verify live status with silence, game audio, missing controller and XInput device changes
 - [ ] Measure games' average/1% low FPS and frame-time spikes with/without app to establish low-impact setting
 - [ ] Confirm short physical rumble pulse manually; no HD source assertions from XInput
@@ -35,8 +35,8 @@
 - [x] Source: optional real 4ch/48k UAC haptic channel capture (strict source validation; no stereo fallback)
 - [x] Source: experimental Interhaptics parametric Left/Right output via two HAR effects
 - [x] Source: full 4-channel UAC synthetic playback → source monitor → Razer provider render test and user confirmation
-- [x] Source: 13 independent unit test rules checking signal identity and L/R isolation
-- [ ] **Verify Windows CI build succeeds, no source compile regressions**
+- [x] Source: 30 deterministic assertions covering identity, L/R isolation, audio safety and PCM formats
+- [x] **Windows build and PR release packaging verified in Actions**
 - [ ] **Verify correct Interhaptics x64 library loading and correct Razer physical L/R routing**
 - [ ] **Verify real DSX+/physical DualSense 4ch UAC endpoint and actual game's authored haptic samples**
 - [ ] Measure latency, stereo separation and physical accuracy vs original DualSense
@@ -65,7 +65,7 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [x] Interhaptics worker restart guard; stop timeout retains live thread reference
 - [x] Recent channel energy timestamps and negative opposite-channel isolation check
 - [x] New hardware-free contract assertions and manual hardware acceptance runbook
-- [ ] Observe Windows Actions successful build + portable/installer artifact; run logs must be inspected
+- [x] Windows Actions successful build + portable/installer artifact observed (PR #6 and main)
 - [ ] Real Windows 11 and Wolverine / DualSense smoke and physical latency tests
 - [ ] Prove lossless stereo waveform sink (not currently implemented)
 
