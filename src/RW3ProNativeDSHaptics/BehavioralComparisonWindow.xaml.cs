@@ -26,6 +26,8 @@ public partial class BehavioralComparisonWindow : Window
     private ComparisonResult? _lastResult;
     private string? _lastUsbName;
     private int _globalLevelPercent;
+    private int _lastGlobalLevelPercent;
+    private int _lastSceneLevelPercent;
     private bool _busy;
     private Task? _activePlaybackTask;
     private bool _waitingToClose;
@@ -46,6 +48,29 @@ public partial class BehavioralComparisonWindow : Window
         StopButton.IsEnabled = false;
         RefreshUsb();
         RefreshGainLabel();
+    }
+
+    public bool IsPlaying => _busy || _activePlaybackTask?.IsCompleted == false;
+
+    public void RequestStop()
+    {
+        _running?.Cancel();
+        _sensa.Submit(0, 0);
+    }
+
+    public async Task StopAndCloseAsync()
+    {
+        RequestStop();
+        if (_activePlaybackTask != null)
+        {
+            try { await _activePlaybackTask; }
+            catch (Exception ex) { DiagnosticsService.Error("A/B shutdown", ex); }
+        }
+        if (IsLoaded)
+        {
+            _safeToClose = true;
+            Close();
+        }
     }
 
     public void UpdateOutputLevel(int level)
@@ -171,6 +196,8 @@ public partial class BehavioralComparisonWindow : Window
         _busy = true;
         _lastResult = null;
         _lastUsbName = selected?.FriendlyName;
+        _lastGlobalLevelPercent = _globalLevelPercent;
+        _lastSceneLevelPercent = HapticOutputLevel.Limit((int)Math.Round(WolverineLevel.Value));
         SaveButton.IsEnabled = false;
         PlayButton.IsEnabled = false;
         StopButton.IsEnabled = true;
@@ -185,7 +212,7 @@ public partial class BehavioralComparisonWindow : Window
             _sensa.OutputLevelPercent = _globalLevelPercent;
             _lastResult = await BehavioralComparisonPlayer.PlayAsync(
                 scene.Id, target, selected?.Id, ExclusiveCheck.IsChecked == true,
-                (int)Math.Round(WolverineLevel.Value), _sensa, cts.Token);
+                _lastSceneLevelPercent, _sensa, cts.Token);
             PlaybackStatus.Text = "Oynatma rutini tamamlandı. USB PCM gönderimi=" +
                 _lastResult.UsbPcmSubmitted + ", Razer provider döngüsü=" +
                 _lastResult.RazerProviderTicked + ". Fiziksel his ve doğruluk için puan ver.";
@@ -249,8 +276,8 @@ public partial class BehavioralComparisonWindow : Window
                 SyntheticNotGameAuthored = true,
                 RazerOutputLossy50Hz = true,
                 RealWorldPhysicalSensationNotMachineVerified = true,
-                RwGlobalLevelPercent = _globalLevelPercent,
-                RwScenarioLevelPercent = (int)Math.Round(WolverineLevel.Value),
+                RwGlobalLevelPercent = _lastGlobalLevelPercent,
+                RwScenarioLevelPercent = _lastSceneLevelPercent,
                 DsTexture = ds[0], DsImpact = ds[1], DsStereo = ds[2],
                 RwTexture = rw[0], RwImpact = rw[1], RwStereo = rw[2],
                 Notes = NotesBox.Text
