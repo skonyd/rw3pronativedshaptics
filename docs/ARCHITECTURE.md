@@ -61,3 +61,19 @@ For milestone readiness see [implementation status](IMPLEMENTATION_STATUS.md). T
 - Explicit audio consent; only the user-requested WAV path can store a bounded source clip locally.
 - Stop/exit, source/provider loss and unplug must zero current generated effects and avoid overlapping haptic sources; code has guards, physical behavior awaits test.
 - Windows build checks require no controller: a passing CI result cannot promote the M3/M4 stages.
+
+## Additional source-only 48k PCM transport branch (M4 preparation; not real output)
+
+```text
+Selected UAC 4ch/48k PCM16 / IEEE Float32 (source-only)
+      | speaker ch1/2 discarded; rear haptic 3/4 unchanged
+      v
+Bounded RealtimeStereoPcmTransport 2ch ring (120ms default)
+      | loss accounted: dropped oldest / missing zero-padded
+      v
+StereoPcmDiscardProbe reader (960 48k frames / ~20ms tick)
+      |
+    RAM cleared (NO Razer provider, NO motor output, NO WAV upload)
+```
+
+The source transport is intentionally distinct from `SensaStereoPrototype` 50Hz RMS→Interhaptics, which remains the only experimental live Razer backend and remains lossy. The ring does not convert full PCM into a supported Razer voice-coil signal. See [REALTIME_PCM_TRANSPORT](REALTIME_PCM_TRANSPORT.md) and M3/M4 gates.

@@ -54,3 +54,13 @@ Reference: [current implementation stage and evidence](IMPLEMENTATION_STATUS.md)
 | Outcome | PASS, FAIL, BLOCKED or NOT RUN; reproducible steps and local evidence path |
 
 **Interpretation:** Software assertions and CI passing are necessary but nowhere near sufficient for the central feature. The live source and device sink gates remain [Issue #2](https://github.com/skonyd/rw3pronativedshaptics/issues/2), [Issue #1](https://github.com/skonyd/rw3pronativedshaptics/issues/1), [Issue #5](https://github.com/skonyd/rw3pronativedshaptics/issues/5) and [Issue #4](https://github.com/skonyd/rw3pronativedshaptics/issues/4).
+
+## E — original-resolution stereo transport (software vs physical proof)
+- [x] Contract test: 4ch 48k PCM16/Float32 rear 3/4 → stereo original sample bits; front speaker content never leaks to output.
+- [x] Contract test: 20–500ms bounded RAM queue, oversized callbacks and previously buffered overflow cause exact counted oldest drops.
+- [x] Contract test: underrun zero-padding, no replay of stale source, full reset, invalid-frame rejection, ring wrap and simultaneous writer/reader pairing.
+- [x] Source-only UI transport probe consumes complete 960-frame blocks, records only offered/consumed/dropped/underrun statistics, **no actual motor output** or WAV file.
+- [ ] Windows physical test: start source-only/transport; confirm buffer counters under real USB/virtual 4ch game traffic and silence, no sample distortion and no accumulating unbounded backlog.
+- [ ] Windows physical test: verify switching endpoint/bridge mode/closing cancels reader, zeroes retained PCM, and recording mode and probe remain mutually exclusive.
+- [ ] Source clock, buffer jitter/dropout and eventual physical hardware latency need independent measurement; discard-sink counters are **not** end-to-end latency.
+- [ ] Confirm vendor-supported legal real-time waveform sink before substituting the null/discard consumer.

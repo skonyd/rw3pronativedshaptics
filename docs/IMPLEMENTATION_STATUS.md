@@ -69,3 +69,9 @@ All of the following must be evidenced, **not simply planned**:
 - Latest snapshot CI: [run 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530) succeeded for `ad2aed3b`. The portable/installer and contract results are **hardware-free**.
 - For active work, use [ROADMAP](ROADMAP.md) for work order and [VALIDATION_PLAN](VALIDATION_PLAN.md) for explicit acceptance. The five numbered [issues](https://github.com/skonyd/rw3pronativedshaptics/issues) track remaining M3/M4 dependencies.
 - Do not report an overall completion percentage without documented milestone weights and independent physical evidence. Keep "software test passing" distinct from "hardware verified" and "shipped product".
+
+## M4 preparation increment: source-only bit-exact 48k stereo transport
+
+A software-only `RealtimeStereoPcmTransport` and optional Native Bridge **discard-output probe** were added without making any claim that a real-time physical Wolverine PCM output is implemented. A bounded 120ms stereo ring preserves each sample of rear haptic channels 3/4 and accounts separately for overflow/dropped frames and underrun zero padding. Source-only mode must be explicit; recording and transport are mutually exclusive. **No vendor Sensa output/physical haptic is attached.** Contract tests exercise sample identity, wrap, bounds, malformed input and concurrency. This is preparation for M4, and **does not change the current stage M3**. [Technical detail](REALTIME_PCM_TRANSPORT.md).
+
+The canonical snapshot above records a confirmed earlier `main` commit/CI; later feature commits require their own CI validation before being labeled passed.

@@ -14,6 +14,7 @@ public partial class NativeBridgeWindow : Window
     private readonly HapticRoute _route;
     private readonly SensaStereoPrototype _sensa = new();
     private readonly NativeDualSenseCapture _source = new();
+    private StereoPcmDiscardProbe? _transportProbe;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private CancellationTokenSource _lifetime = new();
     private bool _busy;
@@ -109,7 +110,7 @@ public partial class NativeBridgeWindow : Window
             Interlocked.Increment(ref _cancelGeneration);
             _activeTest?.Cancel();
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
             RefreshStatus();
@@ -162,7 +163,7 @@ public partial class NativeBridgeWindow : Window
         try
         {
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
             _source.Start(selected.Id);
@@ -174,7 +175,7 @@ public partial class NativeBridgeWindow : Window
         catch (Exception ex)
         {
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             DiagnosticsService.Error("Source-only monitor", ex);
             System.Windows.MessageBox.Show(this, ex.Message, "Kaynak izleme başlatılamadı",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -207,7 +208,7 @@ public partial class NativeBridgeWindow : Window
         try
         {
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
             if (!_sensa.Start())
@@ -227,7 +228,7 @@ public partial class NativeBridgeWindow : Window
         catch (Exception ex)
         {
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             DiagnosticsService.Error("Native bridge start", ex);
             if (ex is not OperationCanceledException)
@@ -312,6 +313,64 @@ public partial class NativeBridgeWindow : Window
         RefreshStatus();
     }
 
+    private void StopTransportProbe()
+    {
+        // Detach before disposing the discard reader so OnAudio cannot append
+        // after the consumer's RAM has been cleared.
+        _source.DetachTransport();
+        _transportProbe?.Dispose();
+        _transportProbe = null;
+    }
+
+    private void StopSource()
+    {
+        StopTransportProbe();
+        _source.Stop();
+    }
+
+    private void TransportProbe_Click(object sender, RoutedEventArgs e)
+    {
+        if (_transportProbe != null)
+        {
+            StopTransportProbe();
+            TransportProbeStatus.Text = "PCM taşıma provası durdu; RAM tamponu temizlendi.";
+            RefreshStatus();
+            return;
+        }
+        if (_busy || _session != SessionMode.SourceOnly ||
+            !_source.IsCapturing || _source.IsPcmRecording)
+        {
+            TransportProbeStatus.Text = "Önce source-only 4ch/48k izleme başlat; " +
+                "ayrıca WAV kaydı etkin olmamalı.";
+            return;
+        }
+
+        try
+        {
+            var transport = new RealtimeStereoPcmTransport(_source.CurrentPcmFormat, 120);
+            _source.AttachTransport(transport);
+            try
+            {
+                _transportProbe = new StereoPcmDiscardProbe(transport);
+            }
+            catch
+            {
+                _source.DetachTransport();
+                transport.Reset();
+                throw;
+            }
+            TransportProbeStatus.Text = "120ms bit-exact stereo PCM tamponu başladı. " +
+                "Çıkış SİLİNİYOR, hiçbir motor veya WAV diski kullanılmıyor.";
+            DiagnosticsService.Info("Source-only 48k raw PCM transport discard probe enabled.");
+        }
+        catch (Exception ex)
+        {
+            TransportProbeStatus.Text = "PCM taşıma provası açılamadı: " + ex.Message;
+            DiagnosticsService.Error("Stereo PCM probe", ex);
+        }
+        RefreshStatus();
+    }
+
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
         if (_source.IsPcmRecording)
@@ -319,7 +378,7 @@ public partial class NativeBridgeWindow : Window
         Interlocked.Increment(ref _cancelGeneration);
         _activeTest?.Cancel();
         _session = SessionMode.Off;
-        _source.Stop();
+        StopSource();
         _sensa.Stop();
         _leftPhysical = _rightPhysical = false;
         RefreshStatus();
@@ -343,7 +402,7 @@ public partial class NativeBridgeWindow : Window
         {
             // Prevent UAC PCM frame submission from masking isolated side pulse.
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             if (!_sensa.IsActive && !_sensa.Start())
                 throw new InvalidOperationException(_sensa.Status);
             for (int i = 0; i < 25 && !_sensa.IsActive && _sensa.IsRunning; ++i)
@@ -527,7 +586,25 @@ public partial class NativeBridgeWindow : Window
     private void RefreshStatus()
     {
         bool recording = _source.IsPcmRecording;
-        RecordStartButton.IsEnabled = !recording && !_busy &&
+        if (_transportProbe != null && !_source.IsCapturing)
+            StopTransportProbe();
+        bool probing = _transportProbe != null;
+        TransportProbeButton.IsEnabled = !_busy && !recording &&
+            (( _session == SessionMode.SourceOnly && _source.IsCapturing) || probing);
+        TransportProbeButton.Content = probing ?
+            "■ Stereo PCM tampon testini durdur" : "▶ Stereo PCM tampon testini başlat";
+        if (probing)
+        {
+            StereoPcmTransportSnapshot transportState = _transportProbe!.Transport.Snapshot();
+            TransportProbeStatus.Text = "48kHz stereo ham PCM aktarımı → YALNIZCA İMHA EDEN ALICI. " +
+                "Alınan " + transportState.OfferedFrames + " kare, tüketilen " +
+                transportState.DeliveredFrames + ", mevcut " + transportState.BufferedMs.ToString("F1") +
+                "/" + transportState.CapacityMs.ToString("F1") + "ms, taşma kaybı " +
+                transportState.LostOverrunMs.ToString("F1") + "ms, sessizlik doldurma " +
+                transportState.UnderrunMs.ToString("F1") +
+                "ms. Bu Razer'da haptic çıktı kanıtı değildir.";
+        }
+        RecordStartButton.IsEnabled = !recording && !probing && !_busy &&
             _session == SessionMode.SourceOnly && _source.IsCapturing;
         RecordSaveButton.IsEnabled = recording && !_busy && _source.PcmRecordingFrames > 0;
         RecordDiscardButton.IsEnabled = recording && !_busy;
@@ -543,7 +620,7 @@ public partial class NativeBridgeWindow : Window
             if (_source.IsPcmRecording)
                 RecordStatusText.Text = "UAC bağlantısı kayboldu; gizlilik için RAM kaydı silindi.";
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
             DiagnosticsService.Info("Native source lost, session stopped: " + failure);
@@ -553,7 +630,7 @@ public partial class NativeBridgeWindow : Window
         {
             string failure = _sensa.Status;
             _session = SessionMode.Off;
-            _source.Stop();
+            StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
             DiagnosticsService.Info("Razer provider lost, capture stopped: " + failure);
@@ -566,9 +643,9 @@ public partial class NativeBridgeWindow : Window
         CaptureHealthText.Text = "Kaynak sağlığı: " + NativeCaptureHealth.Describe(state);
         if (!_busy)
         {
-            TestLeftButton.IsEnabled = TestRightButton.IsEnabled = !recording;
-            ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = !recording;
-            LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = !recording;
+            TestLeftButton.IsEnabled = TestRightButton.IsEnabled = !recording && !probing;
+            ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = !recording && !probing;
+            LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = !recording && !probing;
         }
         OutputStateText.Text = _session == SessionMode.SourceOnly
             ? "SOURCE ONLY: Razer DLL'i kullanılmıyor, motor komutu gönderilmiyor."
@@ -604,6 +681,7 @@ public partial class NativeBridgeWindow : Window
         _session = SessionMode.Off;
         _lifetime.Cancel();
         _activeTest?.Cancel();
+        StopSource();
         _source.Dispose();
         _sensa.Dispose();
         _lifetime.Dispose();
