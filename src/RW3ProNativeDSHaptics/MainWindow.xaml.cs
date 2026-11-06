@@ -123,7 +123,8 @@ public partial class MainWindow : Window
 
         _settings.Mode = selected;
         var chosenRoute = routeOverride ?? HapticRouteCatalog.DefaultForMode(selected);
-        if (HapticRouteCatalog.Get(chosenRoute).Mode != selected)
+        if (HapticRouteCatalog.Get(chosenRoute).Mode != selected ||
+            HapticRouteCatalog.Get(chosenRoute).Route != chosenRoute)
             chosenRoute = HapticRouteCatalog.DefaultForMode(selected);
         _settings.Route = chosenRoute;
         RouteCombo.SelectedItem = HapticRouteCatalog.Get(_settings.Route);
@@ -431,8 +432,15 @@ public partial class MainWindow : Window
                         "ARAŞTIRMA: Wwise Motion tercih edildi. RW3 içinde canlı entegrasyon YOK.",
                     _ => "KAYNAK: Oyunun standart XInput titreşimi (uygulama izlemiyor)"
                 };
-                CaptureText.Text = "Oyun tarafından gönderilen rumble olayları yakalanmıyor; etkin haptic kaynağı doğrulanamıyor.";
-                DeliveryText.Text = "Yalnızca isteğe bağlı 250 ms test: XInputSetState sonucu, fiziksel hareket sensörü değildir.";
+                bool external = _settings.Route is HapticRoute.OfficialRazerSensaGames or
+                    HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab;
+                CaptureText.Text = external
+                    ? "Haricî yöntem tercih edildi; RW3 hiçbir oyun/sistem haptic akışını gözlemlemez."
+                    : "Oyun tarafından gönderilen rumble olayları yakalanmıyor; etkin haptic kaynağı doğrulanamıyor.";
+                DeliveryText.Text = external
+                    ? "Çıkış RW3 dışındadır: " + HapticRouteCatalog.Get(_settings.Route).Output +
+                      ". Çalışma durumu ve fiziksel çıktı doğrulanmadı."
+                    : "Yalnızca isteğe bağlı 250 ms test: XInputSetState sonucu, fiziksel hareket sensörü değildir.";
                 break;
             case HapticMode.Audio:
                 ProvenanceText.Text = "KAYNAK: WASAPI sistem sesi • Native DualSense PCM DEĞİL";
