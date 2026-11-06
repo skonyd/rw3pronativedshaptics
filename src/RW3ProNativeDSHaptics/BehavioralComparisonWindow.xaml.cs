@@ -317,6 +317,9 @@ public partial class BehavioralComparisonWindow : Window
             // green check last appeared. WMI runs off UI thread.
             UsbGamepadPresence fresh = await Task.Run(UsbGamepadMonitor.Read);
             cts.Token.ThrowIfCancellationRequested();
+            // The live disconnect watchdog needs a known-good baseline even if
+            // the window's initial background scan had not completed.
+            _usbPresence = fresh;
             if (!fresh.ScanSucceeded)
             {
                 System.Windows.MessageBox.Show(this,
