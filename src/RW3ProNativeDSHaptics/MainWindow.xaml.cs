@@ -311,6 +311,27 @@ public partial class MainWindow : Window
         _testLab.Show();
     }
 
+    private void Comparison_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comparisonLab?.IsVisible == true)
+        {
+            _comparisonLab.Activate();
+            return;
+        }
+        // Never run RW3's conventional rumble or native bridge against the A/B test.
+        _testLab?.Close();
+        _nativeBridge?.Close();
+        _rumble.StopAudio();
+        SetAudioPriority(false);
+        _comparisonLab = new BehavioralComparisonWindow(_settings.OutputLevelPercent)
+        {
+            Owner = this
+        };
+        _comparisonLab.Closed += (_, _) => _comparisonLab = null;
+        _comparisonLab.Show();
+        DiagnosticsService.Info("Physical dual-controller subjective A/B lab opened.");
+    }
+
     private void NativeBridge_Click(object sender, RoutedEventArgs e)
     {
         if (_settings.Mode != HapticMode.Native) SetMode(HapticMode.Native);
