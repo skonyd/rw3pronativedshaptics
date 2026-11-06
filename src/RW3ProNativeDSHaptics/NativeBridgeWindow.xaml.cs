@@ -595,13 +595,13 @@ public partial class NativeBridgeWindow : Window
             "■ Stereo PCM tampon testini durdur" : "▶ Stereo PCM tampon testini başlat";
         if (probing)
         {
-            StereoPcmTransportSnapshot state = _transportProbe!.Transport.Snapshot();
+            StereoPcmTransportSnapshot transportState = _transportProbe!.Transport.Snapshot();
             TransportProbeStatus.Text = "48kHz stereo ham PCM aktarımı → YALNIZCA İMHA EDEN ALICI. " +
-                "Alınan " + state.OfferedFrames + " kare, tüketilen " +
-                state.DeliveredFrames + ", mevcut " + state.BufferedMs.ToString("F1") +
-                "/" + state.CapacityMs.ToString("F1") + "ms, taşma kaybı " +
-                state.LostOverrunMs.ToString("F1") + "ms, sessizlik doldurma " +
-                state.UnderrunMs.ToString("F1") +
+                "Alınan " + transportState.OfferedFrames + " kare, tüketilen " +
+                transportState.DeliveredFrames + ", mevcut " + transportState.BufferedMs.ToString("F1") +
+                "/" + transportState.CapacityMs.ToString("F1") + "ms, taşma kaybı " +
+                transportState.LostOverrunMs.ToString("F1") + "ms, sessizlik doldurma " +
+                transportState.UnderrunMs.ToString("F1") +
                 "ms. Bu Razer'da haptic çıktı kanıtı değildir.";
         }
         RecordStartButton.IsEnabled = !recording && !probing && !_busy &&
