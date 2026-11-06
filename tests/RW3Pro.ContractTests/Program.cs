@@ -221,4 +221,69 @@ Check(summary.PairedSceneCount == 2 && summary.SceneCount == 2 &&
     "Subjective summary aggregates only separate matched two-device scores");
 Check(BehavioralEvidenceReport.Summarize(Array.Empty<BehavioralEvidenceEntry>())
     .PairedSceneCount == 0, "No prior sessions never imply fidelity");
-Console.WriteLine("USB PnP, matched subjective evidence and behavioral fixtures passed.");
+
+Check(HapticStereoWave.SampleRate == BehavioralHapticFixtures.SampleRate,
+    "WAV exports retain 48000 Hz reference sample rate");
+foreach (var clip in BehavioralHapticFixtures.All)
+{
+    byte[] raw = BehavioralHapticFixtures.Generate(clip.Id);
+    byte[] rear = HapticStereoWave.ExtractRear(raw, HapticPcmFormat.Signed16);
+    byte[] file = HapticStereoWave.BuildWav(rear, HapticPcmFormat.Signed16);
+    Check(file.Length == HapticStereoWave.PcmWaveHeaderLength + raw.Length / 2,
+        "WAV export size matches 2 original haptic channels");
+    Check(System.Text.Encoding.ASCII.GetString(file, 0, 4) == "RIFF" &&
+          System.Text.Encoding.ASCII.GetString(file, 8, 4) == "WAVE" &&
+          System.Text.Encoding.ASCII.GetString(file, 36, 4) == "data" &&
+          BitConverter.ToInt16(file, 20) == 1 &&
+          BitConverter.ToInt16(file, 22) == 2 &&
+          BitConverter.ToInt32(file, 24) == 48000,
+        "WAV exported headers represent signed PCM16 stereo 48kHz");
+    bool bitIdentical = true;
+    for (int i = 0; i < raw.Length / 8; i++)
+        if (!rear.AsSpan(i * 4, 4).SequenceEqual(raw.AsSpan(i * 8 + 4, 4)))
+        { bitIdentical = false; break; }
+    Check(bitIdentical &&
+        file.AsSpan(HapticStereoWave.PcmWaveHeaderLength).SequenceEqual(rear),
+        "Rear L/R PCM source bits are untouched by Wwise WAV export");
+}
+byte[] floatSource = new byte[16 * 3];
+BitConverter.GetBytes(0.71875f).CopyTo(floatSource, 8);
+BitConverter.GetBytes(-0.1234f).CopyTo(floatSource, 12);
+BitConverter.GetBytes(-0.999f).CopyTo(floatSource, 24);
+byte[] floatRear = HapticStereoWave.ExtractRear(floatSource, HapticPcmFormat.Float32);
+byte[] floatWav = HapticStereoWave.BuildWav(floatRear, HapticPcmFormat.Float32);
+Check(BitConverter.ToInt16(floatWav, 20) == 3 &&
+    BitConverter.ToInt16(floatWav, 34) == 32 &&
+    System.Text.Encoding.ASCII.GetString(floatWav, 36, 4) == "fact" &&
+    BitConverter.ToInt32(floatWav, 44) == 3 &&
+    System.Text.Encoding.ASCII.GetString(floatWav, 48, 4) == "data" &&
+    floatWav.AsSpan(HapticStereoWave.FloatWaveHeaderLength).SequenceEqual(floatRear),
+    "Float32 stereo WAV preserves source float bits with fact chunk");
+var rec = new HapticStereoRecorder(HapticPcmFormat.Signed16, 1);
+byte[] tiny = new byte[8*3];
+tiny[4] = 0x43; tiny[5] = 0x21;
+rec.Accept(tiny.AsSpan(0, 8));
+rec.Accept(tiny.AsSpan(8, 16));
+Check(rec.CapturedFrames == 3 && !rec.IsFull,
+    "Opt-in recorder accumulates original PCM in bounded RAM");
+byte[] recorded = rec.End();
+Check(recorded.AsSpan(HapticStereoWave.PcmWaveHeaderLength)
+    .SequenceEqual(HapticStereoWave.ExtractRear(tiny, HapticPcmFormat.Signed16)),
+    "RAM recording exports exact original stereo rear PCM");
+try { rec.Accept(tiny); rec.End(); throw new Exception("Recorder finalized twice"); }
+catch (InvalidOperationException) { Console.WriteLine("PASS: recorder cannot finalize twice"); }
+var maxRecorder = new HapticStereoRecorder(HapticPcmFormat.Signed16, 1);
+maxRecorder.Accept(new byte[48000*8+8]);
+Check(maxRecorder.IsFull && maxRecorder.CapturedFrames == 48000,
+    "WAV recorder clamps input to explicit one-second sample budget");
+maxRecorder.Abandon();
+Check(!maxRecorder.HasSamples,
+    "Abandon clears recording buffers and sensitive sample material");
+try { HapticStereoWave.ExtractRear(new byte[7], HapticPcmFormat.Signed16);
+    throw new Exception("Incomplete frames silently accepted"); }
+catch (ArgumentException) { Console.WriteLine("PASS: incomplete interleaved frames rejected"); }
+try { new HapticStereoRecorder(HapticPcmFormat.Float32, 11);
+    throw new Exception("Recording window can exceed hard limit"); }
+catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: capture length <=10s"); }
+Console.WriteLine("Stereo 48k WAV export and bounded opt-in recording passed.");
+Console.WriteLine("USB PnP, subjective A/B and high-fidelity stereo WAV contract suite passed.");
