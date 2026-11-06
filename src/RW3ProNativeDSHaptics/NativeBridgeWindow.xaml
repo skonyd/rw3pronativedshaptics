@@ -51,6 +51,13 @@
             bu uygulama dosyaları indirmez veya paketlemez.
           </TextBlock>
           <TextBlock x:Name="OutputStateText" TextWrapping="Wrap" Foreground="#F2C58A"/>
+          <TextBlock TextWrapping="Wrap" Foreground="#A8D4F0" Margin="0,5,0,10">
+            Önce yalnızca 4 kanal UAC ses kaynağını izleyebilirsin. Bu işlem HAR.dll veya Razer
+            Sensa gerektirmez ve hiçbir titreşim motoruna sinyal göndermez.
+          </TextBlock>
+          <Button x:Name="MonitorButton" Content="Yalnızca 4ch PCM kaynağını izle • motor çıkışı YOK"
+                  Style="{StaticResource Btn}" Background="#23615F" HorizontalAlignment="Left"
+                  Margin="0,0,0,10" Click="Monitor_Click"/>
           <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
             <Button x:Name="StartButton" Content="Deneysel köprüyü başlat" Click="Start_Click" Style="{StaticResource Btn}"/>
             <Button x:Name="StopButton" Content="Durdur / motorları sıfırla" Click="Stop_Click"
@@ -69,6 +76,16 @@
             <Button x:Name="TestLeftButton" Content="Sol Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestLeft_Click"/>
             <Button x:Name="TestRightButton" Content="Sağ Sensa aktüatörü" Style="{StaticResource Btn}" Click="TestRight_Click"/>
           </StackPanel>
+          <TextBlock Text="Kaynak-only test: 4ch sentetik PCM gönder ve Razer SDK olmadan arka L/R kanalların yalıtımını ölç."
+                     TextWrapping="Wrap" Foreground="#A8C2DF" Margin="0,14,0,9"/>
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="ProbeLeftButton" Content="Kaynak PCM SOL" Style="{StaticResource Btn}"
+                    Background="#23615F" Click="ProbeLeft_Click"/>
+            <Button x:Name="ProbeRightButton" Content="Kaynak PCM SAĞ" Style="{StaticResource Btn}"
+                    Background="#23615F" Click="ProbeRight_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="SourceProbeText" Margin="0,10,0,0"
+                     Foreground="#B4E3D1" TextWrapping="Wrap"/>
           <TextBlock Text="Gerçek UAC haptic yolunun oyun açmadan testi: sentetik PCM'yi 3./4. kanala gönder, geri yakala ve Sensa çıkışına dönüştür."
                      TextWrapping="Wrap" Foreground="#A8C2DF" Margin="0,14,0,9"/>
           <StackPanel Orientation="Horizontal">
@@ -84,6 +101,8 @@
       <Border Background="#132039" Padding="17" CornerRadius="13" Margin="0,0,0,12">
         <StackPanel>
           <TextBlock Text="CANLI SİNYAL PROVENANCE" FontWeight="Bold" Foreground="#A6CBFF"/>
+          <TextBlock x:Name="CaptureHealthText" Margin="0,10,0,6" Foreground="#A3E5CB"
+                     FontWeight="SemiBold" TextWrapping="Wrap"/>
           <TextBlock x:Name="SourceStateText" Margin="0,10,0,5" TextWrapping="Wrap"/>
           <TextBlock x:Name="RenderStateText" Margin="0,0,0,5" TextWrapping="Wrap"/>
           <TextBlock x:Name="TruthStateText" TextWrapping="Wrap" Foreground="#FEBF83"/>
