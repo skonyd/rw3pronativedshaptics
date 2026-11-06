@@ -53,3 +53,9 @@ Start at [AGENTS.md](AGENTS.md); it contains user intent, evidence standards and
 The `main` branch Windows workflow runs contract checks, a WPF Release build, a self-contained win-x64 publish, and a non-interactive `--self-test` of the published executable before packaging the ZIP and installer. Synthetic tests run without any controller; **physical Wolverine/Interhaptics behaviour still requires manual acceptance**.
 
 See [Windows hardware acceptance runbook](docs/DEVICE_TEST_RUNBOOK.md) for detailed steps, including stopping motors on audio silence, real 4-channel endpoint isolation and game-signal provenance. The Audio-to-Haptics backend has an independent 250ms silence watchdog plus a 100ms polling timer, and the experimental Sensa engine will not launch a second worker while an older worker is shutting down. These are source safeguards; validate on actual hardware before treating them as production proven.
+
+## Native input/output direction, November 2026
+
+[ADR-002](docs/ADR-002-NATIVE-BRIDGE-ROUTE.md) documents the preferred path: reuse a *user-installed, compatible* virtual DualSense 4ch source (PadForge Full composite where independently verified; DSX+ as a separate optional experiment) rather than build a new Windows audio driver. Native audio-channel evidence is separate from actual game provenance. The Interhaptics output remains an **experimental, lossy** parametric adapter. The official Wwise/Sensa WAV authoring plugin is a promising **offline fidelity comparison**, not yet a reusable real-time PCM streaming interface.
+
+The experimental source picker now displays channel count, sample rate and PCM resolution; unsupported formats are blocked before the provider starts. The live panel separately shows speaker RMS, rear haptic L/R RMS and peaks. New deterministic PCM16/Float32 channel tests and GitHub Actions least-privilege publishing checks are included. No device drivers or proprietary SDKs are bundled.

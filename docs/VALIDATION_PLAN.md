@@ -59,3 +59,12 @@
 
 ## Test report template
 Date | Controller firmware | Synapse/Chroma | Source game/scene | Device slot | Mode | Latency | L/R independence | Waveform fidelity | Evidence link | Result.
+
+## Research-route acceptance checks (ADR-002)
+- [ ] Source picker shows 4ch/48k PCM16/Float32 format, refuses unsupported before attempting Razer initialization.
+- [ ] Speaker-only PCM raises front-channel energy but NOT rear haptic energy.
+- [ ] Synthetic left/right PCM16 and Float32 frames preserve independent channels in the analysis layer; NaN/Infinity is zeroed safely.
+- [ ] Compare physical USB DualSense source with PadForge virtual DualSense Full source without silently installing drivers.
+- [ ] For any virtual controller, record physical Wolverine mapping and ensure only one input device is exposed to each game.
+- [ ] Compare high-fidelity Wwise stereo WAV route with parametric Interhaptics route if legally and technically permitted; DO NOT infer true live PCM capability from offline WAV playback.
+- [ ] Keep native-game-authorship and physical-fidelity labels BLOCKED until reproducible hardware test.

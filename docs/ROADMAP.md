@@ -68,3 +68,16 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [ ] Observe Windows Actions successful build + portable/installer artifact; run logs must be inspected
 - [ ] Real Windows 11 and Wolverine / DualSense smoke and physical latency tests
 - [ ] Prove lossless stereo waveform sink (not currently implemented)
+
+## Direction v2 (ADR-002, 2026-11-06)
+- [x] Independently verified evidence map: PadForge virtual DualSense Full UAC, DSX+ 3.2 beta, official WYVRN/Interhaptics and Wwise Sensa WAV sink
+- [x] Adopt staged input/output feasibility gates rather than writing an arbitrary virtual audio driver
+- [x] Native input candidate format preflight (4ch/48k) with speaker-vs-haptic energy diagnostics and finite/clamped PCM parsing
+- [x] Hardware-free PCM16/Float32 L/R/speaker-only and malformed-data regression tests
+- [x] Pull-request read-only GitHub permission, isolated release permission on version tags
+- [ ] Baseline Razer Sensa game/demo and measure actual left/right controller actuator mapping
+- [ ] Verify PadForge Wolverine physical-input → virtual DualSense Full with four-channel UAC, double-input avoidance
+- [ ] Reproduce true authored-game rear haptic PCM without fixtures
+- [ ] Verify official Wwise Motion stereo WAV playback on Wolverine, assess license and runtime interface (NO assumption of streaming)
+- [ ] Investigate supported dynamic pitch/transient candidate only after physical output is proven
+- [ ] Compare against physical DualSense with repeatable latency, channel separation and tactile tests

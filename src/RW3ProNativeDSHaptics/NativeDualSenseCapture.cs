@@ -14,9 +14,11 @@ namespace RW3ProNativeDSHaptics;
 public sealed class NativeDualSenseCapture : IDisposable
 {
     private WasapiLoopbackCapture? _capture;
+    private FourChannelHapticAnalyzer.PcmEncoding _encoding;
     private SensaStereoPrototype? _sink;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
+    private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
     private int _capturing;
     private string _status = "Not started";
     public bool IsCapturing => Volatile.Read(ref _capturing) == 1;
@@ -26,22 +28,52 @@ public sealed class NativeDualSenseCapture : IDisposable
     public long RightActiveBlocks => Interlocked.Read(ref _rightEnergyFrames);
     public long LastLeftEnergyTick => Interlocked.Read(ref _lastLeftEnergyTick);
     public long LastRightEnergyTick => Interlocked.Read(ref _lastRightEnergyTick);
+    public float LeftRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftRmsBits));
+    public float RightRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightRmsBits));
+    public float SpeakerRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _speakerRmsBits));
+    public float LeftPeak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftPeakBits));
+    public float RightPeak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightPeakBits));
+    public long InvalidSamples => Interlocked.Read(ref _invalidSamples);
+    private long _invalidSamples;
     public string Status => Volatile.Read(ref _status);
     public string? EndpointId { get; private set; }
 
-    public static IReadOnlyList<(string Id, string Name, int Channels)> EnumeratePossibleSources()
+    public sealed record EndpointCandidate(
+        string Id, string Name, int Channels, int SampleRate, int BitsPerSample, bool CanCapture);
+
+    private static FourChannelHapticAnalyzer.PcmEncoding? ResolveEncoding(WaveFormat fmt)
     {
-        var results = new List<(string, string, int)>();
+        bool float32 = fmt.BitsPerSample == 32 &&
+            (fmt.Encoding == WaveFormatEncoding.IeeeFloat ||
+            fmt is WaveFormatExtensible ef &&
+            ef.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71"));
+        bool pcm16 = fmt.BitsPerSample == 16 &&
+            (fmt.Encoding == WaveFormatEncoding.Pcm ||
+            fmt is WaveFormatExtensible ep &&
+            ep.SubFormat == new Guid("00000001-0000-0010-8000-00aa00389b71"));
+        if (float32) return FourChannelHapticAnalyzer.PcmEncoding.Float32;
+        if (pcm16) return FourChannelHapticAnalyzer.PcmEncoding.Pcm16;
+        return null;
+    }
+
+    public static IReadOnlyList<EndpointCandidate> EnumeratePossibleSources()
+    {
+        var results = new List<EndpointCandidate>();
         using var enumerator = new MMDeviceEnumerator();
         foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
         {
-            // Show all endpoints so users can diagnose. Starting capture rejects channels < 4.
+            // Candidates are format-qualified, not certified DualSense devices.
             try
             {
-                int channels = device.AudioClient.MixFormat.Channels;
-                results.Add((device.ID, device.FriendlyName, channels));
+                WaveFormat fmt = device.AudioClient.MixFormat;
+                var encoding = ResolveEncoding(fmt);
+                bool supported = encoding.HasValue &&
+                    FourChannelHapticAnalyzer.IsCompatible(
+                        fmt.Channels, fmt.SampleRate, fmt.BitsPerSample, encoding.Value);
+                results.Add(new EndpointCandidate(
+                    device.ID, device.FriendlyName, fmt.Channels, fmt.SampleRate, fmt.BitsPerSample, supported));
             }
-            catch { /* Unavailable or stale endpoint: do not crash enumeration. */ }
+            catch { /* Stale or unavailable endpoint is skipped without crashing the UI. */ }
         }
         return results;
     }
@@ -55,16 +87,10 @@ public sealed class NativeDualSenseCapture : IDisposable
             throw new InvalidOperationException("Chosen DualSense/UAC endpoint is not active.");
         var capture = new WasapiLoopbackCapture(device);
         var fmt = capture.WaveFormat;
-        bool float32 = fmt.BitsPerSample == 32 &&
-            (fmt.Encoding == WaveFormatEncoding.IeeeFloat ||
-            fmt is WaveFormatExtensible ef &&
-            ef.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71"));
-        bool pcm16 = fmt.BitsPerSample == 16 &&
-            (fmt.Encoding == WaveFormatEncoding.Pcm ||
-            fmt is WaveFormatExtensible ep &&
-            ep.SubFormat == new Guid("00000001-0000-0010-8000-00aa00389b71"));
-        // Prevent accidentally mistaking ordinary 2-channel game audio for DualSense haptic PCM.
-        if (fmt.Channels != 4 || (!float32 && !pcm16) || fmt.SampleRate != 48000)
+        var encoding = ResolveEncoding(fmt);
+        // Never accept ordinary stereo system sound as native input.
+        if (!encoding.HasValue ||
+            !FourChannelHapticAnalyzer.IsCompatible(fmt.Channels, fmt.SampleRate, fmt.BitsPerSample, encoding.Value))
         {
             capture.Dispose();
             throw new NotSupportedException(
@@ -78,7 +104,14 @@ public sealed class NativeDualSenseCapture : IDisposable
             throw new InvalidOperationException("Sensa output provider is not active; no silent XInput fallback.");
         }
         _sink = sink;
+        _encoding = encoding.Value;
         EndpointId = endpointId;
+        Volatile.Write(ref _leftRmsBits, 0);
+        Volatile.Write(ref _rightRmsBits, 0);
+        Volatile.Write(ref _speakerRmsBits, 0);
+        Volatile.Write(ref _leftPeakBits, 0);
+        Volatile.Write(ref _rightPeakBits, 0);
+        Interlocked.Exchange(ref _invalidSamples, 0);
         Interlocked.Exchange(ref _frames, 0);
         Interlocked.Exchange(ref _lastFrameTick, 0);
         Interlocked.Exchange(ref _leftEnergyFrames, 0);
@@ -106,36 +139,20 @@ public sealed class NativeDualSenseCapture : IDisposable
     {
         var capture = _capture;
         if (!IsCapturing || capture == null) return;
-        var fmt = capture.WaveFormat;
-        int bytes = fmt.BitsPerSample / 8;
-        int frameBytes = fmt.Channels * bytes;
-        int count = args.BytesRecorded / frameBytes;
-        if (count == 0) return;
-        Interlocked.Add(ref _frames, count);
+        // Decode with the same deterministic analyzer used by CI: 4ch source identity
+        // stays separate from speaker audio and from physical provider evidence.
+        var metrics = FourChannelHapticAnalyzer.Analyze(
+            args.Buffer.AsSpan(0, args.BytesRecorded), _encoding);
+        if (metrics.ReceivedFrames == 0) return;
+        Interlocked.Add(ref _frames, metrics.ReceivedFrames);
         Interlocked.Exchange(ref _lastFrameTick, Environment.TickCount64);
-
-        // Only channels 2 & 3 (zero-indexed) carry haptic PCM. Channel 0/1 is speaker.
-        // <=256 sample points/callback, no memory allocations proportional to PCM length.
-        int stride = Math.Max(1, (count + 255) / 256);
-        double leftEnergy = 0, rightEnergy = 0;
-        int n = 0;
-        for (int i = 0; i < count; i += stride)
-        {
-            int offset = i * frameBytes + 2 * bytes;
-            float l = bytes == 4
-                ? BitConverter.ToSingle(args.Buffer, offset)
-                : BitConverter.ToInt16(args.Buffer, offset) / 32768f;
-            float r = bytes == 4
-                ? BitConverter.ToSingle(args.Buffer, offset + bytes)
-                : BitConverter.ToInt16(args.Buffer, offset + bytes) / 32768f;
-            if (!float.IsFinite(l) || !float.IsFinite(r)) continue;
-            leftEnergy += Math.Clamp(l, -1, 1) * Math.Clamp(l, -1, 1);
-            rightEnergy += Math.Clamp(r, -1, 1) * Math.Clamp(r, -1, 1);
-            n++;
-        }
-        if (n == 0) return;
-        float la = (float)Math.Sqrt(leftEnergy / n);
-        float ra = (float)Math.Sqrt(rightEnergy / n);
+        Interlocked.Add(ref _invalidSamples, metrics.NonFiniteSamples);
+        Volatile.Write(ref _leftRmsBits, BitConverter.SingleToInt32Bits(metrics.LeftRms));
+        Volatile.Write(ref _rightRmsBits, BitConverter.SingleToInt32Bits(metrics.RightRms));
+        Volatile.Write(ref _speakerRmsBits, BitConverter.SingleToInt32Bits(metrics.SpeakerRms));
+        Volatile.Write(ref _leftPeakBits, BitConverter.SingleToInt32Bits(metrics.LeftPeak));
+        Volatile.Write(ref _rightPeakBits, BitConverter.SingleToInt32Bits(metrics.RightPeak));
+        float la = metrics.LeftRms, ra = metrics.RightRms;
         if (la > 0.01f)
         {
             Interlocked.Increment(ref _leftEnergyFrames);
@@ -156,6 +173,9 @@ public sealed class NativeDualSenseCapture : IDisposable
     {
         Volatile.Write(ref _capturing, 0);
         _sink?.Submit(0, 0);
+        Volatile.Write(ref _leftRmsBits, 0);
+        Volatile.Write(ref _rightRmsBits, 0);
+        Volatile.Write(ref _speakerRmsBits, 0);
         Volatile.Write(ref _status,
             args.Exception is null ? "Audio capture unexpectedly stopped" :
             "Audio capture stopped: " + args.Exception.Message);
@@ -169,6 +189,11 @@ public sealed class NativeDualSenseCapture : IDisposable
         _capture = null;
         _sink = null;
         EndpointId = null;
+        Volatile.Write(ref _leftRmsBits, 0);
+        Volatile.Write(ref _rightRmsBits, 0);
+        Volatile.Write(ref _speakerRmsBits, 0);
+        Volatile.Write(ref _leftPeakBits, 0);
+        Volatile.Write(ref _rightPeakBits, 0);
         if (capture != null)
         {
             capture.DataAvailable -= OnAudio;
