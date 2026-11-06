@@ -89,6 +89,28 @@
 
     <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
       <StackPanel>
+        <TextBlock Text="YÖNTEM SEÇİCİ" Foreground="#A8D8BC" FontWeight="Bold" FontSize="11"/>
+        <TextBlock Text="En uygun haptic yolunu seç" FontSize="21" FontWeight="SemiBold" Margin="0,8,0,10"/>
+        <TextBlock TextWrapping="Wrap" Foreground="#B5C4D9" Margin="0,0,0,12"
+                   Text="Özgün oyun DualSense sinyaline yaklaşmak için ilk aday PadForge Full → RW3. Ancak çıkışımız 50 Hz kayıplı Sensa prototipidir; orijinal DualSense hissi henüz doğrulanmadı."/>
+        <ComboBox x:Name="RouteCombo" Height="35" Foreground="#142039" DisplayMemberPath="DisplayName"
+                  SelectionChanged="RouteCombo_Changed"/>
+        <TextBlock x:Name="RouteStageText" TextWrapping="Wrap" Foreground="#80DBBB"
+                   FontWeight="SemiBold" Margin="0,11,0,7"/>
+        <TextBlock x:Name="RouteDetailText" TextWrapping="Wrap" Foreground="#B5C4D9"
+                   LineHeight="20" FontSize="12"/>
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <Button Content="Seçili yöntemi uygula" Style="{StaticResource ActionButton}"
+                  Background="#27665A" Click="ApplyRoute_Click" Margin="0,0,10,0"/>
+          <Button Content="Kurulum / kaynak rehberi" Style="{StaticResource ActionButton}" Click="RouteGuide_Click"/>
+        </StackPanel>
+        <TextBlock x:Name="ActiveRouteText" TextWrapping="Wrap" Foreground="#D5B88E"
+                   FontSize="11" Margin="0,11,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,16">
+      <StackPanel>
         <TextBlock Text="DURUM / DONANIM" Foreground="#9CAAC4" FontWeight="Bold" FontSize="11"/>
         <TextBlock x:Name="StatusHeading" Text="Hazır" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,5"/>
         <TextBlock x:Name="StatusDescription" TextWrapping="Wrap" Foreground="#B4C0D5" FontSize="13" LineHeight="21"/>

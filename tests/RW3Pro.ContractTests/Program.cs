@@ -84,4 +84,35 @@ Check(FourChannelHapticAnalyzer.IsCompatible(4, 48000, 16, FourChannelHapticAnal
       !FourChannelHapticAnalyzer.IsCompatible(2, 48000, 16, FourChannelHapticAnalyzer.PcmEncoding.Pcm16) &&
       !FourChannelHapticAnalyzer.IsCompatible(4, 44100, 16, FourChannelHapticAnalyzer.PcmEncoding.Pcm16),
     "Native source is exactly 4-channel 48k; no ordinary stereo fallback");
-Console.WriteLine("30 hardware-free source identity, watchdog and stereo tests passed.");
+Check(HapticRouteCatalog.All.Count == 9, "Nine persistent route preferences exist");
+Check(HapticRouteCatalog.All.Select(x => x.Route).Distinct().Count() == 9,
+    "Route identifiers are unique");
+Check(HapticRouteCatalog.Get(HapticRoute.NativePadForge).RecommendedForOriginalSource,
+    "PadForge is recommended for original input potential only");
+Check(HapticRouteCatalog.Get(HapticRoute.NativePadForge).Output.Contains("kayıplı"),
+    "Recommended input still honestly labels lossy Sensa output");
+Check(!HapticRouteCatalog.Get(HapticRoute.WwiseStereoMotionLab).CanStartInsideApp &&
+    HapticRouteCatalog.Get(HapticRoute.WwiseStereoMotionLab).Readiness == RouteReadiness.ResearchOnly,
+    "Wwise option never pretends to start live integration");
+Check(!HapticRouteCatalog.Get(HapticRoute.OfficialRazerSensaGames).OriginalDualSenseSourcePossible,
+    "Razer native games cannot be mislabeled authored Sony source");
+Check(HapticRouteCatalog.Get(HapticRoute.OfficialRazerAudioToHaptics).Mode == HapticMode.Normal,
+    "External Razer audio route does not start RW3 audio capture");
+Check(HapticRouteCatalog.Get(HapticRoute.NativeDsxPlus).IsNative,
+    "DSX virtual audio is an opt-in experimental native source");
+Check(HapticRouteCatalog.NameMayMatch(HapticRoute.NativePadForge, "PadForge DualSense Full"),
+    "PadForge candidate name hint works");
+Check(!HapticRouteCatalog.NameMayMatch(HapticRoute.NativeDsxPlus, "Realtek Speakers"),
+    "Obvious non-matching endpoint warns user");
+Check(!HapticRouteCatalog.CanStartBridge(HapticRoute.NativePadForge, true, false),
+    "No native startup without explicit source acknowledgement");
+Check(!HapticRouteCatalog.CanStartBridge(HapticRoute.NativePadForge, false, true),
+    "Incompatible 4ch endpoint cannot start");
+Check(!HapticRouteCatalog.CanStartBridge(HapticRoute.WwiseStereoMotionLab, true, true),
+    "Research-only Wwise cannot start native backend");
+Check(HapticRouteCatalog.CanStartBridge(HapticRoute.NativeUsbDualSense, true, true),
+    "Compatible native source passes to independent vendor SDK preflight");
+Check(HapticRouteCatalog.DefaultForMode(HapticMode.Audio) == HapticRoute.LocalSystemAudioXInput &&
+    HapticRouteCatalog.DefaultForMode(HapticMode.Native) == HapticRoute.NativeManualUac,
+    "Legacy mode controls resolve safely");
+Console.WriteLine("45 hardware-free evidence, route and stereo checks passed.");

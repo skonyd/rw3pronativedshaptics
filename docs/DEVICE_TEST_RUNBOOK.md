@@ -50,3 +50,6 @@ PadForge is currently the better **hypothesis** for Wolverine -> virtual DualSen
 5. Disable any competing PadForge-to-Sensa or virtual haptics-to-XInput translation while measuring RW3, otherwise duplicate feedback may confound results. Independently test PadForge's own lower-fidelity baseline as a comparison.
 6. Confirm actual game haptic origin with a reproducible scene and independently observe physical left/right vibration. Do not call API acknowledgment proof of equivalent tactile waveform.
 7. Close RW3 and restore original input mapping and virtual device settings after each A/B trial.
+
+## Route method choice (before testing)
+Use [method selection guide](ROUTE_SELECTION.md). Select PadForge for the preferred authentic-source *hypothesis*, not for guaranteed physical equivalence. For supported Razer games test official Sensa HD Games independently as the best established Razer reference. DSX+ is an alternative only if Wolverine physical-input interoperability can be established. Wwise Motion is an **independent offline waveform experiment**, not a working route for continuous native game PCM. The bridge must be explicitly acknowledged per endpoint and no third-party driver should be installed automatically.
