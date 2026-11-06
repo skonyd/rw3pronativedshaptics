@@ -95,6 +95,15 @@ public partial class MainWindow : Window
 
     private void SetMode(HapticMode requested, bool fromUser = true, HapticRoute? routeOverride = null)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            if (fromUser)
+                System.Windows.MessageBox.Show(
+                    "Aktif fiziksel A/B testi önce durduruluyor. İşlem bittikten sonra modu yeniden seçebilirsin.",
+                    "Titreşim testi durduruluyor", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         if (requested != _settings.Mode ||
             (routeOverride.HasValue && routeOverride.Value != _settings.Route))
         {
@@ -214,13 +223,17 @@ public partial class MainWindow : Window
         RefreshDevice();
     }
 
-    private void ExitCompletely()
+    private async void ExitCompletely()
     {
         _realExit = true;
         _diagnosticsTimer.Stop();
         _testLab?.Close();
         _nativeBridge?.Close();
-        _comparisonLab?.Close();
+        if (_comparisonLab != null)
+        {
+            try { await _comparisonLab.StopAndCloseAsync(); }
+            catch (Exception ex) { NoteError("Shutdown comparison", ex); }
+        }
         _rumble.Dispose();
         SetAudioPriority(false);
         _performance.Dispose();
@@ -301,6 +314,11 @@ public partial class MainWindow : Window
 
     private void Test_Click(object sender, RoutedEventArgs e)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            return;
+        }
         if (_testLab != null && _testLab.IsVisible)
         {
             _testLab.Activate();
@@ -334,6 +352,12 @@ public partial class MainWindow : Window
 
     private void NativeBridge_Click(object sender, RoutedEventArgs e)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            return;
+        }
+        _comparisonLab?.Close();
         if (_settings.Mode != HapticMode.Native) SetMode(HapticMode.Native);
         if (_nativeBridge != null && _nativeBridge.IsVisible)
         {
