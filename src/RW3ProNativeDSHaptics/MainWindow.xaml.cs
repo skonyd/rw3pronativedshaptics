@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private Forms.NotifyIcon? _tray;
     private TestLabWindow? _testLab;
     private NativeBridgeWindow? _nativeBridge;
+    private BehavioralComparisonWindow? _comparisonLab;
     private Forms.ToolStripMenuItem? _normalMenu;
     private Forms.ToolStripMenuItem? _audioMenu;
     private Forms.ToolStripMenuItem? _nativeMenu;
@@ -39,6 +40,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = _store.Load();
         _rumble.PreferredIndex = _settings.PreferredXInputSlot;
+        _settings.OutputLevelPercent = HapticOutputLevel.Limit(_settings.OutputLevelPercent);
+        _rumble.OutputLevelPercent = _settings.OutputLevelPercent;
+        OutputLevelSlider.Value = _settings.OutputLevelPercent;
+        OutputLevelLabel.Text = _settings.OutputLevelPercent + "% • yalnızca RW3 çıkışları";
         RouteCombo.ItemsSource = HapticRouteCatalog.All;
         // Older settings only saved Mode; preserve their route without auto-starting capture.
         if (_settings.Route == HapticRoute.NormalXInput && _settings.Mode != HapticMode.Normal)
@@ -90,11 +95,21 @@ public partial class MainWindow : Window
 
     private void SetMode(HapticMode requested, bool fromUser = true, HapticRoute? routeOverride = null)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            if (fromUser)
+                System.Windows.MessageBox.Show(
+                    "Aktif fiziksel A/B testi önce durduruluyor. İşlem bittikten sonra modu yeniden seçebilirsin.",
+                    "Titreşim testi durduruluyor", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         if (requested != _settings.Mode ||
             (routeOverride.HasValue && routeOverride.Value != _settings.Route))
         {
             _testLab?.Close();
             _nativeBridge?.Close();
+            _comparisonLab?.Close();
         }
         _rumble.StopAudio();
         SetAudioPriority(false);
@@ -208,12 +223,17 @@ public partial class MainWindow : Window
         RefreshDevice();
     }
 
-    private void ExitCompletely()
+    private async void ExitCompletely()
     {
         _realExit = true;
         _diagnosticsTimer.Stop();
         _testLab?.Close();
         _nativeBridge?.Close();
+        if (_comparisonLab != null)
+        {
+            try { await _comparisonLab.StopAndCloseAsync(); }
+            catch (Exception ex) { NoteError("Shutdown comparison", ex); }
+        }
         _rumble.Dispose();
         SetAudioPriority(false);
         _performance.Dispose();
@@ -226,6 +246,19 @@ public partial class MainWindow : Window
             _tray = null;
         }
         System.Windows.Application.Current.Shutdown();
+    }
+
+    private void OutputLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized) return;
+        int next = HapticOutputLevel.Limit((int)Math.Round(e.NewValue));
+        _settings.OutputLevelPercent = next;
+        _rumble.OutputLevelPercent = next;
+        _nativeBridge?.UpdateOutputLevel(next);
+        _comparisonLab?.UpdateOutputLevel(next);
+        OutputLevelLabel.Text = next + "% • yalnızca RW3 çıkışları; USB DualSense = değişmez referans";
+        try { _store.Save(_settings); }
+        catch (Exception ex) { NoteError("Output level settings", ex); }
     }
 
     private void DeviceSlot_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -281,6 +314,11 @@ public partial class MainWindow : Window
 
     private void Test_Click(object sender, RoutedEventArgs e)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            return;
+        }
         if (_testLab != null && _testLab.IsVisible)
         {
             _testLab.Activate();
@@ -291,15 +329,43 @@ public partial class MainWindow : Window
         _testLab.Show();
     }
 
+    private void Comparison_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comparisonLab?.IsVisible == true)
+        {
+            _comparisonLab.Activate();
+            return;
+        }
+        // Never run RW3's conventional rumble or native bridge against the A/B test.
+        _testLab?.Close();
+        _nativeBridge?.Close();
+        _rumble.StopAudio();
+        SetAudioPriority(false);
+        _comparisonLab = new BehavioralComparisonWindow(_settings.OutputLevelPercent)
+        {
+            Owner = this
+        };
+        _comparisonLab.Closed += (_, _) => _comparisonLab = null;
+        _comparisonLab.Show();
+        DiagnosticsService.Info("Physical dual-controller subjective A/B lab opened.");
+    }
+
     private void NativeBridge_Click(object sender, RoutedEventArgs e)
     {
+        if (_comparisonLab?.IsPlaying == true)
+        {
+            _comparisonLab.RequestStop();
+            return;
+        }
+        _comparisonLab?.Close();
         if (_settings.Mode != HapticMode.Native) SetMode(HapticMode.Native);
         if (_nativeBridge != null && _nativeBridge.IsVisible)
         {
             _nativeBridge.Activate();
             return;
         }
-        _nativeBridge = new NativeBridgeWindow(_settings.Route) { Owner = this };
+        _nativeBridge = new NativeBridgeWindow(_settings.Route, _settings.OutputLevelPercent)
+        { Owner = this };
         _nativeBridge.Closed += (_, _) => _nativeBridge = null;
         _nativeBridge.Show();
     }
@@ -504,6 +570,8 @@ public partial class MainWindow : Window
             string report = "RW3 Pro Haptics Diagnostics\n" +
                 "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\n" +
                 "Mode: " + _settings.Mode + "\n" +
+                "RW3OutputLevelPercent: " + _settings.OutputLevelPercent +
+                    " (does not modify physical DualSense PCM)\n" +
                 "SelectedRoute: " + _settings.Route + "\n" +
                 "RouteReadiness: " + HapticRouteCatalog.Get(_settings.Route).StageLabel + "\n" +
                 "Evidence: " + ProvenanceText.Text + "\n" +

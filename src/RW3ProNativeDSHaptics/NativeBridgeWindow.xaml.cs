@@ -16,9 +16,15 @@ public partial class NativeBridgeWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private CancellationTokenSource _lifetime = new();
     private bool _busy;
+    private enum SessionMode { Off, SourceOnly, SensaBridge }
+    private SessionMode _session = SessionMode.Off;
+    private int _cancelGeneration;
+    private CancellationTokenSource? _activeTest;
     private bool _leftPhysical, _rightPhysical;
     public string StatusForParent =>
         "Kaynak tercihi=" + _route +
+        " | Oturum=" + _session +
+        " | Kaynak durumu=" + NativeCaptureHealth.Describe(_source.CurrentState) +
         " | UAC haptic 3./4. kanal etkin=" + _source.IsCapturing +
         " | alınan PCM çerçevesi=" + _source.CapturedFrames +
         " | sol haptic blok=" + _source.LeftActiveBlocks +
@@ -36,9 +42,11 @@ public partial class NativeBridgeWindow : Window
             _source.LastRightEnergyTick, Environment.TickCount64);
 
 
-    public NativeBridgeWindow(HapticRoute route = HapticRoute.NativeManualUac)
+    public NativeBridgeWindow(HapticRoute route = HapticRoute.NativeManualUac,
+        int outputLevelPercent = 100)
     {
         _route = HapticRouteCatalog.IsNative(route) ? route : HapticRoute.NativeManualUac;
+        _sensa.OutputLevelPercent = outputLevelPercent;
         InitializeComponent();
         var info = HapticRouteCatalog.Get(_route);
         SelectedRouteText.Text = "Kaynak tercihi: " + info.DisplayName;
@@ -49,6 +57,9 @@ public partial class NativeBridgeWindow : Window
         _timer.Start();
         RefreshStatus();
     }
+
+    public void UpdateOutputLevel(int percent) =>
+        _sensa.OutputLevelPercent = percent;
 
     private void RefreshSources()
     {
@@ -94,6 +105,9 @@ public partial class NativeBridgeWindow : Window
         EndpointAcknowledgement.IsChecked = false;
         if (_source.IsCapturing)
         {
+            Interlocked.Increment(ref _cancelGeneration);
+            _activeTest?.Cancel();
+            _session = SessionMode.Off;
             _source.Stop();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
@@ -103,78 +117,137 @@ public partial class NativeBridgeWindow : Window
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshSources();
 
-    private async void Start_Click(object sender, RoutedEventArgs e)
+    private EndpointOption? GetApprovedEndpoint()
     {
-        if (_busy) return;
         if (EndpointPicker.SelectedItem is not EndpointOption selected)
         {
-            System.Windows.MessageBox.Show(this, "4 kanallı DualSense ses aygıtını seç.", "DualSense UAC");
-            return;
-        }
-        if (!selected.CanCapture)
-        {
             System.Windows.MessageBox.Show(this,
-                "Bu aygıt 4 kanallı 48kHz PCM16/Float32 formatını sağlamıyor. " +
-                "İşlemi başlatmadan doğru DualSense UAC/Virtual DS aygıtını seç.",
-                "UAC formatı uyumsuz", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+                "Lütfen dört kanallı DualSense UAC ses aygıtını seç.", "Ses kaynağı gerekli");
+            return null;
         }
         if (!HapticRouteCatalog.CanStartBridge(_route, selected.CanCapture,
             EndpointAcknowledgement.IsChecked == true))
         {
             System.Windows.MessageBox.Show(this,
-                "Seçtiğin 4ch/48k ses aygıtını ve haricî kaynak eşlemesini doğruladığını " +
-                "onaylamadan köprü başlatılamaz.",
+                "4ch/48k PCM16/Float32 aygıtı seçip aygıt/kaynak eşlemesini kontrol ettiğini " +
+                "işaretlemeden izleme veya aktarım başlatılamaz.",
                 "Kaynak doğrulaması gerekli", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            return null;
         }
         if (!HapticRouteCatalog.NameMayMatch(_route, selected.FriendlyName) &&
             System.Windows.MessageBox.Show(this,
-                "Ses aygıtı adı (" + selected.FriendlyName +
-                ") seçilen yöntemin tipik adıyla eşleşmiyor. " +
-                "Aygıt ismi kimlik kanıtı değildir; kendin doğruladıysan devam edebilirsin. Devam?",
+                "Aygıt adı (" + selected.FriendlyName +
+                ") seçili yönteme benzemiyor. Ad sadece ipucudur, gerçek kaynak kanıtı değildir. Devam?",
                 "Kaynak adını kontrol et", MessageBoxButton.YesNo, MessageBoxImage.Warning)
                 != MessageBoxResult.Yes)
-            return;
+            return null;
+        return selected;
+    }
+
+    private void Monitor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        EndpointOption? selected = GetApprovedEndpoint();
+        if (selected == null) return;
         if (System.Windows.MessageBox.Show(this,
-            "Deneysel sistem 48 kHz dört kanallı DualSense UAC sesini okur ve " +
-            "Razer Sensa'ya KAYIPLI sol/sağ titreşim efektleri iletir.\n\n" +
-            "Gerçek PCM birebir oynatılmaz. Test motorları düşük şiddette çalışır. Devam?",
-            "Experimental Razer bridge", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-            return;
+            "Kaynağın 4 kanallı PCM akışı yalnızca yerel olarak izlenecek. " +
+            "Razer DLL'i başlatılmayacak, motorlara komut verilmeyecek ve PCM dosyaya kaydedilmeyecek. " +
+            "Bu veri oyun kaynaklı olduğunu otomatik kanıtlamaz. Devam?",
+            "Kaynak-only gözlem", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            != MessageBoxResult.Yes) return;
 
         _busy = true;
-        StartButton.IsEnabled = false;
+        MonitorButton.IsEnabled = false;
         try
         {
+            _session = SessionMode.Off;
             _source.Stop();
             _sensa.Stop();
-            _leftPhysical = _rightPhysical = false; // previous run is not proof for this session
-            if (!_sensa.Start())
-                throw new InvalidOperationException(_sensa.Status);
-            // Engine and provider are initialized off the UI thread. Do not block window.
-            for (int i = 0; i < 25 && !_sensa.IsActive && _sensa.IsRunning; ++i)
-                await Task.Delay(80, _lifetime.Token);
-            if (!_sensa.IsActive)
-                throw new InvalidOperationException(_sensa.Status);
-            _source.Start(selected.Id, _sensa);
-            DiagnosticsService.Info("Experimental UAC route=" + _route +
-                ", endpoint=" + selected.FriendlyName +
-                "; raw PCM → stereo envelopes, not lossless or verified game provenance.");
+            _leftPhysical = _rightPhysical = false;
+            _source.Start(selected.Id);
+            _session = SessionMode.SourceOnly;
+            SourceProbeText.Text = "UAC kaynak-only izleme başladı. Stereo kaynak testi için sol/sağ düğmesini kullan.";
+            DiagnosticsService.Info("Source-only 4ch UAC started: " + selected.FriendlyName +
+                "; no vendor DLLs, no motor output.");
         }
         catch (Exception ex)
         {
-            DiagnosticsService.Error("Native bridge start", ex);
+            _session = SessionMode.Off;
             _source.Stop();
-            _sensa.Stop();
-            System.Windows.MessageBox.Show(this, ex.Message, "Native köprü başlatılamadı",
+            DiagnosticsService.Error("Source-only monitor", ex);
+            System.Windows.MessageBox.Show(this, ex.Message, "Kaynak izleme başlatılamadı",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        finally { _busy = false; StartButton.IsEnabled = true; RefreshStatus(); }
+        finally
+        {
+            _busy = false;
+            MonitorButton.IsEnabled = true;
+            RefreshStatus();
+        }
+    }
+
+    private async void Start_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        EndpointOption? selected = GetApprovedEndpoint();
+        if (selected == null) return;
+        if (System.Windows.MessageBox.Show(this,
+            "Dört kanallı DualSense UAC sesinin arka 3./4. kanalları iki ayrı Razer Sensa " +
+            "parametrik efektine KAYIPLI dönüştürülecek. Bit-perfect aktarım ve fiziksel " +
+            "sol/sağ motor eşlemesi doğrulanmadı. Devam?",
+            "Deneysel Razer köprüsü", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            != MessageBoxResult.Yes) return;
+
+        _busy = true;
+        StartButton.IsEnabled = false;
+        MonitorButton.IsEnabled = false;
+        EndpointPicker.IsEnabled = false;
+        int generation = Volatile.Read(ref _cancelGeneration);
+        try
+        {
+            _session = SessionMode.Off;
+            _source.Stop();
+            _sensa.Stop();
+            _leftPhysical = _rightPhysical = false;
+            if (!_sensa.Start())
+                throw new InvalidOperationException(_sensa.Status);
+            for (int i = 0; i < 25 && !_sensa.IsActive && _sensa.IsRunning; i++)
+                await Task.Delay(80, _lifetime.Token);
+            if (!_sensa.IsActive)
+                throw new InvalidOperationException(_sensa.Status);
+            if (generation != Volatile.Read(ref _cancelGeneration))
+                throw new OperationCanceledException("Başlatma kullanıcı tarafından durduruldu.");
+            _source.Start(selected.Id, _sensa);
+            _session = SessionMode.SensaBridge;
+            DiagnosticsService.Info("Experimental Sensa bridge route=" + _route +
+                ", endpoint=" + selected.FriendlyName +
+                "; 50Hz parametric stereo envelopes, no raw PCM fidelity assertion.");
+        }
+        catch (Exception ex)
+        {
+            _session = SessionMode.Off;
+            _source.Stop();
+            _sensa.Stop();
+            DiagnosticsService.Error("Native bridge start", ex);
+            if (ex is not OperationCanceledException)
+                System.Windows.MessageBox.Show(this, ex.Message,
+                    "Köprü başlatılamadı", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _busy = false;
+            StartButton.IsEnabled = true;
+            MonitorButton.IsEnabled = true;
+            EndpointPicker.IsEnabled = true;
+            RefreshStatus();
+        }
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
+        Interlocked.Increment(ref _cancelGeneration);
+        _activeTest?.Cancel();
+        _session = SessionMode.Off;
         _source.Stop();
         _sensa.Stop();
         _leftPhysical = _rightPhysical = false;
@@ -191,19 +264,22 @@ public partial class NativeBridgeWindow : Window
     {
         if (_busy) return;
         _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
         TestLeftButton.IsEnabled = TestRightButton.IsEnabled = false;
         string label = side == HapticTestChannel.Left ? "Sol" : "Sağ";
         try
         {
             // Prevent UAC PCM frame submission from masking isolated side pulse.
+            _session = SessionMode.Off;
             _source.Stop();
             if (!_sensa.IsActive && !_sensa.Start())
                 throw new InvalidOperationException(_sensa.Status);
             for (int i = 0; i < 25 && !_sensa.IsActive && _sensa.IsRunning; ++i)
-                await Task.Delay(80, _lifetime.Token);
+                await Task.Delay(80, testCancellation.Token);
             if (!_sensa.IsActive) throw new InvalidOperationException(_sensa.Status);
 
-            bool accepted = await _sensa.TestSideAsync(side, _lifetime.Token);
+            bool accepted = await _sensa.TestSideAsync(side, testCancellation.Token);
             bool felt = accepted && System.Windows.MessageBox.Show(this,
                 label + " Sensa parametrik efekt komutu gönderildi.\n" +
                 "Wolverine V3 Pro'nun " + label.ToLowerInvariant() +
@@ -216,6 +292,10 @@ public partial class NativeBridgeWindow : Window
                 ". Yalnızca kullanıcı bildirimi; bağımsız motor ayrımı ayrıca ölçülmeli.";
             DiagnosticsService.Info("Sensa physical " + label + " reported=" + felt);
         }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
+        }
         catch (Exception ex)
         {
             PhysicalTestText.Text = "Hata: " + ex.Message;
@@ -223,8 +303,78 @@ public partial class NativeBridgeWindow : Window
         }
         finally
         {
+            _sensa.Stop();
             _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
             TestLeftButton.IsEnabled = TestRightButton.IsEnabled = true;
+            RefreshStatus();
+        }
+    }
+
+    private async void ProbeLeft_Click(object sender, RoutedEventArgs e) =>
+        await ProbeSourceAsync(HapticTestChannel.Left);
+
+    private async void ProbeRight_Click(object sender, RoutedEventArgs e) =>
+        await ProbeSourceAsync(HapticTestChannel.Right);
+
+    private async Task ProbeSourceAsync(HapticTestChannel side)
+    {
+        if (_busy) return;
+        _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
+        ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = false;
+        string label = side == HapticTestChannel.Left ? "SOL" : "SAĞ";
+        try
+        {
+            if (_session != SessionMode.SourceOnly ||
+                !_source.IsCapturing || _source.EndpointId is not string id)
+                throw new InvalidOperationException(
+                    "Önce 'Yalnızca 4ch PCM kaynağını izle' düğmesini kullan.");
+            // Playing synthetic rear-channel PCM to a real USB DualSense may
+            // cause that controller's physical actuators to vibrate.
+            if (System.Windows.MessageBox.Show(this,
+                "Bu test seçilen USB ses aygıtına kısa SENTETİK PCM çalar. " +
+                "Fiziksel DualSense titreşebilir; RW3 Wolverine'a çıkış yapmaz. " +
+                "Bu veri oyun tarafından üretilmedi. Devam?",
+                "Sentetik USB ses oynatma onayı", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            if (!NativePcmTestPlayer.VerifyIsolatedChannel(side))
+                throw new InvalidOperationException("Sentetik test örneği kanalları karıştırıyor.");
+            long ownBefore = side == HapticTestChannel.Left
+                ? _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            long otherBefore = side == HapticTestChannel.Left
+                ? _source.RightActiveBlocks : _source.LeftActiveBlocks;
+            await NativePcmTestPlayer.PlayAsync(id, side, testCancellation.Token);
+            await Task.Delay(100, testCancellation.Token);
+            long ownAfter = side == HapticTestChannel.Left
+                ? _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            long otherAfter = side == HapticTestChannel.Left
+                ? _source.RightActiveBlocks : _source.LeftActiveBlocks;
+            bool isolated = HapticSafetyRules.IsolatedChannelObserved(
+                ownBefore, ownAfter, otherBefore, otherAfter);
+            SourceProbeText.Text = label + " sentetik PCM kaynak testi: " +
+                (isolated ? "SEÇİLEN KANAL AYRI GÖZLENDİ" : "BAŞARISIZ/KARŞI KANAL AKTİF") +
+                ". RW3 Razer'a komut vermedi; seçilen USB DualSense fiziksel olarak titreşebilir. " +
+                "Gerçek oyun kaynağı doğrulanmadı.";
+            DiagnosticsService.Info("UAC source-only side=" + side + " isolated=" + isolated +
+                " selectedDelta=" + (ownAfter - ownBefore) +
+                " oppositeDelta=" + (otherAfter - otherBefore));
+        }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
+        }
+        catch (Exception ex)
+        {
+            SourceProbeText.Text = "Kaynak-only testi başarısız: " + ex.Message;
+            DiagnosticsService.Error("UAC source-only " + side, ex);
+        }
+        finally
+        {
+            _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
+            ProbeLeftButton.IsEnabled = ProbeRightButton.IsEnabled = true;
             RefreshStatus();
         }
     }
@@ -239,11 +389,14 @@ public partial class NativeBridgeWindow : Window
     {
         if (_busy) return;
         _busy = true;
+        using var testCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _activeTest = testCancellation;
         LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = false;
         string label = side == HapticTestChannel.Left ? "SOL" : "SAĞ";
         try
         {
-            if (!_source.IsCapturing || !_sensa.IsActive || _source.EndpointId is not string id)
+            if (_session != SessionMode.SensaBridge ||
+                !_source.IsCapturing || !_sensa.IsActive || _source.EndpointId is not string id)
                 throw new InvalidOperationException(
                     "Önce 4-kanallı DualSense endpoint'ini seç ve deneysel köprüyü başlat.");
             if (!NativePcmTestPlayer.VerifyIsolatedChannel(side))
@@ -253,8 +406,8 @@ public partial class NativeBridgeWindow : Window
             long oppositeBefore = side == HapticTestChannel.Left ?
                 _source.RightActiveBlocks : _source.LeftActiveBlocks;
             int beforeRender = _sensa.EngineTicks;
-            await NativePcmTestPlayer.PlayAsync(id, side, _lifetime.Token);
-            await Task.Delay(100, _lifetime.Token);
+            await NativePcmTestPlayer.PlayAsync(id, side, testCancellation.Token);
+            await Task.Delay(100, testCancellation.Token);
             long after = side == HapticTestChannel.Left ?
                 _source.LeftActiveBlocks : _source.RightActiveBlocks;
             long oppositeAfter = side == HapticTestChannel.Left ?
@@ -282,6 +435,10 @@ public partial class NativeBridgeWindow : Window
                 " isolated=" + isolated + " provider-loop=" + rendered +
                 " physical-reported=" + felt);
         }
+        catch (OperationCanceledException)
+        {
+            DiagnosticsService.Info("Native test cancelled: " + side);
+        }
         catch (Exception ex)
         {
             FullPathTestText.Text = "Tam yol test hatası: " + ex.Message;
@@ -290,6 +447,7 @@ public partial class NativeBridgeWindow : Window
         finally
         {
             _busy = false;
+            if (ReferenceEquals(_activeTest, testCancellation)) _activeTest = null;
             LoopLeftButton.IsEnabled = LoopRightButton.IsEnabled = true;
             RefreshStatus();
         }
@@ -297,31 +455,65 @@ public partial class NativeBridgeWindow : Window
 
     private void RefreshStatus()
     {
-        bool source = _source.IsCapturing;
-        var last = _source.LastFrameTick;
-        bool recent = last != 0 && Environment.TickCount64 - last < 2500;
-        OutputStateText.Text = _sensa.Status;
-        SourceStateText.Text = "UAC source: " + _source.Status +
-            " | Captured frames: " + _source.CapturedFrames +
-            " | Last frame: " + (recent ? "recent" : "none/stale") +
-            " | Left active blocks: " + _source.LeftActiveBlocks +
-            " | Right active blocks: " + _source.RightActiveBlocks +
-            " | Speaker RMS: " + _source.SpeakerRms.ToString("F3") +
-            " | Haptic L/R RMS: " + _source.LeftRms.ToString("F3") + "/" + _source.RightRms.ToString("F3") +
-            " | Haptic L/R peaks: " + _source.LeftPeak.ToString("F3") + "/" + _source.RightPeak.ToString("F3") +
-            " | Invalid PCM samples: " + _source.InvalidSamples;
-        RenderStateText.Text = "Razer provider initialized: " + _sensa.IsActive +
-            " | Provider render ticks: " + _sensa.EngineTicks +
-            " | User-confirmed left/right pulse: " + _leftPhysical + " / " + _rightPhysical;
-        TruthStateText.Text = source && recent && _sensa.IsActive
-            ? "PROTOTYPE: UAC audio frames + Sensa parametric render (source game identity and physical fidelity NOT verified)"
-            : "Native DualSense PCM → Wolverine HD is NOT verified. No game signal or provider is currently proven.";
+        if (!_busy && _session != SessionMode.Off && !_source.IsCapturing)
+        {
+            string failure = _source.Status;
+            _session = SessionMode.Off;
+            _source.Stop();
+            _sensa.Stop();
+            _leftPhysical = _rightPhysical = false;
+            DiagnosticsService.Info("Native source lost, session stopped: " + failure);
+            SourceProbeText.Text = "UAC kaynağı durdu veya koptu: " + failure;
+        }
+        else if (!_busy && _session == SessionMode.SensaBridge && !_sensa.IsActive)
+        {
+            string failure = _sensa.Status;
+            _session = SessionMode.Off;
+            _source.Stop();
+            _sensa.Stop();
+            _leftPhysical = _rightPhysical = false;
+            DiagnosticsService.Info("Razer provider lost, capture stopped: " + failure);
+            SourceProbeText.Text = "Razer provider kullanılamıyor; kaynak durduruldu: " + failure;
+        }
+
+        NativeCaptureState state = _source.CurrentState;
+        bool recent = state is NativeCaptureState.AudioSilentOrSpeakerOnly or
+            NativeCaptureState.RearChannelEnergyObserved;
+        CaptureHealthText.Text = "Kaynak sağlığı: " + NativeCaptureHealth.Describe(state);
+        OutputStateText.Text = _session == SessionMode.SourceOnly
+            ? "SOURCE ONLY: Razer DLL'i kullanılmıyor, motor komutu gönderilmiyor."
+            : _sensa.Status;
+        SourceStateText.Text = "UAC: " + _source.Status +
+            " | PCM frame: " + _source.CapturedFrames +
+            " | L/R aktif blok: " + _source.LeftActiveBlocks + "/" + _source.RightActiveBlocks +
+            " | Speaker RMS (taze): " + (recent ? _source.SpeakerRms : 0).ToString("F3") +
+            " | Rear L/R RMS (taze): " + (recent ? _source.LeftRms : 0).ToString("F3") +
+            "/" + (recent ? _source.RightRms : 0).ToString("F3") +
+            " | Rear peaks (taze): " + (recent ? _source.LeftPeak : 0).ToString("F3") +
+            "/" + (recent ? _source.RightPeak : 0).ToString("F3") +
+            " | Geçersiz PCM: " + _source.InvalidSamples;
+        RenderStateText.Text = "Session: " + _session +
+            " | Razer provider aktif: " + _sensa.IsActive +
+            " | Render ticks: " + _sensa.EngineTicks +
+            " | Kullanıcı fiziksel sol/sağ teyidi: " + _leftPhysical + "/" + _rightPhysical;
+        TruthStateText.Text = _session switch
+        {
+            SessionMode.SourceOnly => "YALNIZCA KAYNAK: Stereo PCM izleme pasiftir. " +
+                "Sentetik kaynak testleri seçilen ses aygıtını titreştirebilir. " +
+                "RW3 Razer'a çıkış yapmaz; gerçek oyun kaynağı doğrulanmadı.",
+            SessionMode.SensaBridge => "DENEYSEL: 50Hz parametrik Razer çıkışı. " +
+                "Fiziksel stereo ayrımı ve orijinal DualSense sadakati doğrulanmadı.",
+            _ => "Native DualSense → Wolverine HD doğrulanmadı; şu anda aktif köprü oturumu yok."
+        };
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _timer.Stop();
+        Interlocked.Increment(ref _cancelGeneration);
+        _session = SessionMode.Off;
         _lifetime.Cancel();
+        _activeTest?.Cancel();
         _source.Dispose();
         _sensa.Dispose();
         _lifetime.Dispose();

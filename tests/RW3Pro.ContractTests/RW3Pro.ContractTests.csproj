@@ -13,6 +13,9 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/ChannelTestEvidence.cs" Link="ChannelTestEvidence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativeStereoFixture.cs" Link="NativeStereoFixture.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticSafetyRules.cs" Link="HapticSafetyRules.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/NativeCaptureHealth.cs" Link="NativeCaptureHealth.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticOutputLevel.cs" Link="HapticOutputLevel.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralHapticFixtures.cs" Link="BehavioralHapticFixtures.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/FourChannelHapticAnalyzer.cs" Link="FourChannelHapticAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmTestPlayer.cs" Link="NativePcmTestPlayer.cs" />
   </ItemGroup>

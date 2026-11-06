@@ -115,4 +115,58 @@ Check(HapticRouteCatalog.CanStartBridge(HapticRoute.NativeUsbDualSense, true, tr
 Check(HapticRouteCatalog.DefaultForMode(HapticMode.Audio) == HapticRoute.LocalSystemAudioXInput &&
     HapticRouteCatalog.DefaultForMode(HapticMode.Native) == HapticRoute.NativeManualUac,
     "Legacy mode controls resolve safely");
-Console.WriteLine("45 hardware-free evidence, route and stereo checks passed.");
+Check(NativeCaptureHealth.Evaluate(false, 0, 0, 0, 5000) == NativeCaptureState.Stopped,
+    "Native source status is stopped without capture");
+Check(NativeCaptureHealth.Evaluate(true, 0, 0, 0, 5000) == NativeCaptureState.WaitingForAudio,
+    "Native source awaits first WASAPI buffer");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 0, 0, 1010) == NativeCaptureState.AudioSilentOrSpeakerOnly,
+    "Silent or front-speaker-only frames cannot assert authored haptic activity");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 990, 0, 1050) == NativeCaptureState.RearChannelEnergyObserved,
+    "Active rear PCM is observed without claiming game authorship");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 990, 0, 3500) == NativeCaptureState.AudioStale,
+    "Stale callback is not reported as an active native source");
+Check(NativeCaptureHealth.Evaluate(true, 5000, 0, 0, 4000) == NativeCaptureState.AudioStale,
+    "Invalid monotonic timestamp is treated as stale");
+Check(NativeCaptureHealth.Describe(NativeCaptureState.RearChannelEnergyObserved).Contains("doğrulanmadı"),
+    "Even observed rear PCM cannot claim source provenance");
+Check(BehavioralHapticFixtures.All.Count == 10, "Ten reproducible tactile scenarios exist");
+Check(BehavioralHapticFixtures.All.Select(s => s.Id).Distinct().Count() == 10,
+    "Every behavior has one unique user-facing scenario");
+foreach (var scene in BehavioralHapticFixtures.All)
+{
+    byte[] pcm = BehavioralHapticFixtures.Generate(scene.Id);
+    int frames = scene.DurationMs * BehavioralHapticFixtures.SampleRate / 1000;
+    Check(pcm.Length == frames * BehavioralHapticFixtures.BytesPerFrame,
+        "Scene " + scene.Id + " exact 4ch 48k frame count");
+    Check(BehavioralHapticFixtures.Generate(scene.Id).AsSpan().SequenceEqual(pcm),
+        "Scene " + scene.Id + " deterministic across runs");
+    bool frontSilent = true, bounded = true;
+    for (int o = 0; o < pcm.Length; o += 8)
+    {
+        if (pcm[o] != 0 || pcm[o+1] != 0 || pcm[o+2] != 0 || pcm[o+3] != 0)
+            frontSilent = false;
+        if (Math.Abs(BitConverter.ToInt16(pcm, o + 4)) > 7300 ||
+            Math.Abs(BitConverter.ToInt16(pcm, o + 6)) > 7300)
+            bounded = false;
+    }
+    Check(frontSilent && bounded, "Scene " + scene.Id +
+        " silent speakers and <=22% haptic PCM peak");
+    var rms = BehavioralHapticFixtures.RmsWindow(pcm, frames / 3, 960);
+    Check(float.IsFinite(rms.Left) && float.IsFinite(rms.Right),
+        "Scene " + scene.Id + " has finite independent RMS envelopes");
+    Check(pcm.AsSpan(0, 4).IndexOfAnyExcept((byte)0) < 0,
+        "Scene " + scene.Id + " original reference speaker channels are silent");
+}
+Check(BehavioralHapticFixtures.Generate(HapticBehavior.Pistol)
+    .AsSpan().IndexOf((byte)0xff) >= 0, "Procedural impulse scene contains data");
+Check(BehavioralHapticFixtures.All.All(s => s.DurationMs <= 3200),
+    "All USB DualSense reference scenes are deliberately bounded in duration");
+Check(HapticOutputLevel.Limit(-5) == 0 && HapticOutputLevel.Limit(145) == 100,
+    "RW3 level control is clamped to 0-100 percent");
+Check(HapticOutputLevel.Apply(0.35f, 0) == 0 &&
+      HapticOutputLevel.Apply(0.35f, 100) == 0.35f,
+    "RW3 output gain has a safe zero and unity setting");
+Check(HapticOutputLevel.Apply(double.NaN, 100) == 0 &&
+      HapticOutputLevel.Apply(float.PositiveInfinity, 100) == 0,
+    "Nonfinite output levels cannot leak to motor APIs");
+Console.WriteLine("108+ scenario, gain and reliability assertions passed.");

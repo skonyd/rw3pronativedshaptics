@@ -18,8 +18,10 @@ public static class NativePcmTestPlayer
     {
         using var enumerator = new MMDeviceEnumerator();
         using var device = enumerator.GetDevice(endpointId);
-        if (device.AudioClient.MixFormat.Channels != 4)
-            throw new InvalidOperationException("Device does not expose 4-channel 48k UAC haptics.");
+        var format = device.AudioClient.MixFormat;
+        if (format.Channels != 4 || format.SampleRate != 48000)
+            throw new InvalidOperationException(
+                "Synthetic test requires an exact 4-channel 48 kHz UAC endpoint.");
         const int sampleRate = 48000;
         const int durationMs = 520;
         byte[] pcm = BuildFourChannelTone(side, sampleRate, durationMs);
