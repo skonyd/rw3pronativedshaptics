@@ -14,11 +14,13 @@ namespace RW3ProNativeDSHaptics;
 public sealed class NativeDualSenseCapture : IDisposable
 {
     private readonly object _captureGate = new();
-    private WasapiLoopbackCapture? _capture;
+    private WasapiCapture? _capture;
+    private int _requestedCaptureBufferMs;
     private FourChannelHapticAnalyzer.PcmEncoding _encoding;
     private SensaStereoPrototype? _sink;
     private HapticStereoRecorder? _recording;
     private RealtimeStereoPcmTransport? _realtimeTransport;
+    private Action? _transportDataArrived;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
@@ -41,6 +43,9 @@ public sealed class NativeDualSenseCapture : IDisposable
     public string Status => Volatile.Read(ref _status);
     public string? EndpointId { get; private set; }
 
+    // Requested capture buffer, NOT measured callback/game/actuator latency.
+    public int RequestedCaptureBufferMs => Volatile.Read(ref _requestedCaptureBufferMs);
+
     public HapticPcmFormat CurrentPcmFormat
     {
         get
@@ -58,7 +63,8 @@ public sealed class NativeDualSenseCapture : IDisposable
     // This link only exposes the ORIGINAL 48kHz rear PCM bytes to a
     // bounded, local, explicitly started discard/diagnostics probe.
     // It never opens Sensa hardware or calls Submit() on a vendor sink.
-    public void AttachTransport(RealtimeStereoPcmTransport transport)
+    public void AttachTransport(RealtimeStereoPcmTransport transport,
+        Action? onDataArrived = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         lock (_captureGate)
@@ -72,6 +78,7 @@ public sealed class NativeDualSenseCapture : IDisposable
             if (transport.Format != expected)
                 throw new InvalidOperationException("Stereo PCM taşımada veri formatı uyuşmuyor.");
             _realtimeTransport = transport;
+            _transportDataArrived = onDataArrived;
         }
     }
 
@@ -79,6 +86,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     {
         lock (_captureGate)
         {
+            _transportDataArrived = null;
             _realtimeTransport?.Reset();
             _realtimeTransport = null;
         }
@@ -186,14 +194,19 @@ public sealed class NativeDualSenseCapture : IDisposable
     }
 
     // A source-only probe can run without any Razer SDK DLL or controller.
-    public void Start(string endpointId, SensaStereoPrototype? sink = null)
+    public void Start(string endpointId, SensaStereoPrototype? sink = null,
+        int captureBufferMs = WasapiLoopbackBufferPolicy.DefaultRequestMs)
     {
+        captureBufferMs = WasapiLoopbackBufferPolicy.Validate(captureBufferMs);
         Stop();
         using var enumerator = new MMDeviceEnumerator();
         using var device = enumerator.GetDevice(endpointId);
         if (device.State != DeviceState.Active)
             throw new InvalidOperationException("Chosen DualSense/UAC endpoint is not active.");
-        var capture = new WasapiLoopbackCapture(device);
+        // NAudio's one-argument WasapiLoopbackCapture constructor requests
+        // 100ms. Expose 10/20/50/100ms explicit polling-buffer choices instead;
+        // the audio engine may still deliver larger periods/bursts.
+        var capture = new ConfigurableWasapiLoopbackCapture(device, captureBufferMs);
         var fmt = capture.WaveFormat;
         var encoding = ResolveEncoding(fmt);
         // Never accept ordinary stereo system sound as native input.
@@ -217,6 +230,7 @@ public sealed class NativeDualSenseCapture : IDisposable
             _encoding = encoding.Value;
         }
         EndpointId = endpointId;
+        Volatile.Write(ref _requestedCaptureBufferMs, captureBufferMs);
         Volatile.Write(ref _leftRmsBits, 0);
         Volatile.Write(ref _rightRmsBits, 0);
         Volatile.Write(ref _speakerRmsBits, 0);
@@ -240,6 +254,8 @@ public sealed class NativeDualSenseCapture : IDisposable
                 sink == null
                 ? "SOURCE-ONLY 4ch UAC monitor; no Razer output; game authorship unverified"
                 : "Four-channel UAC → experimental Sensa provider; game authorship unverified");
+            Volatile.Write(ref _status, Status + "; WASAPI buffer request " +
+                captureBufferMs + "ms, NOT measured physical latency");
         }
         catch
         {
@@ -269,6 +285,9 @@ public sealed class NativeDualSenseCapture : IDisposable
                 int frameBytes = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16 ? 8 : 16;
                 _realtimeTransport.WriteFourChannel(
                     args.Buffer.AsSpan(0, metrics.ReceivedFrames * frameBytes));
+                // Wake only the optional source-only diagnostic reader; no
+                // 20ms polling wait and no physical device output here.
+                _transportDataArrived?.Invoke();
             }
             if (_recording != null)
             {
@@ -331,7 +350,7 @@ public sealed class NativeDualSenseCapture : IDisposable
 
     public void Stop()
     {
-        WasapiLoopbackCapture? capture;
+        WasapiCapture? capture;
         lock (_captureGate)
         {
             // Stop wins even if DataAvailable has already decoded a buffer.
@@ -339,12 +358,14 @@ public sealed class NativeDualSenseCapture : IDisposable
             _sink?.Submit(0, 0);
             _recording?.Abandon();
             _recording = null;
+            _transportDataArrived = null;
             _realtimeTransport?.Reset();
             _realtimeTransport = null;
             capture = _capture;
             _capture = null;
             _sink = null;
             EndpointId = null;
+            Volatile.Write(ref _requestedCaptureBufferMs, 0);
             ClearSignalMetrics();
             Volatile.Write(ref _status, "Stopped");
         }

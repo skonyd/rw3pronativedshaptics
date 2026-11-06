@@ -64,3 +64,13 @@ Status vocabulary: **[x] implemented + software/CI tested**, **[ ] external or p
 - [ ] External physical latency/spectra/perceptual testing remains M3/M4 blocker
 
 [Technical design / UI test procedure](REALTIME_PCM_TRANSPORT.md).
+
+## Low-latency source pipeline, with honest timing (software preparation)
+- [x] Replace source-only 20ms timer/padding diagnostic with **event-driven** wake on actual WASAPI callback; consume byte-exact original stereo PCM in 240-frame (5ms) blocks.
+- [x] Record monotonic callback→reader PCM queue age (last/mean/max), oldest retained age, peak backlog and source callback gap instead of claiming motor latency.
+- [x] Offer explicit **10/20/50/100ms WASAPI loopback capture buffer requests** (default 20ms); legacy NAudio capture had requested 100ms. No automatic invisible fallback and no unsubstantiated hardware-period promise.
+- [x] Add 5/10ms deterministic latency-metric and callback notification tests, null-sink no-fake-underrun test and buffer policy checks.
+- [ ] Validate real Windows 4ch UAC callback period, actual capture buffering, CPU/FPS and waveform drops with 10ms versus 20ms settings; **20ms ring capacity is not an automatic improvement if packets are larger**.
+- [ ] Verify physical game event→Wolverine left/right Sensa latency and frequency/texture fidelity only when a licensed LIVE waveform sink exists.
+
+[Latency budget / Windows measurement steps](LATENCY_BUDGET.md).

@@ -20,6 +20,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralHapticFixtures.cs" Link="BehavioralHapticFixtures.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticStereoWave.cs" Link="HapticStereoWave.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/RealtimeStereoPcmTransport.cs" Link="RealtimeStereoPcmTransport.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/WasapiLoopbackBufferPolicy.cs" Link="WasapiLoopbackBufferPolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/FourChannelHapticAnalyzer.cs" Link="FourChannelHapticAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmTestPlayer.cs" Link="NativePcmTestPlayer.cs" />
   </ItemGroup>
