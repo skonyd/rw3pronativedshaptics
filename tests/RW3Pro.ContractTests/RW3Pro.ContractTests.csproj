@@ -18,6 +18,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/UsbGamepadClassifier.cs" Link="UsbGamepadClassifier.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralEvidenceRules.cs" Link="BehavioralEvidenceRules.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralHapticFixtures.cs" Link="BehavioralHapticFixtures.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticStereoWave.cs" Link="HapticStereoWave.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/FourChannelHapticAnalyzer.cs" Link="FourChannelHapticAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmTestPlayer.cs" Link="NativePcmTestPlayer.cs" />
   </ItemGroup>
