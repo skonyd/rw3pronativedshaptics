@@ -316,25 +316,26 @@ public partial class BehavioralComparisonWindow : Window
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (_safeToClose)
+        if (_safeToClose || (!_busy && _activePlaybackTask?.IsCompleted != false))
         {
+            // No pending async work: do not call Close() from inside Closing.
+            _safeToClose = true;
             _sensa.Submit(0, 0);
             _sensa.Dispose();
             return;
         }
-        if (_busy || _activePlaybackTask?.IsCompleted == false)
+
+        // Cancel the pending close, wait for both WASAPI and provider loops to
+        // stop, then issue a *new* Close after the async work has completed.
+        e.Cancel = true;
+        if (_waitingToClose) return;
+        _waitingToClose = true;
+        PlayButton.IsEnabled = false;
+        RequestStop();
+        if (_activePlaybackTask != null)
         {
-            e.Cancel = true;
-            if (_waitingToClose) return;
-            _waitingToClose = true;
-            PlayButton.IsEnabled = false;
-            _running?.Cancel();
-            _sensa.Submit(0, 0);
-            if (_activePlaybackTask != null)
-            {
-                try { await _activePlaybackTask; }
-                catch (Exception ex) { DiagnosticsService.Error("A/B shutdown wait", ex); }
-            }
+            try { await _activePlaybackTask; }
+            catch (Exception ex) { DiagnosticsService.Error("A/B shutdown wait", ex); }
         }
         _safeToClose = true;
         Close();
