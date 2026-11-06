@@ -16,6 +16,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     private WasapiLoopbackCapture? _capture;
     private SensaStereoPrototype? _sink;
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
+    private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _capturing;
     private string _status = "Not started";
     public bool IsCapturing => Volatile.Read(ref _capturing) == 1;
@@ -23,6 +24,8 @@ public sealed class NativeDualSenseCapture : IDisposable
     public long LastFrameTick => Interlocked.Read(ref _lastFrameTick);
     public long LeftActiveBlocks => Interlocked.Read(ref _leftEnergyFrames);
     public long RightActiveBlocks => Interlocked.Read(ref _rightEnergyFrames);
+    public long LastLeftEnergyTick => Interlocked.Read(ref _lastLeftEnergyTick);
+    public long LastRightEnergyTick => Interlocked.Read(ref _lastRightEnergyTick);
     public string Status => Volatile.Read(ref _status);
     public string? EndpointId { get; private set; }
 
@@ -80,6 +83,8 @@ public sealed class NativeDualSenseCapture : IDisposable
         Interlocked.Exchange(ref _lastFrameTick, 0);
         Interlocked.Exchange(ref _leftEnergyFrames, 0);
         Interlocked.Exchange(ref _rightEnergyFrames, 0);
+        Interlocked.Exchange(ref _lastLeftEnergyTick, 0);
+        Interlocked.Exchange(ref _lastRightEnergyTick, 0);
         _capture = capture;
         capture.DataAvailable += OnAudio;
         capture.RecordingStopped += OnStopped;
@@ -131,8 +136,16 @@ public sealed class NativeDualSenseCapture : IDisposable
         if (n == 0) return;
         float la = (float)Math.Sqrt(leftEnergy / n);
         float ra = (float)Math.Sqrt(rightEnergy / n);
-        if (la > 0.01f) Interlocked.Increment(ref _leftEnergyFrames);
-        if (ra > 0.01f) Interlocked.Increment(ref _rightEnergyFrames);
+        if (la > 0.01f)
+        {
+            Interlocked.Increment(ref _leftEnergyFrames);
+            Interlocked.Exchange(ref _lastLeftEnergyTick, Environment.TickCount64);
+        }
+        if (ra > 0.01f)
+        {
+            Interlocked.Increment(ref _rightEnergyFrames);
+            Interlocked.Exchange(ref _lastRightEnergyTick, Environment.TickCount64);
+        }
 
         // Lossy conversion: 48k stereo PCM → ~50Hz parametric envelope.
         // Not bit-perfect transfer or guaranteed side-specific physical response.

@@ -57,6 +57,7 @@ public sealed class SensaStereoPrototype : IDisposable
     private int _providerActive, _renderTicks;
     private string _status = "Stopped";
     private readonly object _lock = new();
+    private readonly object _lifecycle = new();
 
     public bool IsActive => Volatile.Read(ref _providerActive) == 1;
     public int EngineTicks => Volatile.Read(ref _renderTicks);
@@ -75,29 +76,33 @@ public sealed class SensaStereoPrototype : IDisposable
 
     public bool Start()
     {
-        if (IsRunning) return true;
-        if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        lock (_lifecycle)
         {
-            Report("Only Windows x64 with official Interhaptics binaries is supported.");
-            return false;
+            // Never re-initialize a process-global HAR engine while the old worker
+            // may still be rendering or cleaning up native resources.
+            if (_worker?.IsAlive == true)
+                return Volatile.Read(ref _stop) == 0;
+            _worker = null;
+            if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            {
+                Report("Only Windows x64 with official Interhaptics binaries is supported.");
+                return false;
+            }
+            string har = Path.Combine(AppContext.BaseDirectory, "HAR.dll");
+            string provider = Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll");
+            if (!File.Exists(har) || !File.Exists(provider))
+            {
+                Report("Official HAR.dll and Interhaptics.RazerProvider.dll not found beside app. " +
+                    "Obtain them from the licensed WYVRN SDK, then restart.");
+                return false;
+            }
+            Volatile.Write(ref _stop, 0);
+            Volatile.Write(ref _providerActive, 0);
+            Volatile.Write(ref _renderTicks, 0);
+            _worker = new Thread(Run) { IsBackground = true, Name = "RW3-SensaStereo" };
+            _worker.Start();
+            return true;
         }
-        // Do not probe arbitrary PATH search results or load untrusted library names.
-        // Users must obtain both from the official WYVRN Interhaptics SDK and place them
-        // next to app executable. No redistributing vendor binaries.
-        string har = Path.Combine(AppContext.BaseDirectory, "HAR.dll");
-        string provider = Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll");
-        if (!File.Exists(har) || !File.Exists(provider))
-        {
-            Report("Official HAR.dll and Interhaptics.RazerProvider.dll not found beside app. " +
-                "Obtain them from the licensed WYVRN SDK, then restart.");
-            return false;
-        }
-        Volatile.Write(ref _stop, 0);
-        Volatile.Write(ref _providerActive, 0);
-        Volatile.Write(ref _renderTicks, 0);
-        _worker = new Thread(Run) { IsBackground = true, Name = "RW3-SensaStereo" };
-        _worker.Start();
-        return true;
     }
 
     public void Submit(float left, float right)
@@ -134,6 +139,7 @@ public sealed class SensaStereoPrototype : IDisposable
             Volatile.Write(ref _providerActive, 1);
             Report("Razer provider initialized (physical LEFT/RIGHT haptics NOT YET verified)");
 
+            int missingProviderTicks = 0;
             while (Volatile.Read(ref _stop) == 0)
             {
                 bool fresh = Environment.TickCount64 - Interlocked.Read(ref _lastSignalTick) <= 140;
@@ -144,8 +150,14 @@ public sealed class SensaStereoPrototype : IDisposable
                 Engine.ComputeAllEvents(clock.Elapsed.TotalSeconds);
                 if (Provider.ProviderIsPresent())
                 {
+                    missingProviderTicks = 0;
                     Provider.ProviderRenderHaptics();
                     Interlocked.Increment(ref _renderTicks);
+                }
+                else if (++missingProviderTicks >= 100)
+                {
+                    Report("Razer provider absent for 2 seconds; native output stopped safely.");
+                    break;
                 }
                 Thread.Sleep(TickMs);
             }
@@ -191,11 +203,17 @@ public sealed class SensaStereoPrototype : IDisposable
     {
         Volatile.Write(ref _stop, 1);
         Submit(0, 0);
-        var worker = _worker;
-        if (worker == null) return;
-        // Avoid killing a native provider thread. Stop must not block the UI indefinitely.
-        if (!worker.Join(1800)) Report("Native provider stop pending; background worker still shutting down");
-        _worker = null;
+        Thread? worker;
+        lock (_lifecycle) worker = _worker;
+        if (worker == null || worker == Thread.CurrentThread) return;
+        // On timeout retain the live worker reference; Start must never spawn a second one.
+        if (!worker.Join(1800))
+        {
+            Report("Native provider stop pending; new start blocked until old worker has exited");
+            return;
+        }
+        lock (_lifecycle)
+            if (ReferenceEquals(_worker, worker)) _worker = null;
     }
 
     public void Dispose() => Stop();

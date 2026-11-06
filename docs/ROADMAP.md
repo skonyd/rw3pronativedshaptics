@@ -57,3 +57,14 @@
 - [ ] Windows signed release if signing certificate is available
 
 Prioritize proving the Sensa driver output contract **before** invasive virtual device work.
+
+## Test-readiness engineering increment
+- [x] Source fix for ambiguous WPF/WinForms application and MessageBox symbols
+- [x] Strict GitHub Actions exit-code handling and portable executable self-test step
+- [x] Independent safety watchdog for stalled WASAPI DataAvailable, lock against stop/callback races
+- [x] Interhaptics worker restart guard; stop timeout retains live thread reference
+- [x] Recent channel energy timestamps and negative opposite-channel isolation check
+- [x] New hardware-free contract assertions and manual hardware acceptance runbook
+- [ ] Observe Windows Actions successful build + portable/installer artifact; run logs must be inspected
+- [ ] Real Windows 11 and Wolverine / DualSense smoke and physical latency tests
+- [ ] Prove lossless stereo waveform sink (not currently implemented)

@@ -40,6 +40,9 @@ public sealed class XInputHaptics : IDisposable
     [DllImport("xinput1_4.dll", EntryPoint = "XInputSetState")]
     private static extern uint XInputSetState(uint userIndex, ref XInputVibration vibration);
 
+    private readonly object _motorGate = new();
+    private Timer? _silenceWatchdog;
+    private int _motorNonzero;
     private int _preferredIndex = -1;
     public int PreferredIndex
     {
@@ -88,6 +91,8 @@ public sealed class XInputHaptics : IDisposable
 
     private bool SendMotor(int index, double strong, double weak)
     {
+        lock (_motorGate)
+        {
         if (index < 0) return false;
         var vibration = new XInputVibration
         {
@@ -102,6 +107,7 @@ public sealed class XInputHaptics : IDisposable
                 Interlocked.Exchange(ref _lastOutputTick, Environment.TickCount64);
                 if (strong > 0.025) Interlocked.Increment(ref _leftOutputAck);
                 if (weak > 0.025) Interlocked.Increment(ref _rightOutputAck);
+                Volatile.Write(ref _motorNonzero, strong > 0 || weak > 0 ? 1 : 0);
                 return true;
             }
             Interlocked.Increment(ref _outputRejected);
@@ -113,6 +119,25 @@ public sealed class XInputHaptics : IDisposable
             Interlocked.Exchange(ref _lastError, error.Message);
         }
         return false;
+        }
+    }
+
+    /// <summary>Fail-safe stop even if WASAPI stops calling DataAvailable during silence.</summary>
+    private void CheckAudioWatchdog()
+    {
+        if (!HapticSafetyRules.MustZeroStaleMotor(
+                Volatile.Read(ref _captureFlag) == 1,
+                Volatile.Read(ref _motorNonzero) == 1,
+                Interlocked.Read(ref _lastAudioTick), Environment.TickCount64))
+            return;
+        lock (_motorGate)
+        {
+            if (HapticSafetyRules.MustZeroStaleMotor(
+                    Volatile.Read(ref _captureFlag) == 1,
+                    Volatile.Read(ref _motorNonzero) == 1,
+                    Interlocked.Read(ref _lastAudioTick), Environment.TickCount64))
+                SendMotor(Volatile.Read(ref _selectedIndex), 0, 0);
+        }
     }
 
     /// <summary>Test one conventional XInput motor. Does not address Sensa VCM directly.</summary>
@@ -195,6 +220,9 @@ public sealed class XInputHaptics : IDisposable
         Volatile.Write(ref _captureFlag, 1);
         capture.DataAvailable += OnAudioData;
         capture.RecordingStopped += OnRecordingStopped;
+        _silenceWatchdog = new Timer(
+            static state => ((XInputHaptics)state!).CheckAudioWatchdog(),
+            this, 100, 100);
         try { capture.StartRecording(); }
         catch
         {
@@ -273,14 +301,20 @@ public sealed class XInputHaptics : IDisposable
         if (now - Interlocked.Read(ref _lastUpdate) < 50) return;
         Interlocked.Exchange(ref _lastUpdate, now);
         if (Volatile.Read(ref _captureFlag) != 1) return;
-        SendMotor(Volatile.Read(ref _selectedIndex),
-            Math.Min(0.36, rmsLeft * 2.5),
-            Math.Min(0.25, rmsRight * 2.5));
+        lock (_motorGate)
+        {
+            // StopAudio must win over a callback already in flight.
+            if (Volatile.Read(ref _captureFlag) != 1) return;
+            SendMotor(Volatile.Read(ref _selectedIndex),
+                Math.Min(0.36, rmsLeft * 2.5),
+                Math.Min(0.25, rmsRight * 2.5));
+        }
     }
 
     public void StopAudio()
     {
         Volatile.Write(ref _captureFlag, 0);
+        Interlocked.Exchange(ref _silenceWatchdog, null)?.Dispose();
         var capture = _capture;
         _capture = null;
         int index = Volatile.Read(ref _selectedIndex);
@@ -293,7 +327,10 @@ public sealed class XInputHaptics : IDisposable
             try { capture.StopRecording(); } catch { }
             capture.Dispose();
         }
-        try { SendMotor(index, 0, 0); } catch { }
+        lock (_motorGate)
+        {
+            try { SendMotor(index, 0, 0); } catch { }
+        }
     }
 
     public void Dispose() => StopAudio();

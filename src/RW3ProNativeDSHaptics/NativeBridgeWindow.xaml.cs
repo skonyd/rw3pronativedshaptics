@@ -27,9 +27,9 @@ public partial class NativeBridgeWindow : Window
         ". Gerçek oyun kaynağı ve bit-perfect aktarım DOĞRULANMADI.";
 
     public bool HasRecentHapticChannelSamples =>
-        _source.IsCapturing && _source.LastFrameTick > 0 &&
-        Environment.TickCount64 - _source.LastFrameTick < 2500 &&
-        (_source.LeftActiveBlocks > 0 || _source.RightActiveBlocks > 0);
+        HapticSafetyRules.HasRecentChannelEnergy(
+            _source.IsCapturing, _source.LastLeftEnergyTick,
+            _source.LastRightEnergyTick, Environment.TickCount64);
 
 
     public NativeBridgeWindow()
@@ -72,10 +72,10 @@ public partial class NativeBridgeWindow : Window
         if (_busy) return;
         if (EndpointPicker.SelectedItem is not EndpointOption selected)
         {
-            MessageBox.Show(this, "4 kanallı DualSense ses aygıtını seç.", "DualSense UAC");
+            System.Windows.MessageBox.Show(this, "4 kanallı DualSense ses aygıtını seç.", "DualSense UAC");
             return;
         }
-        if (MessageBox.Show(this,
+        if (System.Windows.MessageBox.Show(this,
             "Deneysel sistem 48 kHz dört kanallı DualSense UAC sesini okur ve " +
             "Razer Sensa'ya KAYIPLI sol/sağ titreşim efektleri iletir.\n\n" +
             "Gerçek PCM birebir oynatılmaz. Test motorları düşük şiddette çalışır. Devam?",
@@ -88,6 +88,7 @@ public partial class NativeBridgeWindow : Window
         {
             _source.Stop();
             _sensa.Stop();
+            _leftPhysical = _rightPhysical = false; // previous run is not proof for this session
             if (!_sensa.Start())
                 throw new InvalidOperationException(_sensa.Status);
             // Engine and provider are initialized off the UI thread. Do not block window.
@@ -103,7 +104,7 @@ public partial class NativeBridgeWindow : Window
             DiagnosticsService.Error("Native bridge start", ex);
             _source.Stop();
             _sensa.Stop();
-            MessageBox.Show(this, ex.Message, "Native köprü başlatılamadı",
+            System.Windows.MessageBox.Show(this, ex.Message, "Native köprü başlatılamadı",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally { _busy = false; StartButton.IsEnabled = true; RefreshStatus(); }
@@ -113,6 +114,7 @@ public partial class NativeBridgeWindow : Window
     {
         _source.Stop();
         _sensa.Stop();
+        _leftPhysical = _rightPhysical = false;
         RefreshStatus();
     }
 
@@ -139,7 +141,7 @@ public partial class NativeBridgeWindow : Window
             if (!_sensa.IsActive) throw new InvalidOperationException(_sensa.Status);
 
             bool accepted = await _sensa.TestSideAsync(side, _lifetime.Token);
-            bool felt = accepted && MessageBox.Show(this,
+            bool felt = accepted && System.Windows.MessageBox.Show(this,
                 label + " Sensa parametrik efekt komutu gönderildi.\n" +
                 "Wolverine V3 Pro'nun " + label.ToLowerInvariant() +
                 " tarafında titreşimi bizzat hissettin mi?",
@@ -185,28 +187,37 @@ public partial class NativeBridgeWindow : Window
                 throw new InvalidOperationException("Sentetik test dalga biçiminde kanallar karışmış!");
             long before = side == HapticTestChannel.Left ?
                 _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            long oppositeBefore = side == HapticTestChannel.Left ?
+                _source.RightActiveBlocks : _source.LeftActiveBlocks;
             int beforeRender = _sensa.EngineTicks;
             await NativePcmTestPlayer.PlayAsync(id, side, _lifetime.Token);
             await Task.Delay(100, _lifetime.Token);
             long after = side == HapticTestChannel.Left ?
                 _source.LeftActiveBlocks : _source.RightActiveBlocks;
+            long oppositeAfter = side == HapticTestChannel.Left ?
+                _source.RightActiveBlocks : _source.LeftActiveBlocks;
             bool observed = after > before;
+            bool isolated = HapticSafetyRules.IsolatedChannelObserved(
+                before, after, oppositeBefore, oppositeAfter);
             bool rendered = _sensa.IsActive && _sensa.EngineTicks > beforeRender;
-            bool felt = observed && rendered && MessageBox.Show(this,
+            bool felt = observed && isolated && rendered && System.Windows.MessageBox.Show(this,
                 label + " haptic kanalı sentetik UAC PCM gönderdi.\n" +
                 "PCM kanalda görüldü: " + observed + "\n" +
-                "Razer motor efekt render çağrıları ilerledi: " + rendered + "\n\n" +
+                "Karşı kanal sessiz kaldı: " + isolated + "\n" +
+                "Razer provider render döngüsü ilerledi: " + rendered + "\n\n" +
                 "Wolverine kolunda " + label + " tarafta titreşim hissettin mi?\n" +
                 "(Bu bir oyun efekti değildir ve ham PCM aktarımı değildir.)",
                 "4-channel UAC → Sensa full path",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
             FullPathTestText.Text = label + " test: UAC kaynak=" + (observed ? "ALINDI" : "YOK") +
-                " | Sensa render=" + (rendered ? "ÇAĞRILDI" : "YOK") +
+                " | Karşı kanal izolasyonu=" + (isolated ? "EVET" : "HAYIR") +
+                " | Sensa render döngüsü=" + (rendered ? "ÇAĞRILDI" : "YOK") +
                 " | Kullanıcı fiziksel his=" + (felt ? "EVET" : "HAYIR") +
                 " | Dalga sadakati=DOĞRULANMADI";
             DiagnosticsService.Info("Full UAC->Sensa " + label + " observed=" + observed +
-                " provider-rendered=" + rendered + " physical-reported=" + felt);
+                " isolated=" + isolated + " provider-loop=" + rendered +
+                " physical-reported=" + felt);
         }
         catch (Exception ex)
         {

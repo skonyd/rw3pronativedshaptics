@@ -30,10 +30,21 @@ jobs:
       - name: Build Windows desktop application
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           dotnet restore src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj
+          if ($LASTEXITCODE -ne 0) { throw "Restore failed" }
           dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Contract tests failed" }
           dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release --no-restore -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw "Windows WPF build failed" }
           dotnet publish src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.version }} -o publish
+          if ($LASTEXITCODE -ne 0) { throw "Windows publish failed" }
+          if (-not (Test-Path publish/RW3ProNativeDSHaptics.exe)) { throw "Published executable missing" }
+      - name: Smoke test packaged application without hardware
+        shell: pwsh
+        run: |
+          & ./publish/RW3ProNativeDSHaptics.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Portable executable self-test failed" }
       - name: Prepare portable ZIP
         shell: pwsh
         run: |

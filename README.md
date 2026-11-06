@@ -47,3 +47,9 @@ Automated provenance contract checks: `dotnet run --project tests/RW3Pro.Contrac
 
 ## AI handoff
 Start at [AGENTS.md](AGENTS.md); it contains user intent, evidence standards and what is still unproven.
+
+## Test readiness and CI
+
+The `main` branch Windows workflow runs contract checks, a WPF Release build, a self-contained win-x64 publish, and a non-interactive `--self-test` of the published executable before packaging the ZIP and installer. Synthetic tests run without any controller; **physical Wolverine/Interhaptics behaviour still requires manual acceptance**.
+
+See [Windows hardware acceptance runbook](docs/DEVICE_TEST_RUNBOOK.md) for detailed steps, including stopping motors on audio silence, real 4-channel endpoint isolation and game-signal provenance. The Audio-to-Haptics backend has an independent 250ms silence watchdog plus a 100ms polling timer, and the experimental Sensa engine will not launch a second worker while an older worker is shutting down. These are source safeguards; validate on actual hardware before treating them as production proven.
