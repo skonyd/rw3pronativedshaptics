@@ -286,4 +286,127 @@ try { new HapticStereoRecorder(HapticPcmFormat.Float32, 11);
     throw new Exception("Recording window can exceed hard limit"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: capture length <=10s"); }
 Console.WriteLine("Stereo 48k WAV export and bounded opt-in recording passed.");
+
+// ===== Loss-visible raw 48k stereo transport (NO Razer output or PCM DSP) =====
+var ring = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 20);
+Check(ring.CapacityFrames == 960 && ring.Snapshot().CapacityMs == 20,
+    "Raw PCM ring is capped to exactly 20 ms of 48k stereo source frames");
+byte[] sourceFrames = new byte[1200 * 8];
+for (int i = 0; i < 1200; ++i)
+{
+    BitConverter.GetBytes(unchecked((short)(i + 1))).CopyTo(sourceFrames, i * 8 + 4);
+    BitConverter.GetBytes(unchecked((short)-(i + 1))).CopyTo(sourceFrames, i * 8 + 6);
+    sourceFrames[i * 8] = 0xCA; // front/speaker must NEVER be forwarded
+}
+byte[] expectedStereo = HapticStereoWave.ExtractRear(
+    sourceFrames, HapticPcmFormat.Signed16);
+ring.WriteFourChannel(sourceFrames);
+var state = ring.Snapshot();
+Check(state.OfferedFrames == 1200 && state.DroppedFrames == 240 &&
+      state.BufferedFrames == 960 && state.UnderrunFrames == 0,
+    "Oversized input drops exactly the oldest frames and reports every lost frame");
+byte[] latestStereo = new byte[960 * 4];
+Check(ring.ReadStereo(latestStereo) == 960 &&
+      latestStereo.AsSpan().SequenceEqual(expectedStereo.AsSpan(240 * 4)),
+    "Overflow preserves the newest original PCM16 rear-channel bits and order");
+byte[] zeroPadded = Enumerable.Repeat((byte)0xFD, 12 * 4).ToArray();
+Check(ring.ReadStereo(zeroPadded) == 0 &&
+      zeroPadded.All(b => b == 0) && ring.Snapshot().UnderrunFrames == 12,
+    "Empty consumer read zero-fills instead of replaying stale original haptic frames");
+state = ring.Snapshot();
+Check(state.OfferedFrames == state.DeliveredFrames +
+      state.DroppedFrames + state.BufferedFrames,
+    "Every offered frame is accounted for as delivered, dropped or buffered");
+ring.Reset();
+state = ring.Snapshot();
+Check(state.OfferedFrames == 0 && state.UnderrunFrames == 0 &&
+      state.DroppedFrames == 0 && state.BufferedFrames == 0,
+    "Disconnect/reset clears buffer and all local trace counters");
+var chunkRing = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 20);
+chunkRing.WriteFourChannel(sourceFrames.AsSpan(0, 400 * 8));
+byte[] firstChunk = new byte[100 * 4];
+Check(chunkRing.ReadStereo(firstChunk) == 100 &&
+      firstChunk.AsSpan().SequenceEqual(expectedStereo.AsSpan(0, 100 * 4)),
+    "First bounded drain returns unchanged stereo frames");
+chunkRing.WriteFourChannel(sourceFrames.AsSpan(400 * 8, 500 * 8));
+byte[] wrappedChunk = new byte[800 * 4];
+Check(chunkRing.ReadStereo(wrappedChunk) == 800 &&
+      wrappedChunk.AsSpan().SequenceEqual(expectedStereo.AsSpan(100 * 4, 800 * 4)),
+    "Crossing ring write/read boundaries preserves exact left/right PCM and order");
+var chunkStats = chunkRing.Snapshot();
+Check(chunkStats.OfferedFrames == 900 && chunkStats.DeliveredFrames == 900 &&
+      chunkStats.DroppedFrames == 0 && chunkStats.BufferedMs == 0,
+    "No false drops in a near-capacity burst+drain sequence");
+var evictRing = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 20);
+evictRing.WriteFourChannel(sourceFrames.AsSpan(0, 700 * 8));
+evictRing.WriteFourChannel(sourceFrames.AsSpan(700 * 8, 500 * 8));
+Check(evictRing.Snapshot().DroppedFrames == 240 &&
+      evictRing.ReadStereo(latestStereo) == 960 &&
+      latestStereo.AsSpan().SequenceEqual(expectedStereo.AsSpan(240 * 4)),
+    "Overflow from previously buffered frames evicts oldest without mixing speaker channels");
+try { ring.WriteFourChannel(new byte[9]); throw new Exception("Partial 4ch accepted"); }
+catch (ArgumentException) { Console.WriteLine("PASS: malformed 4ch frame rejected"); }
+try { ring.ReadStereo(new byte[3]); throw new Exception("Partial stereo accepted"); }
+catch (ArgumentException) { Console.WriteLine("PASS: malformed stereo frame rejected"); }
+try { new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 510);
+    throw new Exception("Unbounded ring accepted"); }
+catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: ring bounded to 500ms"); }
+var floatTransport = new RealtimeStereoPcmTransport(HapticPcmFormat.Float32, 20);
+var floatInputs = new byte[3 * 16];
+BitConverter.GetBytes(int.MinValue).CopyTo(floatInputs, 8); // negative zero
+BitConverter.GetBytes(0x7fc00001).CopyTo(floatInputs, 12); // NaN payload kept as SOURCE bytes
+BitConverter.GetBytes(0x7f800000).CopyTo(floatInputs, 24); // +Inf kept as SOURCE bytes
+BitConverter.GetBytes(0x3f99999a).CopyTo(floatInputs, 28);
+floatTransport.WriteFourChannel(floatInputs);
+byte[] floatCopied = new byte[3 * 8];
+Check(floatTransport.ReadStereo(floatCopied) == 3 &&
+      floatCopied.AsSpan().SequenceEqual(
+          HapticStereoWave.ExtractRear(floatInputs, HapticPcmFormat.Float32)),
+    "Float32 raw transport preserves exact source bit patterns including IEEE payloads");
+Check(StereoPcmDiscardProbe.ChunkMs == 20 &&
+      RealtimeStereoPcmTransport.SampleRate * StereoPcmDiscardProbe.ChunkMs / 1000 == 960,
+    "20ms consume chunks contain 960 genuine PCM frames, NOT one 50Hz envelope value");
+
+// Concurrency stress: independently scheduled writer/reader may incur loss but
+// must not generate torn stereo pairs or unaccounted source frames.
+var concurrencyRing = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 40);
+byte[] concurrencyInput = new byte[96 * 8];
+for (int i = 0; i < 96; i++)
+{
+    short left = (short)(100 + i);
+    BitConverter.GetBytes(left).CopyTo(concurrencyInput, i * 8 + 4);
+    BitConverter.GetBytes((short)-left).CopyTo(concurrencyInput, i * 8 + 6);
+}
+int torn = 0;
+var writerTask = Task.Run(() =>
+{
+    for (int i = 0; i < 200; ++i)
+        concurrencyRing.WriteFourChannel(concurrencyInput);
+});
+var readerTask = Task.Run(() =>
+{
+    byte[] output = new byte[96 * 4];
+    for (int i = 0; i < 200; ++i)
+    {
+        int validFrames = concurrencyRing.ReadStereo(output);
+        for (int j = 0; j < validFrames; ++j)
+        {
+            short left = BitConverter.ToInt16(output, j * 4);
+            short right = BitConverter.ToInt16(output, j * 4 + 2);
+            if (left < 100 || left > 195 || right != -left)
+                Interlocked.Increment(ref torn);
+        }
+        if (output.AsSpan(validFrames * 4).IndexOfAnyExcept((byte)0) != -1)
+            Interlocked.Increment(ref torn);
+    }
+});
+Task.WaitAll(writerTask, readerTask);
+var concurrentStats = concurrencyRing.Snapshot();
+Check(torn == 0 &&
+      concurrentStats.OfferedFrames == concurrentStats.DeliveredFrames +
+          concurrentStats.DroppedFrames + concurrentStats.BufferedFrames,
+    "Concurrent producer/consumer never tears stereo PCM samples or conceals dropped frames");
+concurrencyRing.Reset();
+Console.WriteLine("Bounded 48k stereo PCM realtime transport identity, zero-fill and concurrency passed.");
+
 Console.WriteLine("USB PnP, subjective A/B and high-fidelity stereo WAV contract suite passed.");
