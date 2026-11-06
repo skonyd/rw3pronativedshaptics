@@ -363,9 +363,68 @@ Check(floatTransport.ReadStereo(floatCopied) == 3 &&
       floatCopied.AsSpan().SequenceEqual(
           HapticStereoWave.ExtractRear(floatInputs, HapticPcmFormat.Float32)),
     "Float32 raw transport preserves exact source bit patterns including IEEE payloads");
-Check(StereoPcmDiscardProbe.ChunkMs == 20 &&
-      RealtimeStereoPcmTransport.SampleRate * StereoPcmDiscardProbe.ChunkMs / 1000 == 960,
-    "20ms consume chunks contain 960 genuine PCM frames, NOT one 50Hz envelope value");
+Check(StereoPcmDiscardProbe.ChunkMs == 5 &&
+      StereoPcmDiscardProbe.ChunkFrames == 240 &&
+      RealtimeStereoPcmTransport.SampleRate * StereoPcmDiscardProbe.ChunkMs / 1000 == 240,
+    "Event-driven diagnostic drains 240 original 48k frames per 5ms chunk, NOT a 50Hz envelope");
+
+// Latency accounting uses high-resolution monotonic callback and dequeue ticks;
+// these do NOT include game audio production, WASAPI capture, driver or motor.
+long tickStart = System.Diagnostics.Stopwatch.GetTimestamp();
+long FiveMsTicks = System.Diagnostics.Stopwatch.Frequency / 200;
+long TenMsTicks = System.Diagnostics.Stopwatch.Frequency / 100;
+var ageRing = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 40);
+ageRing.WriteFourChannel(sourceFrames.AsSpan(0, 8), tickStart);
+ageRing.WriteFourChannel(sourceFrames.AsSpan(8, 8), tickStart + FiveMsTicks);
+var queuedBefore = ageRing.Snapshot(tickStart + TenMsTicks);
+Check(Math.Abs(queuedBefore.OldestBufferedAgeMs - 10.0) < 0.2 &&
+      Math.Abs(queuedBefore.LastSourceGapMs - 5.0) < 0.2 &&
+      Math.Abs(queuedBefore.SinceLastSourceMs - 5.0) < 0.2 &&
+      queuedBefore.PeakBufferedFrames == 2,
+    "Exact callback gaps and oldest queue residence are reported independently from capacity");
+byte[] agedStereo = new byte[2 * 4];
+Check(ageRing.ReadStereo(agedStereo, tickStart + TenMsTicks) == 2 &&
+      agedStereo.AsSpan().SequenceEqual(expectedStereo.AsSpan(0, agedStereo.Length)),
+    "Latency metrics never rewrite original source stereo sample bits");
+var ageSnapshot = ageRing.Snapshot(tickStart + TenMsTicks);
+Check(Math.Abs(ageSnapshot.MaxTransitMs - 10.0) < 0.2 &&
+      Math.Abs(ageSnapshot.LastTransitMs - 5.0) < 0.2 &&
+      Math.Abs(ageSnapshot.MeanTransitMs - 7.5) < 0.2 &&
+      ageSnapshot.OldestBufferedAgeMs == 0 &&
+      ageSnapshot.DeliveredFrames == 2 &&
+      ageSnapshot.DroppedFrames == 0,
+    "Average/peak callback-to-reader PCM residence measured with deterministic monotonic ticks");
+ageRing.Reset();
+var ageAfterReset = ageRing.Snapshot(tickStart + TenMsTicks);
+Check(ageAfterReset.MeanTransitMs == 0 && ageAfterReset.MaxTransitMs == 0 &&
+      ageAfterReset.MaxSourceGapMs == 0 &&
+      ageAfterReset.PeakBufferedFrames == 0,
+    "Stop/endpoint switch also removes prior latency and callback-jitter evidence");
+
+// Event-driven delivery: no fixed 20ms timer and no artificial underruns
+// from consuming silence when Windows simply has not issued a callback.
+var signalRing = new RealtimeStereoPcmTransport(HapticPcmFormat.Signed16, 40);
+var signalProbe = new StereoPcmDiscardProbe(signalRing);
+try
+{
+    signalRing.WriteFourChannel(sourceFrames.AsSpan(0, 240 * 8));
+    signalProbe.NotifyDataArrived();
+    Check(System.Threading.SpinWait.SpinUntil(
+        () => signalRing.Snapshot().DeliveredFrames == 240,
+        TimeSpan.FromSeconds(3)),
+        "Real audio-arrival notification wakes the 5ms PCM reader without a periodic timer");
+    var signalStatus = signalRing.Snapshot();
+    Check(signalStatus.OfferedFrames == 240 && signalStatus.DeliveredFrames == 240 &&
+          signalStatus.UnderrunFrames == 0 && signalStatus.DroppedFrames == 0 &&
+          signalStatus.BufferedFrames == 0,
+        "Event-driven null sink does not invent underruns or drop the arrived source PCM");
+    Check(signalProbe.WakeCount >= 1 && signalProbe.DrainedChunks >= 1,
+        "Notifier and source-triggered drain both executed");
+}
+finally { signalProbe.Dispose(); }
+Check(signalRing.Snapshot().BufferedFrames == 0 &&
+      signalRing.Snapshot().OfferedFrames == 0,
+    "Event-driven probe cancellation cleans all in-memory stereo source data");
 
 // Concurrency stress: independently scheduled writer/reader may incur loss but
 // must not generate torn stereo pairs or unaccounted source frames.
@@ -407,6 +466,6 @@ Check(torn == 0 &&
           concurrentStats.DroppedFrames + concurrentStats.BufferedFrames,
     "Concurrent producer/consumer never tears stereo PCM samples or conceals dropped frames");
 concurrencyRing.Reset();
-Console.WriteLine("Bounded 48k stereo PCM realtime transport identity, zero-fill and concurrency passed.");
+Console.WriteLine("Event-driven low-latency 48k PCM transport, residence metering, identity and concurrency passed.");
 
 Console.WriteLine("USB PnP, subjective A/B and high-fidelity stereo WAV contract suite passed.");
