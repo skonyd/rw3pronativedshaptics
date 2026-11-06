@@ -25,3 +25,14 @@
 - Native mode displays correct blocker and does not silently route ordinary rumble.
 - Github Actions produces installer & portable files, hashes and update metadata.
 - When hardware SDK proven, independent L/R original DualSense waveform test passes without mono collapse.
+
+## Delivery status and scope correction (2026-11-06)
+
+The original project brief describes the **target product**, not proof that every acceptance test is already met. For the current status use [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md) and [ROADMAP](ROADMAP.md).
+
+- **M1 implemented/CI-passing:** Windows WPF tray client, persistent mode/route settings, ordinary XInput rumble, opt-in system-audio-to-XInput and package/update scaffolding.
+- **M2 implemented/CI-passing:** optional real/virtual 4ch UAC source-only PCM monitor; lossy experimental HAR Sensa parametric adapter; ten original synthetic DualSense-vs-Wolverine physical A/B scenes; user-reported feel/scores and USB present-root checkmarks (not physical-motor sensors); 0–100% RW3-generated output intensity only; opt-in 10s local PCM recording and bit-preserving rear stereo WAV export.
+- **M3 underway / physical validation BLOCKED:** independently prove a real game's authentic DualSense PCM, compatible Wolverine input→virtual DualSense/UAC source, two real Sensa left/right physical actuators, safety and measured performance.
+- **M4 NOT IMPLEMENTED:** officially supported legal high-fidelity live stereo PCM sink and proven source-to-Wolverine fidelity with actual controllers; Wwise stereo WAV authoring is an **offline**, third-party licensed experiment, not a delivered realtime bridge.
+
+All synthetic A/B scenes are **project-authored**, not original Sony game haptic assets. DualSense baseline is unmodified by RW3 gain/EQ. Windows mixing and physical motion must be measured separately. The user-installed/licensed HAR, Razer and Wwise runtimes are not bundled. Production acceptance remains contingent on the original objective, not a green CI.
