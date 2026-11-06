@@ -534,8 +534,9 @@ public partial class NativeBridgeWindow : Window
         if (recording)
             RecordStatusText.Text = "Kayıt aktif: " + _source.PcmRecordingFrames +
                 " / 480000 kare (maksimum 10 saniye, yalnızca RAM). " +
-                (_source.PcmRecordingFull ? "SINIRA ULAŞILDI • kaydet veya sil." :
-                  "Gerçek oyun haptic kaynağı otomatik doğrulanmadı.");
+                (_source.PcmRecordingFull || _source.PcmRecordingTimedOut
+                    ? "KAYIT SINIRI DOLDU • yeni PCM alınmıyor; kaydet veya sil."
+                    : "Gerçek oyun haptic kaynağı otomatik doğrulanmadı.");
         if (!_busy && _session != SessionMode.Off && !_source.IsCapturing)
         {
             string failure = _source.Status;
