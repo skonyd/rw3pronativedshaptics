@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticEvidence.cs" Link="HapticEvidence.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticRouteCatalog.cs" Link="HapticRouteCatalog.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/SettingsStore.cs" Link="SettingsStore.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/ChannelTestEvidence.cs" Link="ChannelTestEvidence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativeStereoFixture.cs" Link="NativeStereoFixture.cs" />
