@@ -13,6 +13,7 @@ namespace RW3ProNativeDSHaptics;
 /// </summary>
 public sealed class NativeDualSenseCapture : IDisposable
 {
+    private readonly object _captureGate = new();
     private WasapiLoopbackCapture? _capture;
     private FourChannelHapticAnalyzer.PcmEncoding _encoding;
     private SensaStereoPrototype? _sink;
@@ -78,7 +79,8 @@ public sealed class NativeDualSenseCapture : IDisposable
         return results;
     }
 
-    public void Start(string endpointId, SensaStereoPrototype sink)
+    // A source-only probe can run without any Razer SDK DLL or controller.
+    public void Start(string endpointId, SensaStereoPrototype? sink = null)
     {
         Stop();
         using var enumerator = new MMDeviceEnumerator();
@@ -98,13 +100,16 @@ public sealed class NativeDualSenseCapture : IDisposable
                 $"{fmt.Channels} channels, {fmt.SampleRate} Hz, {fmt.Encoding}, {fmt.BitsPerSample} bits. " +
                 "Do NOT treat default stereo system audio as Native DualSense haptic.");
         }
-        if (!sink.IsActive)
+        if (sink != null && !sink.IsActive)
         {
             capture.Dispose();
             throw new InvalidOperationException("Sensa output provider is not active; no silent XInput fallback.");
         }
-        _sink = sink;
-        _encoding = encoding.Value;
+        lock (_captureGate)
+        {
+            _sink = sink;
+            _encoding = encoding.Value;
+        }
         EndpointId = endpointId;
         Volatile.Write(ref _leftRmsBits, 0);
         Volatile.Write(ref _rightRmsBits, 0);
@@ -118,7 +123,7 @@ public sealed class NativeDualSenseCapture : IDisposable
         Interlocked.Exchange(ref _rightEnergyFrames, 0);
         Interlocked.Exchange(ref _lastLeftEnergyTick, 0);
         Interlocked.Exchange(ref _lastRightEnergyTick, 0);
-        _capture = capture;
+        lock (_captureGate) _capture = capture;
         capture.DataAvailable += OnAudio;
         capture.RecordingStopped += OnStopped;
         Volatile.Write(ref _capturing, 1);
@@ -126,7 +131,9 @@ public sealed class NativeDualSenseCapture : IDisposable
         {
             capture.StartRecording();
             Volatile.Write(ref _status,
-                "Four-channel UAC loopback ACTIVE; stereo authored haptic channel identity still needs game confirmation");
+                sink == null
+                ? "SOURCE-ONLY 4ch UAC monitor; no Razer output; game authorship unverified"
+                : "Four-channel UAC → experimental Sensa provider; game authorship unverified");
         }
         catch
         {
@@ -144,56 +151,78 @@ public sealed class NativeDualSenseCapture : IDisposable
         var metrics = FourChannelHapticAnalyzer.Analyze(
             args.Buffer.AsSpan(0, args.BytesRecorded), _encoding);
         if (metrics.ReceivedFrames == 0) return;
-        Interlocked.Add(ref _frames, metrics.ReceivedFrames);
-        Interlocked.Exchange(ref _lastFrameTick, Environment.TickCount64);
-        Interlocked.Add(ref _invalidSamples, metrics.NonFiniteSamples);
-        Volatile.Write(ref _leftRmsBits, BitConverter.SingleToInt32Bits(metrics.LeftRms));
-        Volatile.Write(ref _rightRmsBits, BitConverter.SingleToInt32Bits(metrics.RightRms));
-        Volatile.Write(ref _speakerRmsBits, BitConverter.SingleToInt32Bits(metrics.SpeakerRms));
-        Volatile.Write(ref _leftPeakBits, BitConverter.SingleToInt32Bits(metrics.LeftPeak));
-        Volatile.Write(ref _rightPeakBits, BitConverter.SingleToInt32Bits(metrics.RightPeak));
-        float la = metrics.LeftRms, ra = metrics.RightRms;
-        if (la > 0.01f)
+        lock (_captureGate)
         {
-            Interlocked.Increment(ref _leftEnergyFrames);
-            Interlocked.Exchange(ref _lastLeftEnergyTick, Environment.TickCount64);
+            // A callback that started before Stop/endpoint-switch may finish later.
+            // Only the current capture can update telemetry or re-energize the sink.
+            if (!IsCapturing || !ReferenceEquals(sender, _capture)) return;
+            Interlocked.Add(ref _frames, metrics.ReceivedFrames);
+            Interlocked.Exchange(ref _lastFrameTick, Environment.TickCount64);
+            Interlocked.Add(ref _invalidSamples, metrics.NonFiniteSamples);
+            Volatile.Write(ref _leftRmsBits, BitConverter.SingleToInt32Bits(metrics.LeftRms));
+            Volatile.Write(ref _rightRmsBits, BitConverter.SingleToInt32Bits(metrics.RightRms));
+            Volatile.Write(ref _speakerRmsBits, BitConverter.SingleToInt32Bits(metrics.SpeakerRms));
+            Volatile.Write(ref _leftPeakBits, BitConverter.SingleToInt32Bits(metrics.LeftPeak));
+            Volatile.Write(ref _rightPeakBits, BitConverter.SingleToInt32Bits(metrics.RightPeak));
+            float la = metrics.LeftRms, ra = metrics.RightRms;
+            if (la > 0.01f)
+            {
+                Interlocked.Increment(ref _leftEnergyFrames);
+                Interlocked.Exchange(ref _lastLeftEnergyTick, Environment.TickCount64);
+            }
+            if (ra > 0.01f)
+            {
+                Interlocked.Increment(ref _rightEnergyFrames);
+                Interlocked.Exchange(ref _lastRightEnergyTick, Environment.TickCount64);
+            }
+            // Any sink is independent of capture. Null means analysis-only,
+            // not a fallback to system sound or conventional XInput.
+            _sink?.Submit(Math.Min(0.33f, la * 2.5f), Math.Min(0.33f, ra * 2.5f));
         }
-        if (ra > 0.01f)
-        {
-            Interlocked.Increment(ref _rightEnergyFrames);
-            Interlocked.Exchange(ref _lastRightEnergyTick, Environment.TickCount64);
-        }
-
-        // Lossy conversion: 48k stereo PCM → ~50Hz parametric envelope.
-        // Not bit-perfect transfer or guaranteed side-specific physical response.
-        _sink?.Submit(Math.Min(0.33f, la * 2.5f), Math.Min(0.33f, ra * 2.5f));
     }
 
     private void OnStopped(object? sender, StoppedEventArgs args)
     {
-        Volatile.Write(ref _capturing, 0);
-        _sink?.Submit(0, 0);
-        Volatile.Write(ref _leftRmsBits, 0);
-        Volatile.Write(ref _rightRmsBits, 0);
-        Volatile.Write(ref _speakerRmsBits, 0);
+        lock (_captureGate)
+        {
+            if (!ReferenceEquals(sender, _capture)) return;
+            Volatile.Write(ref _capturing, 0);
+            _sink?.Submit(0, 0);
+            ClearSignalMetrics();
+        }
         Volatile.Write(ref _status,
             args.Exception is null ? "Audio capture unexpectedly stopped" :
             "Audio capture stopped: " + args.Exception.Message);
     }
 
-    public void Stop()
+    private void ClearSignalMetrics()
     {
-        Volatile.Write(ref _capturing, 0);
-        _sink?.Submit(0, 0);
-        var capture = _capture;
-        _capture = null;
-        _sink = null;
-        EndpointId = null;
         Volatile.Write(ref _leftRmsBits, 0);
         Volatile.Write(ref _rightRmsBits, 0);
         Volatile.Write(ref _speakerRmsBits, 0);
         Volatile.Write(ref _leftPeakBits, 0);
         Volatile.Write(ref _rightPeakBits, 0);
+    }
+
+    public NativeCaptureState CurrentState => NativeCaptureHealth.Evaluate(
+        IsCapturing, LastFrameTick, LastLeftEnergyTick, LastRightEnergyTick,
+        Environment.TickCount64);
+
+    public void Stop()
+    {
+        WasapiLoopbackCapture? capture;
+        lock (_captureGate)
+        {
+            // Stop wins even if DataAvailable has already decoded a buffer.
+            Volatile.Write(ref _capturing, 0);
+            _sink?.Submit(0, 0);
+            capture = _capture;
+            _capture = null;
+            _sink = null;
+            EndpointId = null;
+            ClearSignalMetrics();
+            Volatile.Write(ref _status, "Stopped");
+        }
         if (capture != null)
         {
             capture.DataAvailable -= OnAudio;
@@ -201,7 +230,6 @@ public sealed class NativeDualSenseCapture : IDisposable
             try { capture.StopRecording(); } catch { }
             capture.Dispose();
         }
-        Volatile.Write(ref _status, "Stopped");
     }
 
     public void Dispose() => Stop();

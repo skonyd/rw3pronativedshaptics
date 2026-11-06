@@ -115,4 +115,18 @@ Check(HapticRouteCatalog.CanStartBridge(HapticRoute.NativeUsbDualSense, true, tr
 Check(HapticRouteCatalog.DefaultForMode(HapticMode.Audio) == HapticRoute.LocalSystemAudioXInput &&
     HapticRouteCatalog.DefaultForMode(HapticMode.Native) == HapticRoute.NativeManualUac,
     "Legacy mode controls resolve safely");
-Console.WriteLine("45 hardware-free evidence, route and stereo checks passed.");
+Check(NativeCaptureHealth.Evaluate(false, 0, 0, 0, 5000) == NativeCaptureState.Stopped,
+    "Native source status is stopped without capture");
+Check(NativeCaptureHealth.Evaluate(true, 0, 0, 0, 5000) == NativeCaptureState.WaitingForAudio,
+    "Native source awaits first WASAPI buffer");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 0, 0, 1010) == NativeCaptureState.AudioSilentOrSpeakerOnly,
+    "Silent or front-speaker-only frames cannot assert authored haptic activity");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 990, 0, 1050) == NativeCaptureState.RearChannelEnergyObserved,
+    "Active rear PCM is observed without claiming game authorship");
+Check(NativeCaptureHealth.Evaluate(true, 1000, 990, 0, 3500) == NativeCaptureState.AudioStale,
+    "Stale callback is not reported as an active native source");
+Check(NativeCaptureHealth.Evaluate(true, 5000, 0, 0, 4000) == NativeCaptureState.AudioStale,
+    "Invalid monotonic timestamp is treated as stale");
+Check(NativeCaptureHealth.Describe(NativeCaptureState.RearChannelEnergyObserved).Contains("doğrulanmadı"),
+    "Even observed rear PCM cannot claim source provenance");
+Console.WriteLine("52 hardware-free evidence, route and capture reliability checks passed.");

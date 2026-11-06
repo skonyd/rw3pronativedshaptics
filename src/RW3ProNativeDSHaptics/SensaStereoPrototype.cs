@@ -107,8 +107,11 @@ public sealed class SensaStereoPrototype : IDisposable
 
     public void Submit(float left, float right)
     {
-        Volatile.Write(ref _leftAmplitudeBits, BitConverter.SingleToInt32Bits(Math.Clamp(left, 0, 0.38f)));
-        Volatile.Write(ref _rightAmplitudeBits, BitConverter.SingleToInt32Bits(Math.Clamp(right, 0, 0.38f)));
+        // P/Invoke must never receive NaN/Infinity from user or source data.
+        left = float.IsFinite(left) ? Math.Clamp(left, 0, 0.38f) : 0;
+        right = float.IsFinite(right) ? Math.Clamp(right, 0, 0.38f) : 0;
+        Volatile.Write(ref _leftAmplitudeBits, BitConverter.SingleToInt32Bits(left));
+        Volatile.Write(ref _rightAmplitudeBits, BitConverter.SingleToInt32Bits(right));
         Interlocked.Exchange(ref _lastSignalTick, Environment.TickCount64);
     }
 
