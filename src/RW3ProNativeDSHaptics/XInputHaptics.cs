@@ -3,6 +3,7 @@ using NAudio.CoreAudioApi;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Timer = System.Threading.Timer;
 using System.Threading.Tasks;
 
 namespace RW3ProNativeDSHaptics;
