@@ -347,21 +347,28 @@ public partial class NativeBridgeWindow : Window
 
         try
         {
-            var transport = new RealtimeStereoPcmTransport(_source.CurrentPcmFormat, 120);
-            _source.AttachTransport(transport);
+            int capacityMs = 120;
+            if (TransportBufferBox.SelectedItem is System.Windows.Controls.ComboBoxItem choice &&
+                choice.Tag is string raw && int.TryParse(raw, out int parsed))
+                capacityMs = parsed;
+            var transport = new RealtimeStereoPcmTransport(_source.CurrentPcmFormat, capacityMs);
+            var probe = new StereoPcmDiscardProbe(transport);
             try
             {
-                _transportProbe = new StereoPcmDiscardProbe(transport);
+                _source.AttachTransport(transport, probe.NotifyDataArrived);
+                _transportProbe = probe;
             }
             catch
             {
                 _source.DetachTransport();
-                transport.Reset();
+                probe.Dispose();
                 throw;
             }
-            TransportProbeStatus.Text = "120ms bit-exact stereo PCM tamponu başladı. " +
-                "Çıkış SİLİNİYOR, hiçbir motor veya WAV diski kullanılmıyor.";
-            DiagnosticsService.Info("Source-only 48k raw PCM transport discard probe enabled.");
+            TransportProbeStatus.Text = capacityMs + "ms sınırlı tampon, " +
+                "OLAY TETİKLEMELİ 240 karelik PCM okuyucu başlatıldı. " +
+                "Hiçbir motor veya WAV dosyası kullanılmıyor.";
+            DiagnosticsService.Info("Event-driven source-only 48k raw PCM discard probe enabled, " +
+                "queue capacity " + capacityMs + "ms. No haptic device opened.");
         }
         catch (Exception ex)
         {
@@ -590,19 +597,30 @@ public partial class NativeBridgeWindow : Window
             StopTransportProbe();
         bool probing = _transportProbe != null;
         TransportProbeButton.IsEnabled = !_busy && !recording &&
-            (( _session == SessionMode.SourceOnly && _source.IsCapturing) || probing);
+            ((_session == SessionMode.SourceOnly && _source.IsCapturing) || probing);
+        TransportBufferBox.IsEnabled = !probing && !_busy;
         TransportProbeButton.Content = probing ?
             "■ Stereo PCM tampon testini durdur" : "▶ Stereo PCM tampon testini başlat";
         if (probing)
         {
             StereoPcmTransportSnapshot transportState = _transportProbe!.Transport.Snapshot();
-            TransportProbeStatus.Text = "48kHz stereo ham PCM aktarımı → YALNIZCA İMHA EDEN ALICI. " +
-                "Alınan " + transportState.OfferedFrames + " kare, tüketilen " +
-                transportState.DeliveredFrames + ", mevcut " + transportState.BufferedMs.ToString("F1") +
-                "/" + transportState.CapacityMs.ToString("F1") + "ms, taşma kaybı " +
-                transportState.LostOverrunMs.ToString("F1") + "ms, sessizlik doldurma " +
-                transportState.UnderrunMs.ToString("F1") +
-                "ms. Bu Razer'da haptic çıktı kanıtı değildir.";
+            TransportProbeStatus.Text = "OLAY TETİKLEMELİ, 48kHz PCM → YALNIZCA İMHA EDEN ALICI. " +
+                "Kaynak kare " + transportState.OfferedFrames +
+                ", okunan " + transportState.DeliveredFrames +
+                ", kayıp " + transportState.DroppedFrames +
+                " (" + transportState.LostOverrunMs.ToString("F1") + "ms). " +
+                "Tampon " + transportState.BufferedMs.ToString("F1") + "/" +
+                transportState.CapacityMs.ToString("F1") + "ms (zirve " +
+                transportState.PeakBufferedMs.ToString("F1") + "ms). " +
+                "Callback→okuyucu bekleme ort/zirve " +
+                transportState.MeanTransitMs.ToString("F2") + "/" +
+                transportState.MaxTransitMs.ToString("F2") + "ms. " +
+                "En eski kuyruk verisi " + transportState.OldestBufferedAgeMs.ToString("F2") +
+                "ms. Son callback aralığı " + transportState.LastSourceGapMs.ToString("F1") +
+                "ms (maks " + transportState.MaxSourceGapMs.ToString("F1") +
+                "ms); son PCM paketinden beri " +
+                transportState.SinceLastSourceMs.ToString("F1") +
+                "ms. Bu süreler oyun→Wolverine fiziksel gecikmesi değildir.";
         }
         RecordStartButton.IsEnabled = !recording && !probing && !_busy &&
             _session == SessionMode.SourceOnly && _source.IsCapturing;
