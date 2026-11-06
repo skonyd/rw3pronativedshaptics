@@ -136,7 +136,7 @@ public partial class TestLabWindow : Window
     }
 
     private bool AskUser(string label, string question) =>
-        MessageBox.Show(this, question, label + " kanal fiziksel teyidi",
+        System.Windows.MessageBox.Show(this, question, label + " kanal fiziksel teyidi",
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
     private void UpdateResults()
