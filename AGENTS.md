@@ -1,6 +1,6 @@
 # AI Handoff — rw3pronativedshaptics
 
-Read README.md and docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STATUS_AND_PERFORMANCE,VALIDATION_PLAN,ROADMAP,WINDOWS_APP}.md in that order at the start of every coding session.
+Read README.md, docs/IMPLEMENTATION_STATUS.md and docs/ROADMAP.md first, then docs/{PROJECT_BRIEF,RESEARCH_AND_REFERENCES,ARCHITECTURE,STATUS_AND_PERFORMANCE,VALIDATION_PLAN,WINDOWS_APP}.md before modifying source.
 
 ## Non-negotiable user intent
 - User owns Wolverine V3 Pro, DualSense and DSX+; prefers the Wolverine's shape because DualSense hurts/tire hands.
@@ -55,3 +55,6 @@ Read `docs/ADR-002-NATIVE-BRIDGE-ROUTE.md`. Do not write a new Windows audio dri
 
 ## Stereo WAV reference/capture invariant
 Never alter audio bytes sent to the original physical USB DualSense reference. `HapticStereoWave` extracts rear UAC channels 3/4 into offline WAV by copying sample bits exactly; no normalization/resampling. PCM16 -> 44-byte WAV; IEEE Float32 -> 56-byte WAV with fact chunk. In-app source-only recording must remain explicit opt-in, bounded to 10s in RAM and wall time, with file save only after a separate user action. Bridge/endpoint stop and window close discard unsaved data. WAV export is **not** a real-time Razer high-fidelity output implementation and Wwise plugin/Motion distribution has licensing requirements.
+
+## Latest canonical milestone snapshot
+As of 2026-11-06, `main` `ad2aed3b` passed Windows CI run 42214409530. M0–M2 research baseline, Windows shell and experimental capture/A-B/WAV tools are implemented; M3 physical authentic-source + Wolverine stereo actuator acceptance remains open, M4 vendor-supported **live** high-fidelity waveform stream is **not implemented**. Consult [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md), rather than counting checkboxes or estimating a misleading percent-complete. The real 48kHz DualSense PCM remains unmodified by RW3 gain/EQ, while Razer currently uses **lossy 50Hz parametric** events.

@@ -1,6 +1,6 @@
 # Bit-preserving stereo PCM / Wwise Motion research path
 
-**Status:** In-app WAV export and opt-in 10-second source-only capture implemented; deterministic file-format and sample-identity checks required in Windows CI. **No live Wwise runtime bridge, shipped Wwise banks, shipped proprietary Razer binaries, authenticated game-origin source, or physically verified haptics are claimed.**
+**Status (2026-11-06):** In-app WAV export and opt-in 10-second source-only capture **implemented and passed deterministic PCM/WAV contracts in [main Windows CI 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530)**. The app does **not** provide a live Wwise Motion bridge, ship proprietary Razer/Wwise banks or binaries, authenticate original game provenance or verify physical haptics. See [implementation status](IMPLEMENTATION_STATUS.md).
 
 ## What changed
 

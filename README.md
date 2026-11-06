@@ -2,7 +2,7 @@
 
 **Windows 11 desktop application + research project** to bring game-authored DualSense HD body haptics to Razer Wolverine V3 Pro while retaining three explicit modes.
 
-> **Status: Windows tray application and packaging implementation; native DualSense PCM → physical Wolverine Sensa playback remains research-blocked.** See [PROJECT_BRIEF](docs/PROJECT_BRIEF.md) and [ROADMAP](docs/ROADMAP.md). Do not confuse the app's real conventional XInput motor test / audio-to-rumble with original HD haptic replay.
+> **Status (2026-11-06): M3 — real-game source and physical Sensa stereo verification, OPEN/BLOCKED.** Windows software, 10-scene A/B lab, original rear-PCM WAV processing and CI/package infrastructure are implemented; **live high-fidelity game-authored DualSense → Wolverine playback (M4) is NOT implemented or hardware-verified.** See [CURRENT STATUS / NEXT STEPS](docs/IMPLEMENTATION_STATUS.md), [ROADMAP](docs/ROADMAP.md) and [VALIDATION PLAN](docs/VALIDATION_PLAN.md). CI success is not proof of real physical haptics.
 
 ## Experimental DualSense → Sensa bridge (2026-11-05)
 
@@ -10,12 +10,12 @@ The app now has **an opt-in prototype** behind the **“Deneysel Native Stereo B
 
 The separate **Haptic Test Lab** offers side-by-side XInput conventional motor tests, real 2-channel WASAPI sound→XInput tests and synthetic 48 kHz PCM fixture export. The **Native Bridge** window also offers direct left/right Interhaptics test pulses and genuine **4-channel UAC→Sensa end-to-end synthetic PCM playback**, independent of any game. A command accepted by the API is never called physical success unless the user confirms vibration, and that confirmation does not prove raw PCM fidelity.
 
-See [Native Bridge Implementation](docs/NATIVE_BRIDGE_IMPLEMENTATION.md). **Vendor HAR.dll / Interhaptics.RazerProvider.dll are not bundled.** You need their legally obtained official SDK copies and working Synapse/Chroma on Windows x64. No GitHub Actions build or hardware run has yet been independently verified.
+See [Native Bridge Implementation](docs/NATIVE_BRIDGE_IMPLEMENTATION.md). **Vendor HAR.dll / Interhaptics.RazerProvider.dll are not bundled.** You need their legally obtained official SDK copies and working Synapse/Chroma on Windows x64. **Windows GitHub Actions build, contract suite, portable and installer smoke have been verified** on [main run 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530). **Physical hardware runs have not been verified.**
 
 ## Three modes
 - **Normal Rumble** — the game handles its own native XInput vibration; app offers a voluntary quick motor test.
 - **Audio-to-Haptics** — opt-in WASAPI system-output capture, basic audio envelope to *standard* XInput vibration. For true Razer Sensa audio processing, use Synapse 4.
-- **Native DualSense Haptics** — research target: genuine stereo game-authored DualSense haptic PCM to two Wolverine body VCM actuators. UI displays blocked until a supported low-level hardware output path and game PCM capture are demonstrated.
+- **Native DualSense Haptics** — opt-in **experimental** 4ch/48k UAC → lossy 50Hz Sensa parametric bridge and separate source-only monitor; the product target is genuine stereo game-authored DualSense haptic PCM to the actual two Wolverine body VCMs. **High-fidelity playback remains unimplemented/unverified.**
 
 ## Run / build on Windows 11
 Use the latest .NET 10 SDK:
@@ -41,9 +41,15 @@ On push to `main`, GitHub Actions builds a **self-contained portable ZIP** and a
 ## Source-of-truth diagnostics (added Nov 5, 2026)
 The Windows status panel explicitly distinguishes (a) a chosen mode, (b) WASAPI system audio being received, (c) XInput API accepting a conventional vibration command, (d) manual confirmation of a physical test pulse, and (e) **real DualSense stereo PCM → Razer Sensa hardware playback**. (e) remains **unsupported and unverified**. "Native" selection cannot fake a success state.
 
-The app now displays capture frames, accepted/rejected output commands, last failure, app CPU% and memory; includes a copyable status report and locally rotated error log (no captured audio is recorded). In audio mode it samples up to 256 frames/callback, issues at most 20 XInput writes/sec, runs BelowNormal priority and stops audio processing after three consecutive 2-second CPU samples over 3% total-system CPU. These safeguards **do not guarantee zero impact on game FPS**; use actual in-game A/B frame-time measurements to confirm.
+The app now displays capture frames, accepted/rejected output commands, last failure, app CPU% and memory; includes a copyable status report and locally rotated error log (**no automatic audio recording**; an explicitly consented source-only 10-second rear PCM WAV export is available separately). In audio mode it samples up to 256 frames/callback, issues at most 20 XInput writes/sec, runs BelowNormal priority and stops audio processing after three consecutive 2-second CPU samples over 3% total-system CPU. These safeguards **do not guarantee zero impact on game FPS**; use actual in-game A/B frame-time measurements to confirm.
 
 Automated provenance contract checks: `dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj`. See [Status, evidence and performance](docs/STATUS_AND_PERFORMANCE.md) and [Validation plan](docs/VALIDATION_PLAN.md).
+
+## Where the project stands
+
+**M0–M2 software milestones are implemented and CI-passing; the project is at M3 physical-source/actuator verification, with the critical M4 live high-fidelity stereo output still blocked.** Main: `ad2aed3b`; [successful Windows CI](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530). The current Razer path is a **lossy 20ms/50Hz parametric envelope**, not DualSense waveform replay. The remaining five [GitHub issues](https://github.com/skonyd/rw3pronativedshaptics/issues) are dependency and physical acceptance gates, not simply missing buttons.
+
+Read [the detailed implementation inventory, stage gates, blockers and next test actions](docs/IMPLEMENTATION_STATUS.md). Do not infer an overall percentage from green CI or the number of finished UI features.
 
 ## AI handoff
 Start at [AGENTS.md](AGENTS.md); it contains user intent, evidence standards and what is still unproven.

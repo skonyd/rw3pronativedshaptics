@@ -1,39 +1,50 @@
-# Status and performance evidence contract
+# Runtime evidence and performance contract (updated 2026-11-06)
 
-## User question
-"Haptic gerçekten çalışıyor mu; sesten mi, normal rumble'dan mı, yoksa oyunun özgün DualSense PCM verisinden mi?" UI MUST NEVER infer real HD haptics from selected mode, device detection or successful XInputSetState alone.
+**Project stage:** [M3 physical/authentic-source validation](IMPLEMENTATION_STATUS.md) is open. Main [CI run 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530) succeeded for `ad2aed3b`, but exercises **no physical DualSense/Wolverine**.
 
-## Evidence levels
+## What does "working" actually mean?
 
-| Evidence level | Observable | What it proves | What it **does not** prove |
-| --- | --- | --- | --- |
-| Mode selected | App settings | Requested route | Capture/output active |
-| XInput slot detected | XInputGetState return == 0 | Some XInput controller connected | That it is a Wolverine |
-| Selected XInput slot (Auto or 0–3) | User-selected slot, persisted in settings | Motor test and Audio output target the requested slot; no silent fallback when explicit slot is absent | Physical identity of Razer; confirm manual pulse |
-| XInput command accepted | XInputSetState == 0 | OS accepted vibration command | Motor physically moved; HD voice-coil playback |
-| User confirms pulse | Voluntary Yes/No after 250ms test | User reports feeling vibration | Automatic proof of any waveform |
-| WASAPI capture running | IsCaptureRunning | Default audio loopback started | Audible samples are present |
-| Audio frame received | Atomic counter & timestamp | Software received decoded system audio frames | Original DualSense haptic PCM |
-| Output command from audio accepted | XInput success counter | Conventional rumble written from sound data | Razer Sensa quality, native DualSense haptics |
-| Experimental 4ch UAC rear PCM input | Selected endpoint's rear-channel frame and energy counters | Windows routed 4-channel audio to the chosen endpoint | Game provenance, or genuine authored haptics from a DualSense-aware game |
-| Experimental Razer Sensa parametric provider | Provider initialized and render loop ticks | Native Interhaptics provider was invoked | Physical stereo motion or 48 kHz waveform fidelity |
-| Real waveform fidelity | Bench/human test | Functionally accurate playback | Not achieved as of this document |
+The application must not equate mode choice, USB detection, OS command acknowledgment, provider rendering or WAV files with genuine original DualSense HD haptics physically reproduced by Wolverine.
 
-**Native fidelity status is BLOCKED.** The opt-in UAC experiment can capture 4-channel audio from a selected compatible render endpoint, but cannot establish that a PC game authored the signal. The 50 Hz parametric Razer path is lossy; no bit-perfect native waveform replay has been proven. No original-game provenance counters may be invented.
+| Signal/evidence | What it really establishes | What it never establishes alone |
+| --- | --- | --- |
+| Mode / route selection | User preference and planned source/output path | Installed external SDK, live game or actuator success |
+| XInput slot present / command accepted | Windows sees an XInput target and accepted a conventional rumble command | Real Razer model, motor displacement or HD Sensa waveform |
+| User felt conventional motor pulse | Subjective, manual motion confirmation | Precise stereo HD texture/frequency |
+| Windows present USB PnP green ✓ | A matching Sony/Razer USB identity is present | Wired Wolverine vs its dongle; physical motor response |
+| Passive 4ch/48k WASAPI callback, rear L/R RMS | Selected render endpoint supplied channel frames | Game authored them; exact original game haptic PCM |
+| Native `HAR` initialized / render ticks | Experiment can invoke licensed Interhaptics/provider event rendering | Independent body voice coils moved correctly or sound is lossless |
+| Synthetic physical A/B lab | User can compare ten **project-authored**, bounded reference stimuli | They are real Sony game assets; waveform equality across hardware |
+| Source-only WAV/PCM16/Float32 extracted | Channel 3/4 bytes are preserved into an offline file | Game provenance; successful live Razer streaming or device quality |
+| Real-game provenance evidence | Verified target game's haptic audio mapping and isolated output | Physical Wolverine stereo response |
+| Physical response, latency and frequency measurements | Specific hardware/revision/firmware behavior under specific conditions | All games/users/environments guaranteed to match |
 
-## Performance goals
-- WASAPI callback: no UI calls, no allocations proportional to sample rate, no disk/network operations; at most 256 samples per buffer; XInput update ≤20Hz.
-- Diagnostics: atomic counters on callback, 2s UI timer; log transitions/failures only, rotate at 1 MiB; never record audio or raw game controller data.
-- CPU guard: normalize process CPU by processor count, budget <=3% whole-system; on >3% in 3 successive 2s samples in Audio mode, automatically stop capture & vibration and return Normal. This is a protective heuristic, not proof of no FPS loss.
-- Audio mode sets process priority BelowNormal if permitted (restore when stopped). No background updates/download unless user chooses.
-- Hard stop on mode change, app exit or capture failure; avoid leaving rumble active. No arbitrary hardware commands beyond documented XInput API.
-- Resource panel shows process CPU%, working set MB, callback rate, last frame age and motor command acknowledgment.
-- No claim that any mode is currently running from a previous session. Audio capture must be explicitly authorized each run.
+**Native high-fidelity result: NOT IMPLEMENTED / NOT VERIFIED.** The live RW3 Sensa prototype is **50 Hz / 20ms parameter intensity envelopes**. Do not report lossless HD. The physical DualSense reference path avoids RW3 gain/EQ/mix on the emitted 4ch PCM; Windows shared-mode signal processing and actual actuator output are not proven bit perfect.
 
-## Test plan
-- Test with no controller, disconnected controller, silence, actual sound, output switch mid-recording, device reconnection and XInput command failure.
-- Test with Wolverine + DualSense + DSX+ virtual XInput simultaneously: explicit slot selection must never silently choose another slot. Manual 250 ms pulse confirmation remains required for physical identity.
-- Assert no audio callback logs, no growing queue, counters are monotonic and stale data is shown as stale.
-- Measure frame timing in Gears and Death Stranding 2 before/after enabling audio, including 1% low FPS; 3% process CPU threshold is only an upper guard, not a frame-time guarantee.
-- Verify user-confirmed physical pulse after API acknowledgment; native mode remains disabled in actual path until stereo PCM receive + independent Sensa output + hardware validation.
-- Inspect logs for errors without recording personal audio or game sound.
+## Current software capabilities and truthful limits
+
+- **Conventional XInput:** Normal mode preserves game-handled rumble; optional manual XInput motor pulses and system audio-to-rumble do not claim HD.
+- **Native source-only:** strict 4ch/48k PCM16/Float32 selected endpoint, rear-channel telemetry, speaker vs haptic, recent/stale signal; HAR/Razer libraries not required.
+- **Experimental Sensa:** two independently targeted *logical* HAR parametric effects; physical Left/Right identity requires the actual Wolverine.
+- **Behavioral lab:** ten reproducible source fixtures and either/both physical controller requests; Razer receives the lossy 50Hz envelope. A/B rating is a human subjective response, with unplayed/uncertain/negative separated and local JSONL summary.
+- **Gain:** RW3 global output and Wolverine-specific lab test level adjust RW3-generated output; the genuine wired USB DualSense reference PCM is never multiplied by these controls.
+- **Offline WAV + optional recording:** project fixture export is local and offline. Separately, **only after explicit consent**, Native source-only can buffer at most 10 seconds of rear PCM in RAM and write a local WAV only when Save is clicked; Discard/Stop clears unsaved data. Source endpoint/recording do not prove authentic game origin.
+
+## FPS and resource guardrails (software logic, not measured performance)
+
+- Conventional audio-to-XInput mode: bounded capture callback samples (up to 256 points/callback), at most 20 XInput writes/s, stale/silent source motor stop. Process below-normal priority where allowed.
+- Audio CPU guard: three consecutive 2-second samples over 3% normalized total-system CPU trigger audio-mode stop/return to Normal; this is a heuristic only, not an observed FPS guarantee.
+- Sensa parametric provider: ~20ms compute/render cycle; aborts on provider absence and serializes stop/start. Device driver timings, physical motor release and concurrency must be measured on hardware.
+- Diagnostics: stage/frames/RMS/peaks and local error logs; distinguish sound received from logical provider/rendered pulses. Do not print raw recorded PCM in diagnostics.
+- **Privacy:** there is **no silent audio recording** and no captured PCM telemetry upload. Explicitly requested WAV export *does* write the selected rear-channel content to the user's local disk. Treat recorded game clips as user-controlled potentially copyrighted content; files are neither submitted nor uploaded by the app.
+
+## Acceptance measurements still required on a real Windows 11 rig
+
+1. Validate real controller identities, driver/mode/firmware, Synapse/Chroma and user-provided legally licensed provider DLL; test physical L/R actuators and STOP/unplug with no stuck haptics.
+2. Prove that an actual DualSense-enabled PC game, not just a synthetic fixture, sends rear haptic PCM; verify physical/virtual UAC endpoint mapping and prevent double gamepad input.
+3. Run each of the 10 behaviors with DualSense alone, Wolverine alone and paired. Log physical *Felt/NotFelt/Uncertain*, stereo separation, texture/impact score and both hands swapped. Software render success is not a sensor measurement.
+4. Collect wall-clock/callback timestamps and external physical response/onset where possible; compare p50/p95/p99 latency, stereo isolation and spectral/transient detail. At present there is no validated timing/motor-frequency benchmark.
+5. Profile game disabled/Normal/Audio/Native experiment for average FPS, 1% lows and p95/p99 frame times plus process CPU/RAM over >=10 minutes. Test endpoint changes, device unplug/replug and shutdown.
+6. For Wwise path, require licensed Motion plugin and real Wolverine success; verify any future real-time Audio Input interoperability independently from offline WAV import.
+
+Hardware acceptance checklist and reproducible reporting are in [VALIDATION_PLAN](VALIDATION_PLAN.md). Open gates: [#1](https://github.com/skonyd/rw3pronativedshaptics/issues/1), [#2](https://github.com/skonyd/rw3pronativedshaptics/issues/2), [#3](https://github.com/skonyd/rw3pronativedshaptics/issues/3), [#4](https://github.com/skonyd/rw3pronativedshaptics/issues/4), [#5](https://github.com/skonyd/rw3pronativedshaptics/issues/5).
