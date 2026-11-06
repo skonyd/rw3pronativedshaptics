@@ -53,3 +53,14 @@ Status vocabulary: **[x] implemented + software/CI tested**, **[ ] external or p
 3. After a documented live sink and real source are validated, implement M4. If the sink is unavailable under acceptable license, report the **hard blocker** rather than invent a product-completion date.
 
 **No meaningful honest overall percentage** is defined: M3 and M4 contain the product's decisive, currently unproven functionality.
+
+## M4 implementation prerequisite: original-resolution PCM transport (software only)
+- [x] Strict 4ch PCM16/Float32 rear L/R samples copied byte-for-byte into a bounded 48kHz stereo ring without gain, EQ, 50Hz RMS or audio remixing
+- [x] Deterministic buffer overflow (drop oldest + count), underrun (zero-fill + count), queue depth in milliseconds, reset/stop RAM zeroing
+- [x] Native Bridge source-only opt-in **discard-sink** transport probe and live lost/underrun counters; Razer driver and DLL not used
+- [x] Deterministic input/ring-wrap/large-callback/Float32/concurrent access contract tests
+- [ ] Verify raw transport 48k source clock behavior, burst latency and dropped samples on Windows 11 with an actual game/virtual or USB DualSense UAC
+- [ ] Connect only to a documented, legally licensed **real-time Sensa waveform** sink after independent vendor/physical proof; this transport alone cannot play haptics
+- [ ] External physical latency/spectra/perceptual testing remains M3/M4 blocker
+
+[Technical design / UI test procedure](REALTIME_PCM_TRANSPORT.md).

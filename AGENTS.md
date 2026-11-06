@@ -16,8 +16,8 @@ Read README.md, docs/IMPLEMENTATION_STATUS.md and docs/ROADMAP.md first, then do
 - `NativeBridgeWindow.xaml(.cs)` exposes source selection, status, side pulses and end-to-end **synthetic 4ch PCM** tests via `NativePcmTestPlayer.cs`. Tests must distinguish source capture, provider render and user physical sensation.
 - `TestLabWindow.xaml(.cs)` provides game-free Normal XInput and Audio→XInput tests; no native synthetic data is ever mislabeled an actual game signal.
 - Read `docs/NATIVE_BRIDGE_IMPLEMENTATION.md` and `interop/README.md` before relying on the native prototype. No third-party native DLLs are present in the repo.
-- Current Windows app **has not passed an observed clean Windows CI build or actual Wolverine validation**; do not overstate readiness.
-- Contract tests now cover 30 deterministic checks for provenance, stereo PCM16/Float32 isolation, speaker-only negative cases, malformed input and safe WASAPI silence handling; run them on Windows/CI.
+- Windows Actions **has passed** .NET 10 build, contract tests, portable/installer smoke on main (e.g., run 42223466818); **no actual Wolverine/DualSense physical motor verification** has been performed. Check latest run each session.
+- Contract suite covers synthetic behaviors, USB identity, provenance, A/B ratings, original PCM/WAV copy, and bounded raw transport; avoid fixed outdated assertion-count claims. Run it on Windows CI.
 
 ## Engineering integrity
 - Never present native PCM rendering through the physical Wolverine as operational until measured on actual hardware.
@@ -58,3 +58,6 @@ Never alter audio bytes sent to the original physical USB DualSense reference. `
 
 ## Latest canonical milestone snapshot
 As of 2026-11-06, `main` `ad2aed3b` passed Windows CI run 42214409530. M0–M2 research baseline, Windows shell and experimental capture/A-B/WAV tools are implemented; M3 physical authentic-source + Wolverine stereo actuator acceptance remains open, M4 vendor-supported **live** high-fidelity waveform stream is **not implemented**. Consult [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md), rather than counting checkboxes or estimating a misleading percent-complete. The real 48kHz DualSense PCM remains unmodified by RW3 gain/EQ, while Razer currently uses **lossy 50Hz parametric** events.
+
+## New realtime transport prerequisite (source-only)
+`RealtimeStereoPcmTransport.cs` implements a bounded stereo 48k PCM ring and `StereoPcmDiscardProbe` independently drains original 960-sample blocks approximately every 20ms, without converting to 50Hz RMS or invoking Razer. `NativeDualSenseCapture.AttachTransport` must be allowed **only** when source-only capture is active, no recording is active, and no Sensa sink is attached. Detach before stopping/disposal and clear retained PCM. This is **not** a physical Sensa output backend, do not mark M4 complete. See docs/REALTIME_PCM_TRANSPORT.md.
