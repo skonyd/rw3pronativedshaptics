@@ -68,3 +68,12 @@ Date | Controller firmware | Synapse/Chroma | Source game/scene | Device slot | 
 - [ ] For any virtual controller, record physical Wolverine mapping and ensure only one input device is exposed to each game.
 - [ ] Compare high-fidelity Wwise stereo WAV route with parametric Interhaptics route if legally and technically permitted; DO NOT infer true live PCM capability from offline WAV playback.
 - [ ] Keep native-game-authorship and physical-fidelity labels BLOCKED until reproducible hardware test.
+
+## User-selectable method paths
+- [ ] Choose each of nine methods and verify input/output/provenance descriptions and support status.
+- [ ] Applying PadForge/DSX+/USB route saves the preference and opens the matching source guidance in native bridge. External apps/drivers are never automatically installed.
+- [ ] Unsupported or unacknowledged 4ch source cannot start; friendly-name matching must never count as source identity proof.
+- [ ] Wwise research-only selection reports no RW3 live integration and does not start playback.
+- [ ] Razer Sensa Games and Synapse Audio-to-Haptics selections leave RW3 capture stopped and link to official setup.
+- [ ] RW3 Audio-to-Haptics still requires explicit capture permission and never resumes silently after Windows boot.
+- [ ] Legacy Mode-only preferences and system tray menu remain compatible.

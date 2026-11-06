@@ -59,3 +59,9 @@ See [Windows hardware acceptance runbook](docs/DEVICE_TEST_RUNBOOK.md) for detai
 [ADR-002](docs/ADR-002-NATIVE-BRIDGE-ROUTE.md) documents the preferred path: reuse a *user-installed, compatible* virtual DualSense 4ch source (PadForge Full composite where independently verified; DSX+ as a separate optional experiment) rather than build a new Windows audio driver. Native audio-channel evidence is separate from actual game provenance. The Interhaptics output remains an **experimental, lossy** parametric adapter. The official Wwise/Sensa WAV authoring plugin is a promising **offline fidelity comparison**, not yet a reusable real-time PCM streaming interface.
 
 The experimental source picker now displays channel count, sample rate and PCM resolution; unsupported formats are blocked before the provider starts. The live panel separately shows speaker RMS, rear haptic L/R RMS and peaks. New deterministic PCM16/Float32 channel tests and GitHub Actions least-privilege publishing checks are included. No device drivers or proprietary SDKs are bundled.
+
+## Nine selectable haptic methods
+
+The app now exposes a persistent **method selector** with separate input/output descriptions, honest readiness indicators and setup links. The recommended candidate to obtain **authentic DualSense game PCM** is PadForge Full virtual DualSense 4ch/48k → RW3 experimental bridge. Razer output still uses **lossy 50Hz parametric Interhaptics** and is not demonstrated equivalent to the original DualSense.
+
+Other selectable methods are physical USB DualSense UAC, DSX+ virtual DualSense Audio, manual 4ch UAC, official Razer Sensa HD Games, official Synapse Audio-to-Haptics, RW3 system-audio XInput rumble, normal game rumble, and **research-only** Wwise Sensa Motion. External/research choices do not run vendor apps or unsupported integrations. See [route selection and prerequisites](docs/ROUTE_SELECTION.md).

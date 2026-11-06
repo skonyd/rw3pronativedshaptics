@@ -81,3 +81,12 @@ Prioritize proving the Sensa driver output contract **before** invasive virtual 
 - [ ] Verify official Wwise Motion stereo WAV playback on Wolverine, assess license and runtime interface (NO assumption of streaming)
 - [ ] Investigate supported dynamic pitch/transient candidate only after physical output is proven
 - [ ] Compare against physical DualSense with repeatable latency, channel separation and tactile tests
+
+## Selectable method profiles (2026-11-06)
+- [x] Persist nine selectable routes and show honest input source, output backend and readiness
+- [x] Distinguish "best prospect for original DualSense authored source" from "best supported Razer Sensa gameplay option"
+- [x] Pass selected native route to bridge, prefer only compatible endpoints, require explicit mapping confirmation before source start
+- [x] Research-only Wwise and external Synapse options never launch unsupported playback or drivers
+- [x] Contract coverage extended to 45 deterministic checks for route options, safe defaults, consent and fallbacks
+- [ ] Verify each physical pathway, Wolverine input mapping, authentic game source signal, latency and L/R physical actuators
+- [ ] Determine vendor-documented real-time Sensa waveform sink; Wwise offline authoring is not live stream integration
