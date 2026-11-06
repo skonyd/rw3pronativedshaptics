@@ -31,7 +31,8 @@
            <TextBlock x:Name="RouteInstructionsText" Foreground="#B7C5DC" TextWrapping="Wrap" Margin="0,0,0,7"/>
            <TextBlock Text="4 kanallı DualSense USB/UAC veya sanal DualSense render aygıtını seç. Hoparlör çıkışını seçme."
                      Margin="0,8,0,9" TextWrapping="Wrap"/>
-          <ComboBox x:Name="EndpointPicker" Height="34" Foreground="#12213C" DisplayMemberPath="Display"/>
+          <ComboBox x:Name="EndpointPicker" Height="34" Foreground="#12213C" DisplayMemberPath="Display"
+                     SelectionChanged="EndpointPicker_Changed"/>
            <CheckBox x:Name="EndpointAcknowledgement" Foreground="#D0DCEC" Margin="0,10,0,4">
              <TextBlock TextWrapping="Wrap" Text="Bu ses aygıtının seçtiğim yönteme ait olduğunu kontrol ettim. Oyunun gerçekten haptic veri gönderdiğini ayrıca doğrulayacağım."/>
            </CheckBox>
