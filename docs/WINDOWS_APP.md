@@ -16,7 +16,7 @@ Double-click executable => window. Close/X => hides to tray, process remains. Tr
 ## Capability statuses
 - Normal: game handles its own native rumble; app can send short optional XInput test.
 - Audio: WASAPI loopback drives **standard XInput motors**; do not confuse with first-party Sensa HD.
-- Native: **Razer arbitrary PCM hardware sink not implemented**. Selecting native reveals the blocker, does not fake effects.
+- Native: explicit opt-in experimental 4ch/48k UAC rear-channel capture to two **lossy 50 Hz Interhaptics parametric outputs**. Raw Razer PCM hardware sink is not implemented or physically verified; the UI reports that blocker instead of pretending to reproduce original game effects.
 
 ## Release workflow
 Push to `main`: Windows build + upload artifacts portable ZIP, installer EXE, SHA256.
@@ -25,3 +25,6 @@ Installer is user-scoped via Inno Setup; portable ZIP adds `portable.flag` and s
 App queries `https://api.github.com/repos/skonyd/rw3pronativedshaptics/releases/latest`. It downloads the matching artifact and corresponding `.sha256`, checks hash before allowing opening installer or ZIP location. Portable update is deliberately manual replacement of extracted folder; auto-self-replace is NOT provided in v0.1.0.
 
 **Unsigned-build warning:** Without a code-signing certificate Windows SmartScreen may warn. Do not bypass SmartScreen or claim binaries are signed. Build script intentionally uses no secrets for local release checking; publishing GitHub Releases uses Actions token.
+
+## CI and hardware acceptance boundary
+Pull requests and pushes to main run 23 deterministic contract checks, Windows WPF build, self-contained x64 publish and published-executable `--self-test`. Then the portable ZIP and installer are built and smoke-tested (ZIP extraction + per-user install/uninstall). CI can run without DualSense, Wolverine, Synapse or licensed Interhaptics DLLs. Follow [device acceptance runbook](DEVICE_TEST_RUNBOOK.md) for required physical motor, source-provenance, game-impact and latency tests before claiming hardware-ready output.

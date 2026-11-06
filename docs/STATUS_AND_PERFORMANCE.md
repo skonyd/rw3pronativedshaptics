@@ -15,11 +15,11 @@
 | WASAPI capture running | IsCaptureRunning | Default audio loopback started | Audible samples are present |
 | Audio frame received | Atomic counter & timestamp | Software received decoded system audio frames | Original DualSense haptic PCM |
 | Output command from audio accepted | XInput success counter | Conventional rumble written from sound data | Razer Sensa quality, native DualSense haptics |
-| Native DualSense PCM input | Future backend, exact stereo frame counter | Native authored game haptic stream intercepted | Wolverine rendered it |
-| Razer Sensa stereo output | Future independently verified hardware backend | Separate left/right output accepted | Physical fidelity without measurements |
+| Experimental 4ch UAC rear PCM input | Selected endpoint's rear-channel frame and energy counters | Windows routed 4-channel audio to the chosen endpoint | Game provenance, or genuine authored haptics from a DualSense-aware game |
+| Experimental Razer Sensa parametric provider | Provider initialized and render loop ticks | Native Interhaptics provider was invoked | Physical stereo motion or 48 kHz waveform fidelity |
 | Real waveform fidelity | Bench/human test | Functionally accurate playback | Not achieved as of this document |
 
-**Native status is BLOCKED; frame count cannot be invented.** Current app does NOT read DualSense PCM, even if DSX+ is installed.
+**Native fidelity status is BLOCKED.** The opt-in UAC experiment can capture 4-channel audio from a selected compatible render endpoint, but cannot establish that a PC game authored the signal. The 50 Hz parametric Razer path is lossy; no bit-perfect native waveform replay has been proven. No original-game provenance counters may be invented.
 
 ## Performance goals
 - WASAPI callback: no UI calls, no allocations proportional to sample rate, no disk/network operations; at most 256 samples per buffer; XInput update ≤20Hz.
