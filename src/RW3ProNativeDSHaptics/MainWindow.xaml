@@ -135,6 +135,11 @@
         <Button x:Name="NativeBridgeButton" Content="Deneysel Native Stereo Bridge • 4 kanal UAC → Sensa"
                 Click="NativeBridge_Click" Style="{StaticResource ActionButton}"
                 Background="#4A426A" HorizontalAlignment="Left" Margin="0,11,0,0"/>
+        <Button Content="USB DualSense ↔ Wolverine • 10 sahneli A/B Haptic Lab"
+                Click="Comparison_Click" Style="{StaticResource ActionButton}"
+                Background="#286356" HorizontalAlignment="Left" Margin="0,11,0,0"/>
+        <TextBlock TextWrapping="Wrap" Foreground="#97B5C3" FontSize="11" Margin="0,6,0,0"
+                   Text="DualSense referans PCM'si değiştirilmez; Wolverine testinde mevcut KAYIPLI 50 Hz Sensa çıkışı kullanılır. Gerçek oyun efektleri değildir."/>
         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
           <TextBlock Text="XInput hedefi:" VerticalAlignment="Center" Foreground="#AFBDD5" Margin="0,0,12,0"/>
           <ComboBox x:Name="DeviceSlotCombo" Width="215" Height="30" Foreground="#142039"
