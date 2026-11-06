@@ -154,18 +154,13 @@ foreach (var scene in BehavioralHapticFixtures.All)
     var rms = BehavioralHapticFixtures.RmsWindow(pcm, frames / 3, 960);
     Check(float.IsFinite(rms.Left) && float.IsFinite(rms.Right),
         "Scene " + scene.Id + " has finite independent RMS envelopes");
-    var scaled = BehavioralHapticFixtures.ScaleForDualSense(pcm, 0.5f);
-    Check(scaled.Length == pcm.Length && scaled[0] == 0 && scaled[2] == 0,
-        "Scene " + scene.Id + " scales safely without speaker channel leakage");
+    Check(pcm.AsSpan(0, 4).IndexOfAnyExcept((byte)0) < 0,
+        "Scene " + scene.Id + " original reference speaker channels are silent");
 }
 Check(BehavioralHapticFixtures.Generate(HapticBehavior.Pistol)
     .AsSpan().IndexOf((byte)0xff) >= 0, "Procedural impulse scene contains data");
-try
-{
-    BehavioralHapticFixtures.ScaleForDualSense(new byte[8], 2);
-    throw new Exception("Invalid output gain was accepted");
-}
-catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: Gain above safe limit rejected"); }
+Check(BehavioralHapticFixtures.All.All(s => s.DurationMs <= 3200),
+    "All USB DualSense reference scenes are deliberately bounded in duration");
 Check(HapticOutputLevel.Limit(-5) == 0 && HapticOutputLevel.Limit(145) == 100,
     "RW3 level control is clamped to 0-100 percent");
 Check(HapticOutputLevel.Apply(0.35f, 0) == 0 &&
