@@ -146,6 +146,14 @@ public partial class NativeBridgeWindow : Window
         return selected;
     }
 
+    private int SelectedCaptureBufferMs()
+    {
+        if (CaptureBufferBox.SelectedItem is System.Windows.Controls.ComboBoxItem item &&
+            item.Tag is string requested && int.TryParse(requested, out int ms))
+            return WasapiLoopbackBufferPolicy.Validate(ms);
+        return WasapiLoopbackBufferPolicy.DefaultRequestMs;
+    }
+
     private void Monitor_Click(object sender, RoutedEventArgs e)
     {
         if (_busy) return;
@@ -166,7 +174,7 @@ public partial class NativeBridgeWindow : Window
             StopSource();
             _sensa.Stop();
             _leftPhysical = _rightPhysical = false;
-            _source.Start(selected.Id);
+            _source.Start(selected.Id, captureBufferMs: SelectedCaptureBufferMs());
             _session = SessionMode.SourceOnly;
             SourceProbeText.Text = "UAC kaynak-only izleme başladı. Stereo kaynak testi için sol/sağ düğmesini kullan.";
             DiagnosticsService.Info("Source-only 4ch UAC started: " + selected.FriendlyName +
@@ -219,7 +227,7 @@ public partial class NativeBridgeWindow : Window
                 throw new InvalidOperationException(_sensa.Status);
             if (generation != Volatile.Read(ref _cancelGeneration))
                 throw new OperationCanceledException("Başlatma kullanıcı tarafından durduruldu.");
-            _source.Start(selected.Id, _sensa);
+            _source.Start(selected.Id, _sensa, SelectedCaptureBufferMs());
             _session = SessionMode.SensaBridge;
             DiagnosticsService.Info("Experimental Sensa bridge route=" + _route +
                 ", endpoint=" + selected.FriendlyName +
@@ -592,6 +600,7 @@ public partial class NativeBridgeWindow : Window
 
     private void RefreshStatus()
     {
+        CaptureBufferBox.IsEnabled = !_busy && !_source.IsCapturing;
         bool recording = _source.IsPcmRecording;
         if (_transportProbe != null && !_source.IsCapturing)
             StopTransportProbe();
@@ -669,6 +678,8 @@ public partial class NativeBridgeWindow : Window
             ? "SOURCE ONLY: Razer DLL'i kullanılmıyor, motor komutu gönderilmiyor."
             : _sensa.Status;
         SourceStateText.Text = "UAC: " + _source.Status +
+            " | İstenen WASAPI tamponu: " +
+            (_source.IsCapturing ? _source.RequestedCaptureBufferMs + "ms" : "pasif") +
             " | PCM frame: " + _source.CapturedFrames +
             " | L/R aktif blok: " + _source.LeftActiveBlocks + "/" + _source.RightActiveBlocks +
             " | Speaker RMS (taze): " + (recent ? _source.SpeakerRms : 0).ToString("F3") +
