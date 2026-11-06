@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Media;
+using WpfBrushes = System.Windows.Media.Brushes;
 using System.Windows.Threading;
 using WpfControls = System.Windows.Controls;
 
@@ -95,7 +95,7 @@ public partial class BehavioralComparisonWindow : Window
                 DualSenseConnectedText.Text = snapshot.DualSenseUsbNode
                     ? "✓ DualSense USB algılandı" : "✕ DualSense USB bulunamadı";
                 DualSenseConnectedText.Foreground = snapshot.DualSenseUsbNode ?
-                    Brushes.LightGreen : Brushes.OrangeRed;
+                    WpfBrushes.LightGreen : WpfBrushes.OrangeRed;
                 DualSenseUsbDetail.Text = snapshot.DualSenseUsbNode
                     ? "Sony VID_054C • mevcut PnP kaydı (" + snapshot.DualSenseNodes + ")"
                     : "Kablo, USB portu ve sürücüyü kontrol et.";
@@ -103,7 +103,7 @@ public partial class BehavioralComparisonWindow : Window
                 WolverineConnectedText.Text = snapshot.WolverineUsbNode
                     ? "✓ Wolverine V3 Pro USB kimliği" : "✕ Wolverine USB bulunamadı";
                 WolverineConnectedText.Foreground = snapshot.WolverineUsbNode ?
-                    Brushes.LightGreen : Brushes.OrangeRed;
+                    WpfBrushes.LightGreen : WpfBrushes.OrangeRed;
                 WolverineUsbDetail.Text = snapshot.WolverineUsbNode
                     ? "Razer VID_1532 PID_0A3F • dongle olabilir"
                     : "PC modu, USB kablosu ve aygıtı kontrol et.";
@@ -113,7 +113,7 @@ public partial class BehavioralComparisonWindow : Window
                 DualSenseConnectedText.Text = "○ DualSense • doğrulanamadı";
                 WolverineConnectedText.Text = "○ Wolverine • doğrulanamadı";
                 DualSenseConnectedText.Foreground = WolverineConnectedText.Foreground =
-                    Brushes.Goldenrod;
+                    WpfBrushes.Goldenrod;
                 DualSenseUsbDetail.Text = WolverineUsbDetail.Text = snapshot.Diagnostic;
             }
             if (previous.ScanSucceeded && snapshot.ScanSucceeded)
@@ -140,7 +140,7 @@ public partial class BehavioralComparisonWindow : Window
                 _usbPresence = UsbGamepadPresence.Unknown(ex.Message);
                 DualSenseConnectedText.Text = WolverineConnectedText.Text = "○ USB durumu doğrulanamadı";
                 DualSenseConnectedText.Foreground = WolverineConnectedText.Foreground =
-                    Brushes.Goldenrod;
+                    WpfBrushes.Goldenrod;
                 DualSenseUsbDetail.Text = WolverineUsbDetail.Text = ex.Message;
             }
         }
@@ -281,6 +281,7 @@ public partial class BehavioralComparisonWindow : Window
     private void SetTestControlsEnabled(bool enabled)
     {
         SceneBox.IsEnabled = TargetBox.IsEnabled = UsbEndpointBox.IsEnabled = enabled;
+        CheckConnectionsButton.IsEnabled = RefreshUsbButton.IsEnabled = enabled;
         ExclusiveCheck.IsEnabled = ConfirmUsbCheck.IsEnabled = ConfirmSensaCheck.IsEnabled = enabled;
         WiredWolverineConfirmed.IsEnabled = WolverineLevel.IsEnabled = enabled;
         PlayButton.IsEnabled = enabled && !_waitingToClose;
@@ -301,6 +302,7 @@ public partial class BehavioralComparisonWindow : Window
     {
         if (_busy || _waitingToClose || SceneBox.SelectedItem is not BehavioralScene scene) return;
         ComparisonTarget target = SelectedTarget;
+        _playingTarget = target;
         bool usb = BehavioralEvidenceRules.IncludesDualSense(target);
         bool razer = BehavioralEvidenceRules.IncludesWolverine(target);
         var selected = UsbEndpointBox.SelectedItem as UsbOption;
@@ -526,6 +528,8 @@ public partial class BehavioralComparisonWindow : Window
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
+        _usbClosing = true;
+        _usbTimer.Stop();
         if (_safeToClose || (!_busy && _activePlaybackTask?.IsCompleted != false))
         {
             _usbClosing = true;
