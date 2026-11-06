@@ -21,6 +21,7 @@ namespace RW3ProNativeDSHaptics;
 public partial class BehavioralComparisonWindow : Window
 {
     private sealed record UsbOption(string Id, string Display, string FriendlyName, bool Compatible);
+    private sealed record SensationChoice(PhysicalSensation Value, string Label);
 
     private readonly SensaStereoPrototype _sensa = new();
     private readonly DispatcherTimer _usbTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -48,6 +49,16 @@ public partial class BehavioralComparisonWindow : Window
         _ratings = new[] { DsTexture, RwTexture, DsImpact, RwImpact, DsStereo, RwStereo };
         foreach (var box in _ratings)
             box.ItemsSource = Enumerable.Range(1, 5).ToArray();
+        var sensationChoices = new[]
+        {
+            new SensationChoice(PhysicalSensation.NotEvaluated, "Henüz değerlendirilmedi"),
+            new SensationChoice(PhysicalSensation.Felt, "✓ Evet, titreşimi hissettim"),
+            new SensationChoice(PhysicalSensation.NotFelt, "✕ Hayır, titreşmedi"),
+            new SensationChoice(PhysicalSensation.Uncertain, "? Emin değilim")
+        };
+        DsFeelingBox.ItemsSource = sensationChoices;
+        RwFeelingBox.ItemsSource = sensationChoices;
+        DsFeelingBox.SelectedIndex = RwFeelingBox.SelectedIndex = 0;
         SceneBox.ItemsSource = BehavioralHapticFixtures.All;
         TargetBox.SelectedIndex = 0;
         SceneBox.SelectedIndex = 0;
@@ -55,6 +66,8 @@ public partial class BehavioralComparisonWindow : Window
         StopButton.IsEnabled = false;
         RefreshUsb();
         RefreshGainLabel();
+        UpdateTargetRatingControls();
+        RefreshSavedSummary();
         _usbTimer.Tick += (_, _) => _ = RefreshConnectionsAsync();
         _usbTimer.Start();
         _ = RefreshConnectionsAsync();
@@ -227,9 +240,56 @@ public partial class BehavioralComparisonWindow : Window
         if (SceneBox.SelectedItem is BehavioralScene scene && SceneDetails != null)
             SceneDetails.Text = scene.Feel + " • " + scene.DurationMs +
                 " ms • sentetik referans, gerçek oyun kayıtlarından üretilmedi.";
+        ClearScoring();
+    }
+
+    private void Target_Changed(object sender, WpfControls.SelectionChangedEventArgs e)
+    {
+        ClearScoring();
+        UpdateTargetRatingControls();
+    }
+
+    private void ClearScoring()
+    {
         _lastResult = null;
         if (SaveButton != null) SaveButton.IsEnabled = false;
         if (_ratings != null) foreach (var r in _ratings) r.SelectedItem = null;
+        if (DsFeelingBox != null) DsFeelingBox.SelectedIndex = 0;
+        if (RwFeelingBox != null) RwFeelingBox.SelectedIndex = 0;
+    }
+
+    private ComparisonTarget SelectedTarget => TargetBox.SelectedIndex switch
+    {
+        1 => ComparisonTarget.DualSenseOnly,
+        2 => ComparisonTarget.WolverineOnly,
+        _ => ComparisonTarget.Both
+    };
+
+    private void UpdateTargetRatingControls()
+    {
+        if (DsFeelingBox == null || _ratings == null) return;
+        bool ds = BehavioralEvidenceRules.IncludesDualSense(SelectedTarget);
+        bool rw = BehavioralEvidenceRules.IncludesWolverine(SelectedTarget);
+        DsFeelingBox.IsEnabled = ds;
+        RwFeelingBox.IsEnabled = rw;
+        DsTexture.IsEnabled = DsImpact.IsEnabled = DsStereo.IsEnabled = ds;
+        RwTexture.IsEnabled = RwImpact.IsEnabled = RwStereo.IsEnabled = rw;
+        if (!ds) DsFeelingBox.SelectedIndex = 0;
+        if (!rw) RwFeelingBox.SelectedIndex = 0;
+    }
+
+    private void SetTestControlsEnabled(bool enabled)
+    {
+        SceneBox.IsEnabled = TargetBox.IsEnabled = UsbEndpointBox.IsEnabled = enabled;
+        ExclusiveCheck.IsEnabled = ConfirmUsbCheck.IsEnabled = ConfirmSensaCheck.IsEnabled = enabled;
+        WiredWolverineConfirmed.IsEnabled = WolverineLevel.IsEnabled = enabled;
+        PlayButton.IsEnabled = enabled && !_waitingToClose;
+        if (enabled) UpdateTargetRatingControls();
+        else
+        {
+            DsFeelingBox.IsEnabled = RwFeelingBox.IsEnabled = false;
+            foreach (var rating in _ratings) rating.IsEnabled = false;
+        }
     }
 
     private void Play_Click(object sender, RoutedEventArgs e)
@@ -239,114 +299,117 @@ public partial class BehavioralComparisonWindow : Window
 
     private async Task RunAsync()
     {
-        if (_busy || SceneBox.SelectedItem is not BehavioralScene scene) return;
-        ComparisonTarget target = TargetBox.SelectedIndex switch
-        {
-            1 => ComparisonTarget.DualSenseOnly,
-            2 => ComparisonTarget.WolverineOnly,
-            _ => ComparisonTarget.Both
-        };
-        bool usb = target is ComparisonTarget.DualSenseOnly or ComparisonTarget.Both;
-        bool razer = target is ComparisonTarget.WolverineOnly or ComparisonTarget.Both;
+        if (_busy || _waitingToClose || SceneBox.SelectedItem is not BehavioralScene scene) return;
+        ComparisonTarget target = SelectedTarget;
+        bool usb = BehavioralEvidenceRules.IncludesDualSense(target);
+        bool razer = BehavioralEvidenceRules.IncludesWolverine(target);
         var selected = UsbEndpointBox.SelectedItem as UsbOption;
-        await RefreshConnectionsAsync();
-        if (!_usbPresence.ScanSucceeded)
-        {
-            System.Windows.MessageBox.Show(this,
-                "Windows USB PnP durumu okunamadı. İki fiziksel kolu güvenle doğrulamadan test başlatılamaz. " +
-                _usbPresence.Diagnostic, "Bağlantı kontrolü eksik",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        if (usb && !_usbPresence.DualSenseUsbNode)
-        {
-            System.Windows.MessageBox.Show(this,
-                "Sony DualSense USB kimliği algılanmadı. Gerçek DualSense'i kabloyla bağla ve yenile.",
-                "USB DualSense bağlı değil", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        if (razer && (!_usbPresence.WolverineUsbNode ||
-            WiredWolverineConfirmed.IsChecked != true))
-        {
-            System.Windows.MessageBox.Show(this,
-                "Razer Wolverine V3 Pro USB kimliğinin algılanması ve doğrudan kablo " +
-                "bağlantısının kullanıcı tarafından doğrulanması gerekiyor. Kablosuz alıcı tek başına yeterli değil.",
-                "Wolverine kablo doğrulaması", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        if (usb)
-        {
-            if (selected is null || !selected.Compatible || ConfirmUsbCheck.IsChecked != true)
-            {
-                System.Windows.MessageBox.Show(this,
-                    "Gerçek USB DualSense'in 4ch/48k ses çıkışını seç ve fiziksel aygıtı onayla.",
-                    "DualSense aygıtı doğrulanmadı", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            if (!IsLikelyPhysicalDualSense(selected.FriendlyName) &&
-                System.Windows.MessageBox.Show(this,
-                    "Aygıt adı fiziksel DualSense'e benzemiyor: " + selected.FriendlyName +
-                    ". Yanlış aygıta sentetik ses göndermek istemiyorsan iptal et. Devam?",
-                    "USB aygıt kimliğini kontrol et", MessageBoxButton.YesNo, MessageBoxImage.Warning)
-                    != MessageBoxResult.Yes) return;
-        }
-        if (razer && ConfirmSensaCheck.IsChecked != true)
-        {
-            System.Windows.MessageBox.Show(this,
-                "Önce Wolverine'ın PC modunda olduğunu doğrulayıp Razer Sensa sentetik motor testine izin ver.",
-                "Wolverine haptics onayı", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        if (System.Windows.MessageBox.Show(this,
-            scene.Name + " sahnesi fiziksel kontrolcülerde kısa titreşimler oluşturabilir. " +
-            "DualSense'e yazılım kazancı uygulanmadan sentetik 4ch/48k PCM verilir. " +
-            "Wolverine'a ise kayıplı Sensa parametrik gösterimi uygulanır. Başlat?",
-            "Fiziksel A/B testi", MessageBoxButton.YesNo, MessageBoxImage.Question)
-            != MessageBoxResult.Yes) return;
         _busy = true;
-        _playingTarget = target;
-        _lastResult = null;
-        _lastUsbName = selected?.FriendlyName;
-        _lastGlobalLevelPercent = _globalLevelPercent;
-        _lastSceneLevelPercent = HapticOutputLevel.Limit((int)Math.Round(WolverineLevel.Value));
-        SaveButton.IsEnabled = false;
-        PlayButton.IsEnabled = false;
+        SetTestControlsEnabled(false);
         StopButton.IsEnabled = true;
-        foreach (var rating in _ratings) rating.SelectedItem = null;
         using var cts = new CancellationTokenSource();
         _running = cts;
         try
         {
-            PlaybackStatus.Text = scene.Name + " çalışıyor... " +
-                (usb ? "DualSense: değişmeyen PCM • " : "") +
-                (razer ? "Wolverine: kayıplı Sensa" : "");
+            // Do not trust a cached scan: a device might have unplugged since the
+            // green check last appeared. WMI runs off UI thread.
+            UsbGamepadPresence fresh = await Task.Run(UsbGamepadMonitor.Read);
+            cts.Token.ThrowIfCancellationRequested();
+            if (!fresh.ScanSucceeded)
+            {
+                System.Windows.MessageBox.Show(this,
+                    "Windows USB PnP durumu okunamadı; fiziksel A/B testini doğrulayamıyoruz: " +
+                    fresh.Diagnostic, "USB bağlantı kontrolü", MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+            if (usb && !fresh.DualSenseUsbNode)
+            {
+                System.Windows.MessageBox.Show(this,
+                    "Sony DualSense USB kimliği algılanmadı. Kabloyla bağla ve yeniden kontrol et.",
+                    "DualSense USB bağlı değil", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (razer && (!fresh.WolverineUsbNode ||
+                WiredWolverineConfirmed.IsChecked != true))
+            {
+                System.Windows.MessageBox.Show(this,
+                    "Razer Wolverine V3 Pro USB kimliği ve doğrudan kablo bağlantısı gerekli. " +
+                    "Kablosuz USB alıcısı aynı kimliği kullanabilir.",
+                    "Wolverine USB onayı", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (usb)
+            {
+                if (selected is null || !selected.Compatible || ConfirmUsbCheck.IsChecked != true)
+                {
+                    System.Windows.MessageBox.Show(this,
+                        "Gerçek USB DualSense 4ch/48kHz ses çıkışını seçip fiziksel aygıtı doğrula.",
+                        "USB DualSense aygıt seçimi", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (!IsLikelyPhysicalDualSense(selected.FriendlyName) &&
+                    System.Windows.MessageBox.Show(this,
+                        "Ses aygıtı adı fiziksel DualSense'e benzemiyor: " +
+                        selected.FriendlyName + ". Devam etmek istediğine emin misin?",
+                        "USB ses aygıtını kontrol et", MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+            }
+            if (razer && ConfirmSensaCheck.IsChecked != true)
+            {
+                System.Windows.MessageBox.Show(this,
+                    "Razer SDK ve fiziksel Wolverine haptic testine izin vermelisin.",
+                    "Sensa izin/onay", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (System.Windows.MessageBox.Show(this,
+                scene.Name + " kısa, SENTETİK referans titreşimi oynatacak. " +
+                "USB DualSense orijinal RW3 PCM tamponunu yazılımda değiştirmeden alacak. " +
+                "Wolverine kayıplı parametrik çıkış kullanacak. Başlat?",
+                "A/B fiziksel test onayı", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes)
+                return;
+            cts.Token.ThrowIfCancellationRequested();
+
+            _playingTarget = target;
+            _lastUsbName = selected?.FriendlyName;
+            _lastGlobalLevelPercent = _globalLevelPercent;
+            _lastSceneLevelPercent = HapticOutputLevel.Limit(
+                (int)Math.Round(WolverineLevel.Value));
+            ClearScoring();
+            PlaybackStatus.Text = scene.Name + " test ediliyor: " +
+                (usb ? "DualSense değişmeyen PCM • " : "") +
+                (razer ? "Wolverine kayıplı Sensa" : "");
             _sensa.OutputLevelPercent = _globalLevelPercent;
-            _lastResult = await BehavioralComparisonPlayer.PlayAsync(
+            ComparisonResult result = await BehavioralComparisonPlayer.PlayAsync(
                 scene.Id, target, selected?.Id, ExclusiveCheck.IsChecked == true,
                 _lastSceneLevelPercent, _sensa, cts.Token);
-            PlaybackStatus.Text = "Oynatma rutini tamamlandı. USB PCM gönderimi=" +
-                _lastResult.UsbPcmSubmitted + ", Razer provider döngüsü=" +
-                _lastResult.RazerProviderTicked + ". Fiziksel his ve doğruluk için puan ver.";
+            cts.Token.ThrowIfCancellationRequested();
+            _lastResult = result;
+            PlaybackStatus.Text = "Oynatma yazılımı tamamlandı. USB PCM gönderildi=" +
+                result.UsbPcmSubmitted + ", Sensa render gözlendi=" +
+                result.RazerProviderTicked +
+                ". Kol hareketi otomatik ölçülmedi; aşağıda ayrı ayrı bildir.";
             SaveButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
         {
-            PlaybackStatus.Text = "Test iptal edildi; motor sıfırlandı.";
+            PlaybackStatus.Text = "Test iptal edildi; çıkış kapatıldı. Puan kaydı açılmadı.";
         }
         catch (Exception ex)
         {
-            PlaybackStatus.Text = "A/B test hatası: " + ex.Message;
+            PlaybackStatus.Text = "A/B sahne hatası: " + ex.Message;
             DiagnosticsService.Error("Behavioral A/B scene " + scene.Id, ex);
         }
         finally
         {
             _sensa.Submit(0, 0);
-            // Do not keep provider effects alive between separate test scenes.
             _sensa.Stop();
             if (ReferenceEquals(_running, cts)) _running = null;
             _busy = false;
             StopButton.IsEnabled = false;
-            PlayButton.IsEnabled = true;
+            SetTestControlsEnabled(true);
         }
     }
 
@@ -360,14 +423,25 @@ public partial class BehavioralComparisonWindow : Window
     private static int? GetRating(WpfControls.ComboBox box) =>
         box.SelectedItem is int i ? i : null;
 
+    private static PhysicalSensation GetFeeling(WpfControls.ComboBox box) =>
+        box.SelectedItem is SensationChoice choice
+            ? choice.Value : PhysicalSensation.NotEvaluated;
+
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (_lastResult == null) return;
-        int?[] ds = { GetRating(DsTexture), GetRating(DsImpact), GetRating(DsStereo) };
-        int?[] rw = { GetRating(RwTexture), GetRating(RwImpact), GetRating(RwStereo) };
-        if (!ds.Concat(rw).Any(x => x.HasValue))
+        if (_busy || _lastResult == null) return;
+        var ds = new TactileRatings(GetRating(DsTexture),
+            GetRating(DsImpact), GetRating(DsStereo));
+        var rw = new TactileRatings(GetRating(RwTexture),
+            GetRating(RwImpact), GetRating(RwStereo));
+        PhysicalSensation dsFelt = GetFeeling(DsFeelingBox);
+        PhysicalSensation rwFelt = GetFeeling(RwFeelingBox);
+        if (!BehavioralEvidenceRules.CanSave(_lastResult.Target,
+            dsFelt, rwFelt, ds, rw))
         {
-            SaveStatus.Text = "En az bir fiziksel his puanı seç.";
+            SaveStatus.Text = "Her oynatılan kol için 'Hissettim', 'Hissetmedim' veya " +
+                "'Emin değilim' seç. Hissettim ise üç puanı da doldur. " +
+                "Test edilmeyen kola his/puan yazma.";
             return;
         }
         try
@@ -375,32 +449,57 @@ public partial class BehavioralComparisonWindow : Window
             string directory = ResultsDirectory();
             Directory.CreateDirectory(directory);
             string path = Path.Combine(directory, "behavioral-ab-scores.jsonl");
-            var item = new
-            {
-                Utc = DateTimeOffset.UtcNow,
-                Scene = _lastResult.Scene.ToString(),
-                Target = _lastResult.Target.ToString(),
-                UsbEndpoint = _lastResult.UsbPcmSubmitted ? _lastUsbName : null,
-                UsbWasapiExclusive = _lastResult.ExclusiveUsbMode,
-                UsbPcmSubmitted = _lastResult.UsbPcmSubmitted,
-                RazerProviderRenderTicked = _lastResult.RazerProviderTicked,
-                SyntheticNotGameAuthored = true,
-                RazerOutputLossy50Hz = true,
-                RealWorldPhysicalSensationNotMachineVerified = true,
-                RwGlobalLevelPercent = _lastGlobalLevelPercent,
-                RwScenarioLevelPercent = _lastSceneLevelPercent,
-                DsTexture = ds[0], DsImpact = ds[1], DsStereo = ds[2],
-                RwTexture = rw[0], RwImpact = rw[1], RwStereo = rw[2],
-                Notes = NotesBox.Text
-            };
-            File.AppendAllText(path, JsonSerializer.Serialize(item) + Environment.NewLine);
-            SaveStatus.Text = "Sahne değerlendirmesi yerel dosyaya kaydedildi: " + path;
-            DiagnosticsService.Info("Local A/B subjective score saved for " + _lastResult.Scene);
+            var entry = new BehavioralEvidenceEntry(
+                BehavioralEvidenceEntry.Schema,
+                DateTimeOffset.UtcNow,
+                _lastResult.Scene, _lastResult.Target,
+                _lastResult.UsbPcmSubmitted, _lastResult.RazerProviderTicked,
+                _lastResult.ExclusiveUsbMode, _lastResult.UsbPcmSubmitted ? _lastUsbName : null,
+                _lastGlobalLevelPercent, _lastSceneLevelPercent,
+                dsFelt, rwFelt, ds, rw,
+                NotesBox.Text);
+            if (!entry.Valid)
+                throw new InvalidOperationException("Fiziksel deneyim puanları doğrulanamadı.");
+            File.AppendAllText(path, JsonSerializer.Serialize(entry) + Environment.NewLine);
+            SaveStatus.Text = "Fiziksel his gözlemi yalnızca yerel dosyaya kaydedildi: " + path;
+            RefreshSavedSummary();
+            DiagnosticsService.Info("User-reported A/B sensation recorded for " + _lastResult.Scene);
+            SaveButton.IsEnabled = false;
         }
         catch (Exception ex)
         {
-            SaveStatus.Text = "Kayıt başarısız: " + ex.Message;
+            SaveStatus.Text = "Puan kaydı başarısız: " + ex.Message;
             DiagnosticsService.Error("Save A/B score", ex);
+        }
+    }
+
+    private void RefreshSavedSummary()
+    {
+        if (SummaryText == null) return;
+        try
+        {
+            string path = Path.Combine(ResultsDirectory(), "behavioral-ab-scores.jsonl");
+            if (!File.Exists(path))
+            {
+                SummaryText.Text = BehavioralEvidenceReport.Summarize(
+                    Array.Empty<BehavioralEvidenceEntry>()).Display;
+                return;
+            }
+            var entries = new System.Collections.Generic.List<BehavioralEvidenceEntry>();
+            foreach (string line in File.ReadLines(path))
+            {
+                try
+                {
+                    var report = JsonSerializer.Deserialize<BehavioralEvidenceEntry>(line);
+                    if (report?.Valid == true) entries.Add(report);
+                }
+                catch (JsonException) { /* Older schema is ignored rather than guessed. */ }
+            }
+            SummaryText.Text = BehavioralEvidenceReport.Summarize(entries).Display;
+        }
+        catch (Exception ex)
+        {
+            SummaryText.Text = "Yerel rapor okunamadı: " + ex.Message;
         }
     }
 
