@@ -17,3 +17,7 @@ portable.flag
 HAR.dll
 Interhaptics.RazerProvider.dll
 RzInterHaptics.dll
+
+# HIDMaestro SDK (MIT, downloaded from GitHub release v2.1.0; see tools/get-hidmaestro.ps1)
+third_party/HIDMaestro/*.dll
+third_party/HIDMaestro/*.exe

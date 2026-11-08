@@ -44,6 +44,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Contract tests failed" }
           dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { throw "Windows WPF build failed" }
+          dotnet build tests/RW3Pro.HardwareProbe/RW3Pro.HardwareProbe.csproj -c Release -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw "Hardware probe compile failed (no devices used)" }
           dotnet publish src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.version }} -o publish
           if ($LASTEXITCODE -ne 0) { throw "Windows publish failed" }
           if (-not (Test-Path publish/RW3ProNativeDSHaptics.exe)) { throw "Published executable missing" }
