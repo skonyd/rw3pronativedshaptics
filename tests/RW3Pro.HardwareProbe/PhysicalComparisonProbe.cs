@@ -42,6 +42,38 @@ internal static class PhysicalComparisonProbe
         for(int i=0;i<40&&!engine.IsActive&&engine.IsRunning;i++)await Task.Delay(50,token);
         if(!engine.IsActive)throw new InvalidOperationException(engine.Status);
     }
+    /// <summary>
+    /// Known Sensa pattern for a USB capture of the vendor transport: waits for a marker file written
+    /// by the elevated capture script, then plays timed steps and logs their UTC times (pcap clock).
+    /// </summary>
+    public static async Task CapturePatternAsync(string sdk,string timelinePath,string? waitForFile)
+    {
+        using var owner=new Mutex(true,"Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd",out bool created);
+        if(!created)throw new InvalidOperationException("Close RW3 via tray Exit first.");
+        Resolve(sdk);
+        if(waitForFile!=null){var w=System.Diagnostics.Stopwatch.StartNew();while(!File.Exists(waitForFile)){if(w.Elapsed.TotalMinutes>3)throw new TimeoutException("capture did not start");await Task.Delay(200);}}
+        await Task.Delay(1500);
+        var steps=new List<object>();
+        using var engine=new SensaStereoPrototype{SourceGainPercent=100,OutputLevelPercent=100};
+        await Start(engine,CancellationToken.None);
+        void Mark(string name)=>steps.Add(new{Step=name,Utc=DateTime.UtcNow.ToString("O")});
+        Mark("engine-started-idle");await Task.Delay(2000);
+        async Task Manual(string name,float l,float r){Mark(name+"-start");var sw=System.Diagnostics.Stopwatch.StartNew();while(sw.ElapsedMilliseconds<1000){engine.Submit(l,r);await Task.Delay(5);}engine.Submit(0,0);Mark(name+"-end");await Task.Delay(1500);}
+        await Manual("left-0.25",.25f,0);
+        await Manual("left-1.00",1f,0);
+        await Manual("right-1.00",0,1f);
+        await Manual("both-0.50",.5f,.5f);
+        async Task Tone(string name,double hz,double amp){
+            Mark(name+"-start");var buf=new float[480];long n=0;var sw=System.Diagnostics.Stopwatch.StartNew();
+            while(n<48000){for(int i=0;i<240;i++){buf[2*i]=(float)(amp*Math.Sin(2*Math.PI*hz*(n+i)/48000.0));buf[2*i+1]=0;}engine.Features.PushStereo(buf);n+=240;while(sw.Elapsed.TotalMilliseconds<n/48.0)await Task.Delay(1);}
+            Mark(name+"-end");await Task.Delay(1500);}
+        await Tone("tone-80hz-left",80,.5);
+        await Tone("tone-190hz-left",190,.5);
+        Mark("pattern-done");engine.Stop();
+        File.WriteAllText(timelinePath,JsonSerializer.Serialize(new{TickMs=SensaStereoPrototype.TickMs,Steps=steps},Json));
+        Console.WriteLine("PATTERN done: "+timelinePath);
+    }
+
     public static async Task MeasureAsync(string sdk,string directory,string micId,bool threeMethods=false)
     {
         Directory.CreateDirectory(directory);

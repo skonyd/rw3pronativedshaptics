@@ -6,6 +6,11 @@ using NAudio.CoreAudioApi;
 using RW3ProNativeDSHaptics;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+if(args.FirstOrDefault()=="capture-pattern")
+{
+    if(args.Length<3)throw new ArgumentException("capture-pattern <sdk> <timeline.json> [wait-for-file]");
+    await PhysicalComparisonProbe.CapturePatternAsync(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]),args.Length>3?args[3]:null);return;
+}
 if(args.FirstOrDefault()=="compare-methods")
 {
     if(args.Length!=4)throw new ArgumentException("compare-methods <sdk> <directory> <mic-id>");
