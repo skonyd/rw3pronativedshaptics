@@ -88,6 +88,8 @@ public partial class MainWindow : Window
         _bridge.Transport = (SensaTransport)_settings.Transport;
         (_settings.Transport == 1 ? TransportDirect : TransportSynapse).IsChecked = true;
         _bridge.AudioSensitivityPercent = _settings.AudioSensitivityPercent;
+        _bridge.HidePadInGames = _settings.HidePadInGames;
+        HhHideCheckbox.IsChecked = _settings.HidePadInGames;
         ((SensaOutputMethod)_settings.OutputMethod switch
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
         (_settings.AudioSensitivityPercent >= 250 ? SensMax : _settings.AudioSensitivityPercent >= 160 ? SensHigh : SensNormal).IsChecked = true;
@@ -232,9 +234,9 @@ public partial class MainWindow : Window
     {
         var st = await Task.Run(VirtualControllerSetup.Query);
         VcDriverText.Text = !st.SdkPresent ? "SDK: bu derlemede yok (tools/get-hidmaestro.ps1)" :
-            "Sürücü (HIDMaestro " + st.SdkVersion + "): " + (st.DriverInstalled ? "✓ kurulu" : "✗ kurulu değil") +
+            "HIDMaestro " + st.SdkVersion + ": sürücü " + (st.DriverInstalled ? "✓" : "✗ kurulu değil") +
+            " • USB/IP (titreşim sesi) " + (st.UsbipAvailable ? "✓" : "✗ yok") +
             (st.Error != null ? " — " + st.Error : "");
-        VcUsbipText.Text = "USB/IP arka ucu (titreşim sesi kanalı): " + (st.UsbipAvailable ? "✓ hazır" : "✗ yok");
         var t = st.LastSelfTest;
         VcSelfTestText.Text = (lastAction != null ? lastAction + Environment.NewLine : "") +
             (t == null ? "Sağlık testi: henüz yapılmadı." : "Son sağlık testi (" + t.At.ToString("dd.MM HH:mm") + "): " + (t.Ok ? "✓ " : "✗ ") + t.Summary);
@@ -247,7 +249,58 @@ public partial class MainWindow : Window
         VcTestBtn.IsEnabled = st.Ready && !_vcBusy;
         VcUninstallBtn.IsEnabled = st.SdkPresent && (st.DriverInstalled || st.UsbipAvailable) && !_vcBusy;
         VcBridgeBtn.IsEnabled = st.Ready && !_vcBusy;
+        await RefreshHidHideAsync();
         UpdateBridgeStatus();
+    }
+
+    // HidHide: hides the physical Xbox pad from games while the virtual DualSense runs.
+    private async Task RefreshHidHideAsync()
+    {
+        var h = await Task.Run(HidHideControl.Query);
+        bool running = _bridge.IsVirtualDualSenseRunning;
+        // Left over from a crash: undo it now when we can (elevated), else offer the button.
+        if (h.RestorePending && !running && VirtualDualSenseBridge.IsElevated)
+        {
+            try { DiagnosticsService.Info("HidHide: " + await Task.Run(HidHideControl.Restore)); } catch (Exception ex) { NoteError("HidHide restore", ex); }
+            h = await Task.Run(HidHideControl.Query);
+        }
+        HhText.Text = !h.Installed ? "HidHide: ✗ kurulu değil — oyun Xbox kolunu da görür (çift giriş)."
+            : "HidHide " + h.Version + ": " + (h.Ready ? "✓ kurulu" : "✗ eksik (" + (h.CliPath == null ? "CLI yok" : "filtre yok") + ")") +
+              " • Xbox kolu " + (h.PadNodes == 0 ? "bulunamadı" : h.PadNodesHidden == h.PadNodes && h.CloakOn == true ? "oyundan gizli" : "oyuna görünür") +
+              (h.Error != null ? " — " + h.Error : "");
+        HhInstallBtn.Visibility = h.Installed ? Visibility.Collapsed : Visibility.Visible;
+        HhRestoreBtn.Visibility = h.RestorePending && !running ? Visibility.Visible : Visibility.Collapsed;
+        HhHideCheckbox.IsEnabled = h.Ready;
+    }
+
+    private void HhHide_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.HidePadInGames = HhHideCheckbox.IsChecked == true;
+        _bridge.HidePadInGames = _settings.HidePadInGames;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("HidHide setting", ex); }
+        DiagnosticsService.Info("Hide Xbox pad in games while bridging: " + _settings.HidePadInGames + " (applies on next bridge start).");
+    }
+
+    private void HhInstall_Click(object sender, RoutedEventArgs e)
+    {
+        try { Process.Start(new ProcessStartInfo(HidHideControl.DownloadUrl) { UseShellExecute = true }); }
+        catch (Exception ex) { NoteError("HidHide download page", ex); }
+        HhText.Text = "Resmî HidHide sayfası açıldı. Kurulumdan sonra Windows'u yeniden başlat.";
+    }
+
+    private async void HhRestore_Click(object sender, RoutedEventArgs e)
+    {
+        HhRestoreBtn.IsEnabled = false;
+        try
+        {
+            string msg = VirtualDualSenseBridge.IsElevated ? HidHideControl.Restore()
+                : (await VirtualControllerSetup.RunElevatedAsync(VirtualControllerSetup.HidHideRestoreArg)).Message;
+            DiagnosticsService.Info("HidHide: " + msg);
+        }
+        catch (Exception ex) { NoteError("HidHide restore", ex); }
+        HhRestoreBtn.IsEnabled = true;
+        await RefreshHidHideAsync();
     }
 
     private async Task RunVirtualControllerStepAsync(string arg, string working)
@@ -320,7 +373,8 @@ public partial class MainWindow : Window
         bool running = _bridge.IsVirtualDualSenseRunning;
         VcBridgeBtn.Content = running ? "Köprüyü durdur" : VirtualDualSenseBridge.IsElevated ? "Köprüyü başlat" : "Yönetici olarak başlat";
         var (h, o, t) = _bridge.VirtualDualSenseCounters;
-        VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}\n" + _bridge.VirtualDualSenseInputCheck : "");
+        VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}\n" + _bridge.VirtualDualSenseInputCheck +
+            (_bridge.VirtualDualSenseHidHideNote.Length > 0 ? "\n" + _bridge.VirtualDualSenseHidHideNote : "") : "");
     }
 
     private async void VcSelfTest_Click(object sender, RoutedEventArgs e) =>

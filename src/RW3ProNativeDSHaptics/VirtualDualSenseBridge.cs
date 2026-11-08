@@ -29,6 +29,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public long OutputReports => Interlocked.Read(ref _outputReports);
     public long TriggerReports => Interlocked.Read(ref _triggerReports);
     public static bool IsElevated => Environment.IsPrivilegedProcess;
+    /// <summary>Hide the physical Xbox pad from games while running (HidHide), restore on stop.</summary>
+    public bool HidePhysicalPad { get; set; }
+    public string HidHideNote { get; private set; } = "";
     /// <summary>Result of the live readback comparison with the physical pad.</summary>
     public string InputCheck
     {
@@ -113,9 +116,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
         var rb = new VirtualPadReadback(OnReadback, () => NowMs);
         System.Threading.Tasks.Task.Run(() =>
         {
+            string? virtualPath = null;
             if (rb.Start(before))
             {
                 _readback = rb;
+                virtualPath = rb.DevicePath;
                 DiagnosticsService.Info("Virtual DualSense readback: " + rb.DevicePath);
             }
             else
@@ -124,7 +129,23 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 DiagnosticsService.Info("Virtual DualSense readback: virtual HID device not found/readable.");
                 rb.Dispose();
             }
+            if (HidePhysicalPad && !_stop) HidePad(virtualPath);
         });
+    }
+
+    private void HidePad(string? virtualPath)
+    {
+        if (!HidHideControl.Query().Ready) { HidHideNote = "HidHide yok: oyun Xbox kolunu da görebilir"; return; }
+        try
+        {
+            HidHideNote = HidHideControl.HidePad(virtualPath);
+            DiagnosticsService.Info("Virtual DualSense: " + HidHideNote);
+        }
+        catch (Exception ex)
+        {
+            HidHideNote = "HidHide uygulanamadı: " + ex.Message;
+            DiagnosticsService.Error("HidHide hide", ex);
+        }
     }
 
     private void OnReadback(double t, DualSenseInputState actual)
@@ -247,6 +268,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
         _ctrl = null; _ctx = null;
 #endif
         _readback?.Dispose(); _readback = null;
+        if (IsElevated && HidHideControl.RestorePending)
+        {
+            try { HidHideNote = HidHideControl.Restore(); DiagnosticsService.Info("Virtual DualSense: " + HidHideNote); }
+            catch (Exception ex) { HidHideNote = "HidHide geri alınamadı: " + ex.Message; DiagnosticsService.Error("HidHide restore", ex); }
+        }
         if (_verifier.FirstProblem != null) DiagnosticsService.Info("Virtual DualSense: first input mismatch this run: " + _verifier.FirstProblem);
         if (IsRunning) DiagnosticsService.Info("Virtual DualSense bridge stopped.");
         IsRunning = false;

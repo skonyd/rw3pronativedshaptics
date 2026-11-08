@@ -40,7 +40,8 @@ public static class VirtualControllerSetup
     private static string ResultFile => Path.Combine(StateDir, "hidmaestro-result.json");
     private static string SelfTestFile => Path.Combine(StateDir, "hidmaestro-selftest.json");
 
-    public static bool IsElevatedCommand(string? arg) => arg is InstallArg or UninstallArg or SelfTestArg;
+    public const string HidHideRestoreArg = "--hidhide-restore";
+    public static bool IsElevatedCommand(string? arg) => arg is InstallArg or UninstallArg or SelfTestArg or HidHideRestoreArg;
 
     /// <summary>Read-only status (no admin, no device changes).</summary>
     public static VirtualControllerStatus Query()
@@ -93,6 +94,7 @@ public static class VirtualControllerSetup
 
     private static (int, string) Execute(string arg)
     {
+        if (arg == HidHideRestoreArg) return (0, HidHideControl.Restore());
 #if HAS_HIDMAESTRO
         switch (arg)
         {

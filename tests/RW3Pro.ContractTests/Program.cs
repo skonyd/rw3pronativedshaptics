@@ -1106,3 +1106,21 @@ SpectralContracts.Run(Check);
     Check(flagged && clears && stale && late != null,
         $"Live input verifier: flags the -1..1 stick bug ({problem}), tolerates latency/jitter, window bounded");
 }
+
+// HidHide: parse CLI output, pick only the pad's game nodes, map the virtual pad's HID path.
+{
+    string devList = "--dev-hide \"HID\\VID_054C&PID_0CE6&MI_03\\8&1A69D1E7&0&0000\"\r\n--dev-hide \"HID\\VID_054C&PID_0CE6&MI_03\\A&2B11C806&0&0000\"\r\n";
+    var hidden = HidHideControl.ParseQuoted(devList, "--dev-hide");
+    bool parse = hidden.Count == 2 && hidden[1] == "HID\\VID_054C&PID_0CE6&MI_03\\A&2B11C806&0&0000"
+        && HidHideControl.ParseQuoted("--cloak-off\r\n", "--dev-hide").Count == 0;
+    const string xna = "{d61ca365-5af4-4486-998b-9db4734c6ca3}", hid = "{745a17a0-74d3-11d0-b6fe-00a0c90f57da}";
+    bool nodes = HidHideControl.IsPadGameNode("USB\\VID_1532&PID_0A4C&MI_00\\A&A454866&0&0000", xna)
+        && HidHideControl.IsPadGameNode("HID\\VID_1532&PID_0A4C&IG_03\\C&230D5F02&0&0000", hid)
+        && !HidHideControl.IsPadGameNode("HID\\VID_1532&PID_0A4C&MI_01&COL04\\A&27B00EE5&0&0003", hid)   // Sensa control: never hidden
+        && !HidHideControl.IsPadGameNode("USB\\VID_1532&PID_0A4C\\9&10AA6111&0&2", "{36fc9e60-c465-11cf-8056-444553540000}")
+        && !HidHideControl.IsPadGameNode("USB\\VID_045E&PID_028E&MI_00\\1&2&3", xna);                    // other vendors' pads untouched
+    bool path = HidHideControl.InstanceFromHidPath(@"\\?\hid#vid_054c&pid_0ce6&mi_03#4&bcf55c7&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}")
+        == "HID\\VID_054C&PID_0CE6&MI_03\\4&BCF55C7&0&0000" && HidHideControl.InstanceFromHidPath(null) == null;
+    bool errors = HidHideControl.LooksLikeError("The command is not recognized.") && !HidHideControl.LooksLikeError("--cloak-on\r\n");
+    Check(parse && nodes && path && errors, "HidHide: CLI parse, only the pad's XInput/IG nodes (never Sensa COL04), virtual path → instance, CLI error text");
+}

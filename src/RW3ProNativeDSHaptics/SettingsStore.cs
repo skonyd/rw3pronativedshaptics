@@ -24,6 +24,8 @@ public sealed class UserSettings
     public int Transport { get; set; }
     /// <summary>Sesten titreşim sensitivity in percent (Normal 100 / Yüksek 160 / Çok yüksek 250).</summary>
     public int AudioSensitivityPercent { get; set; } = 100;
+    /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>
+    public bool HidePadInGames { get; set; } = true;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
 }

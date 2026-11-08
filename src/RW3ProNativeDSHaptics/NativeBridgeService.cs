@@ -215,6 +215,8 @@ public sealed class NativeBridgeService : IDisposable
     public bool IsVirtualDualSenseRunning => _virtual?.IsRunning == true;
     public string VirtualDualSenseStatus => _virtual?.Status ?? "Durdu";
     public string VirtualDualSenseInputCheck => _virtual?.InputCheck ?? "";
+    public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
+    public bool HidePadInGames { get; set; } = true;
     public (long Haptic, long Output, long Trigger) VirtualDualSenseCounters =>
         _virtual == null ? (0, 0, 0) : (_virtual.HapticBlocks, _virtual.OutputReports, _virtual.TriggerReports);
 
@@ -233,6 +235,7 @@ public sealed class NativeBridgeService : IDisposable
             await EnsureSensaAsync(token);
             _sensa.Features.Reset();
             _virtual ??= new VirtualDualSenseBridge();
+            _virtual.HidePhysicalPad = HidePadInGames;
             return _virtual.Start(_sensa.Features, xinputSlot);
         }
         finally { _gate.Release(); }
