@@ -1059,3 +1059,50 @@ SpectralContracts.Run(Check);
     Check(parsed && shortRejected && weapon && vibration && silent,
         $"DualSense report 0x02 parse + trigger interpreter: weapon start {maxStart:F2} / break {maxBreak:F2}, vibration zones {low:F2}→{high:F2}, off silent");
 }
+
+// Virtual DualSense input: the physical Xbox pad (XInput) is the reference.
+{
+    var rest = DualSenseInputMapping.Expected(new XInputPad(0, 0, 0, 0, 0, 0, 0));
+    bool centred = rest.LX == 128 && rest.LY == 128 && rest.RX == 128 && rest.RY == 128 && rest.L2 == 0 && rest.R2 == 0 && rest.Hat == DualSenseInputState.HatNone;
+    var up = DualSenseInputMapping.Expected(new XInputPad(0, 0, 0, 0, short.MaxValue, 0, short.MinValue));
+    var right = DualSenseInputMapping.Expected(new XInputPad(0, 255, 255, short.MaxValue, 0, short.MinValue, 0));
+    bool directions = up.LY == 0 && up.RY == 255 && right.LX == 255 && right.RX == 0 && right.L2 == 255 && right.R2 == 255;
+    var face = DualSenseInputMapping.Expected(new XInputPad((ushort)(XInputPad.A | XInputPad.Y | XInputPad.Back | XInputPad.Guide), 0, 0, 0, 0, 0, 0));
+    bool buttons = face.Cross && face.Triangle && !face.Circle && !face.Square && face.Create && !face.Options && face.PS;
+    bool hats = DualSenseInputMapping.Hat(XInputPad.DpadUp) == 0 && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadUp | XInputPad.DpadRight)) == 1
+        && DualSenseInputMapping.Hat(XInputPad.DpadDown) == 4 && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadLeft | XInputPad.DpadUp)) == 7
+        && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadUp | XInputPad.DpadDown)) == DualSenseInputState.HatNone;
+    Check(centred && directions && buttons && hats,
+        "XInput → DualSense: rest = centre 128, up = LY 0, right = LX 255, A/Y/View/Guide = Cross/Triangle/Create/PS, D-pad hat");
+
+    // Report 0x01 parse: Cross + hat E + L1 + Options + PS.
+    var report = new byte[64]; report[0] = 0x01; report[1] = 10; report[2] = 20; report[3] = 30; report[4] = 40; report[5] = 50; report[6] = 60;
+    report[8] = 0x20 | 2; report[9] = 0x01 | 0x20; report[10] = 0x01;
+    bool parsed = DualSenseInputState.TryParseUsb(report, out var st) && st.LX == 10 && st.LY == 20 && st.RX == 30 && st.RY == 40 && st.L2 == 50 && st.R2 == 60
+        && st.Hat == 2 && st.Cross && !st.Square && st.L1 && !st.R1 && st.Options && !st.Create && st.PS;
+    bool wrongId = !DualSenseInputState.TryParseUsb(new byte[64], out _);
+    Check(parsed && wrongId, "DualSense USB input report 0x01 parse");
+
+    // The 2026-11-08 bug: sticks sent as -1..1 → rest encodes as 0 (up/left). The verifier must flag it.
+    var bad = rest with { LX = DualSenseInputMapping.AxisByte(0f), LY = DualSenseInputMapping.AxisByte(0f) };
+    var v = new VirtualPadVerifier();
+    v.RecordExpected(0, rest);
+    string? problem = null;
+    for (int i = 0; i < VirtualPadVerifier.MismatchesToReport; i++) problem ??= v.Observe(10 + i * 4, bad);
+    bool flagged = problem != null && problem.Contains("LY beklenen 128 görülen 0") && problem.Contains("LX");
+    v.Observe(40, rest);
+    bool clears = v.CurrentProblem == null && v.FirstProblem != null;
+
+    // Latency and jitter: a report showing the state from 30 ms ago still matches; ±2 counts tolerated.
+    var lat = new VirtualPadVerifier();
+    var pushed = DualSenseInputMapping.Expected(new XInputPad(XInputPad.A, 0, 0, 0, short.MaxValue, 0, 0));
+    lat.RecordExpected(0, rest); lat.RecordExpected(30, pushed);
+    bool stale = lat.Observe(35, rest) == null && lat.Observe(36, pushed with { LY = 2 }) == null && lat.CurrentProblem == null && lat.Matches == 2;
+    // Old states beyond the window do not excuse a wrong report.
+    var old = new VirtualPadVerifier();
+    old.RecordExpected(0, rest); old.RecordExpected(1000, pushed);
+    string? late = null;
+    for (int i = 0; i < VirtualPadVerifier.MismatchesToReport; i++) late ??= old.Observe(1400 + i, rest);
+    Check(flagged && clears && stale && late != null,
+        $"Live input verifier: flags the -1..1 stick bug ({problem}), tolerates latency/jitter, window bounded");
+}

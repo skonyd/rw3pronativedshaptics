@@ -320,7 +320,7 @@ public partial class MainWindow : Window
         bool running = _bridge.IsVirtualDualSenseRunning;
         VcBridgeBtn.Content = running ? "Köprüyü durdur" : VirtualDualSenseBridge.IsElevated ? "Köprüyü başlat" : "Yönetici olarak başlat";
         var (h, o, t) = _bridge.VirtualDualSenseCounters;
-        VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}" : "");
+        VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}\n" + _bridge.VirtualDualSenseInputCheck : "");
     }
 
     private async void VcSelfTest_Click(object sender, RoutedEventArgs e) =>

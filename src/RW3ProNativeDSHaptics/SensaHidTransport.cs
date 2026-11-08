@@ -98,7 +98,7 @@ public sealed class SensaHidTransport : IDisposable
     public void Close() { _handle?.Dispose(); _handle = null; DevicePath = null; }
     public void Dispose() => Close();
 
-    private static class Hid
+    internal static class Hid
     {
         public const uint GenericRead = 0x80000000, GenericWrite = 0x40000000;
 
@@ -115,6 +115,13 @@ public sealed class SensaHidTransport : IDisposable
             public ushort Usage, UsagePage, InputReportByteLength, OutputReportByteLength, FeatureReportByteLength;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)] public ushort[] Reserved;
             public ushort A, B, C, D, E, F, G, H, I, J;
+        }
+
+        public static int InputLength(SafeFileHandle h)
+        {
+            if (!HidD_GetPreparsedData(h, out IntPtr pd)) return 0;
+            try { return HidP_GetCaps(pd, out var caps) == 0x00110000 ? caps.InputReportByteLength : 0; }
+            finally { HidD_FreePreparsedData(pd); }
         }
 
         public static bool HasFeatureLength(SafeFileHandle h, int length)

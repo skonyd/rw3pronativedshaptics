@@ -44,6 +44,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/SensaHidTransport.cs" Link="SensaHidTransport.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/SynapseSensaCheck.cs" Link="SynapseSensaCheck.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseTriggerEffects.cs" Link="DualSenseTriggerEffects.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseInputMapping.cs" Link="DualSenseInputMapping.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HybridOutputPolicy.cs" Link="HybridOutputPolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AcousticToneBands.cs" Link="AcousticToneBands.cs" />
   </ItemGroup>

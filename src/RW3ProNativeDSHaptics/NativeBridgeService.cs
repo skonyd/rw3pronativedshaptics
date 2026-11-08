@@ -214,6 +214,7 @@ public sealed class NativeBridgeService : IDisposable
     private VirtualDualSenseBridge? _virtual;
     public bool IsVirtualDualSenseRunning => _virtual?.IsRunning == true;
     public string VirtualDualSenseStatus => _virtual?.Status ?? "Durdu";
+    public string VirtualDualSenseInputCheck => _virtual?.InputCheck ?? "";
     public (long Haptic, long Output, long Trigger) VirtualDualSenseCounters =>
         _virtual == null ? (0, 0, 0) : (_virtual.HapticBlocks, _virtual.OutputReports, _virtual.TriggerReports);
 

@@ -16,7 +16,9 @@ namespace RW3ProNativeDSHaptics;
 ///     without loopback, Windows volume or a physical endpoint;
 ///   • triggers: output report 0x02 → TriggerEffectInterpreter → Wolverine rumble motors
 ///     (PC mode; Sensa stays on the palms), together with the game's DualSense rumble values.
-/// Creating the virtual device needs administrator rights (HIDMaestro). Not verified with a game yet;
+/// Creating the virtual device needs administrator rights (HIDMaestro).
+/// Live check: the virtual device's input reports are read back like a game reads them and compared
+/// with the physical Xbox pad (<see cref="VirtualPadVerifier"/>); a lasting mismatch is logged and shown.
 /// HidHide (to hide the Wolverine from the game and avoid double input) is not configured here.
 /// </summary>
 public sealed class VirtualDualSenseBridge : IDisposable
@@ -27,15 +29,37 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public long OutputReports => Interlocked.Read(ref _outputReports);
     public long TriggerReports => Interlocked.Read(ref _triggerReports);
     public static bool IsElevated => Environment.IsPrivilegedProcess;
+    /// <summary>Result of the live readback comparison with the physical pad.</summary>
+    public string InputCheck
+    {
+        get
+        {
+            if (!IsRunning) return "";
+            if (_readback == null) return _readbackNote;
+            if (_verifier.CurrentProblem != null) return "GİRİŞ UYUŞMAZLIĞI: " + _verifier.CurrentProblem;
+            if (_verifier.Checks == 0) return "giriş doğrulaması bekleniyor";
+            return $"giriş Xbox koluyla eşleşiyor ({_verifier.Matches}/{_verifier.Checks})";
+        }
+    }
+    public static bool HidHideInstalled
+    {
+        get { using var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\HidHide"); return k != null; }
+    }
 
     private long _hapticBlocks, _outputReports, _triggerReports;
     private readonly TriggerEffectInterpreter _left = new(), _right = new();
     private readonly object _gate = new();
     private byte _rumbleLeft, _rumbleRight;
+    private TriggerEffect _lastLeftEffect, _lastRightEffect;
     private Thread? _input;
     private volatile bool _stop;
     private HapticFeatureExtractor? _target;
     private int _slot;
+    private readonly VirtualPadVerifier _verifier = new();
+    private VirtualPadReadback? _readback;
+    private string _readbackNote = "";
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private double NowMs => _clock.Elapsed.TotalMilliseconds;
 #if HAS_HIDMAESTRO
     private HMContext? _ctx;
     private HMController? _ctrl;
@@ -54,6 +78,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             if (!_ctx.IsDriverInstalled || !HMContext.IsUsbipBackendAvailable) { Status = "HIDMaestro kurulu değil (Ayarlar → Sanal DualSense → Kur)."; Stop(); return false; }
             var profile = _ctx.GetProfile(VirtualControllerSetup.DualSenseCompositeProfile)
                           ?? throw new InvalidOperationException("dualsense-composite profili yok");
+            var before = VirtualPadReadback.DualSensePaths();
             _ctrl = _ctx.CreateController(profile, "rw3pro-bridge");
             var audio = _ctrl.UsbAudio;
             if (audio?.Output != null) audio.Output.FramesReceived += OnFrames;
@@ -62,6 +87,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _input = new Thread(InputLoop) { IsBackground = true, Name = "RW3-VirtualDualSense", Priority = ThreadPriority.AboveNormal };
             _input.Start();
             IsRunning = true;
+            StartReadback(before);
+            if (!HidHideInstalled)
+                DiagnosticsService.Info("Virtual DualSense: HidHide not installed - the game can also see the Xbox pad (double input possible).");
             Status = "Sanal DualSense çalışıyor" + (audio?.Output != null ? $" • titreşim sesi {audio.Output.Channels} kanal" : " • ses arabirimi yok");
             DiagnosticsService.Info("Virtual DualSense bridge started (XInput slot " + _slot + ").");
             return true;
@@ -77,6 +105,32 @@ public sealed class VirtualDualSenseBridge : IDisposable
         Status = "HIDMaestro SDK bu derlemede yok.";
         return false;
 #endif
+    }
+
+    private void StartReadback(System.Collections.Generic.HashSet<string> before)
+    {
+        _readbackNote = "giriş doğrulaması: sanal aygıt aranıyor";
+        var rb = new VirtualPadReadback(OnReadback, () => NowMs);
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            if (rb.Start(before))
+            {
+                _readback = rb;
+                DiagnosticsService.Info("Virtual DualSense readback: " + rb.DevicePath);
+            }
+            else
+            {
+                _readbackNote = "giriş doğrulaması yok (sanal aygıt okunamadı)";
+                DiagnosticsService.Info("Virtual DualSense readback: virtual HID device not found/readable.");
+                rb.Dispose();
+            }
+        });
+    }
+
+    private void OnReadback(double t, DualSenseInputState actual)
+    {
+        var problem = _verifier.Observe(t, actual);
+        if (problem != null) DiagnosticsService.Info("Virtual DualSense INPUT MISMATCH vs Xbox pad: " + problem);
     }
 
 #if HAS_HIDMAESTRO
@@ -96,8 +150,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         if (!DualSenseOutputReport.TryParse(packet.Data.Span, out var r)) return;
         lock (_gate)
         {
-            if (r.LeftTriggerValid) _left.SetEffect(r.LeftTrigger);
-            if (r.RightTriggerValid) _right.SetEffect(r.RightTrigger);
+            if (r.LeftTriggerValid) { _left.SetEffect(r.LeftTrigger); _lastLeftEffect = r.LeftTrigger; }
+            if (r.RightTriggerValid) { _right.SetEffect(r.RightTrigger); _lastRightEffect = r.RightTrigger; }
             if (r.RumbleValid) { _rumbleLeft = r.RumbleLeft; _rumbleRight = r.RumbleRight; }
         }
         if (r.LeftTriggerValid || r.RightTriggerValid) Interlocked.Increment(ref _triggerReports);
@@ -108,19 +162,30 @@ public sealed class VirtualDualSenseBridge : IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         double last = 0;
         ushort lastL = 0, lastR = 0;
+        double nextLog = 10;
         var state = new HMGamepadState();
+        // Every axis the profile declares gets its rest value, so none falls back to the encoder default.
+        var axes = new System.Collections.Generic.Dictionary<HMAxis, float>();
+        try { foreach (var a in _ctrl!.Profile.AvailableAxes ?? []) axes[a] = 0.5f; } catch { }
+        foreach (var kv in HMGamepadStateHelpers.StandardAxes(_ctrl!.Profile, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 0f)) axes[kv.Key] = kv.Value;
+        state.Axes = axes;
         while (!_stop)
         {
             double now = sw.Elapsed.TotalSeconds, dt = now - last; last = now;
-            if (XInput.XInputGetState((uint)_slot, out var s) == 0 && _ctrl != null)
+            if (XInput.GetState((uint)_slot, out var s) == 0 && _ctrl != null)
             {
                 var g = s.Gamepad;
+                var pad = new XInputPad(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
                 state.Buttons = MapButtons(g.wButtons);
-                state.Hat = MapHat(g.wButtons);
-                float N(short v) => Math.Clamp(v / 32767f, -1f, 1f);
-                // HID convention: Y grows downward (XInput: upward). Not yet verified in a game.
-                state.Axes = HMGamepadStateHelpers.StandardAxes(_ctrl.Profile, N(g.sThumbLX), -N(g.sThumbLY), N(g.sThumbRX), -N(g.sThumbRY),
-                    g.bLeftTrigger / 255f, g.bRightTrigger / 255f);
+                state.Hat = HatOf(DualSenseInputMapping.Hat(g.wButtons));
+                // HIDMaestro axes are [0..1], 0.5 = centre (DualSenseInputMapping; a -1..1 range pinned the
+                // sticks up/left in TLOU2, 2026-11-08).
+                foreach (var kv in HMGamepadStateHelpers.StandardAxes(_ctrl.Profile,
+                             DualSenseInputMapping.StickX(g.sThumbLX), DualSenseInputMapping.StickY(g.sThumbLY),
+                             DualSenseInputMapping.StickX(g.sThumbRX), DualSenseInputMapping.StickY(g.sThumbRY),
+                             DualSenseInputMapping.Trigger(g.bLeftTrigger), DualSenseInputMapping.Trigger(g.bRightTrigger)))
+                    axes[kv.Key] = kv.Value;
+                _verifier.RecordExpected(NowMs, DualSenseInputMapping.Expected(pad));
                 try { _ctrl.SubmitState(in state); } catch (Exception ex) { Status = "Giriş gönderilemedi: " + ex.Message; }
                 double lt, rt; byte rl, rr;
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }
@@ -132,6 +197,14 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     XInput.XInputSetState((uint)_slot, ref v);
                     lastL = ml; lastR = mr;
                 }
+            }
+            if (now >= nextLog)
+            {
+                nextLog = now + 10;
+                TriggerEffect le, re; lock (_gate) { le = _lastLeftEffect; re = _lastRightEffect; }
+                DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks}, output reports {OutputReports}, trigger reports {TriggerReports}, " +
+                    $"L2 mode 0x{le.Mode:X2}, R2 mode 0x{re.Mode:X2}, rumble {_rumbleLeft}/{_rumbleRight}, " +
+                    $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}");
             }
             Thread.Sleep(4);
         }
@@ -152,20 +225,15 @@ public sealed class VirtualDualSenseBridge : IDisposable
         if ((b & 0x0010) != 0) r |= HMButton.Start;
         if ((b & 0x0040) != 0) r |= HMButton.LeftStick;
         if ((b & 0x0080) != 0) r |= HMButton.RightStick;
+        if ((b & 0x0400) != 0) r |= HMButton.Guide;   // Xbox button -> PS (XInputGetStateEx only)
         return r;
     }
 
-    private static HMHat MapHat(ushort b)
+    private static HMHat HatOf(byte hat) => hat switch
     {
-        bool up = (b & 1) != 0, down = (b & 2) != 0, left = (b & 4) != 0, right = (b & 8) != 0;
-        return (up, down, left, right) switch
-        {
-            (true, false, false, true) => HMHat.NorthEast, (false, true, false, true) => HMHat.SouthEast,
-            (false, true, true, false) => HMHat.SouthWest, (true, false, true, false) => HMHat.NorthWest,
-            (true, false, _, _) => HMHat.North, (false, true, _, _) => HMHat.South,
-            (_, _, false, true) => HMHat.East, (_, _, true, false) => HMHat.West, _ => HMHat.None
-        };
-    }
+        0 => HMHat.North, 1 => HMHat.NorthEast, 2 => HMHat.East, 3 => HMHat.SouthEast,
+        4 => HMHat.South, 5 => HMHat.SouthWest, 6 => HMHat.West, 7 => HMHat.NorthWest, _ => HMHat.None
+    };
 #endif
 
     public void Stop()
@@ -178,6 +246,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         try { _ctx?.Dispose(); } catch { }
         _ctrl = null; _ctx = null;
 #endif
+        _readback?.Dispose(); _readback = null;
+        if (_verifier.FirstProblem != null) DiagnosticsService.Info("Virtual DualSense: first input mismatch this run: " + _verifier.FirstProblem);
         if (IsRunning) DiagnosticsService.Info("Virtual DualSense bridge stopped.");
         IsRunning = false;
         if (Status.StartsWith("Sanal DualSense çalışıyor", StringComparison.Ordinal)) Status = "Durdu";
@@ -191,6 +261,18 @@ public sealed class VirtualDualSenseBridge : IDisposable
         [StructLayout(LayoutKind.Sequential)] public struct State { public uint dwPacketNumber; public Gamepad Gamepad; }
         [StructLayout(LayoutKind.Sequential)] public struct Vibration { public ushort wLeftMotorSpeed, wRightMotorSpeed; }
         [DllImport("xinput1_4.dll")] public static extern uint XInputGetState(uint index, out State state);
+        // Undocumented but long-stable ordinal 100: same state plus the Guide (Xbox) button bit 0x0400.
+        [DllImport("xinput1_4.dll", EntryPoint = "#100")] private static extern uint XInputGetStateEx(uint index, out State state);
+        private static bool _exMissing;
+        public static uint GetState(uint index, out State state)
+        {
+            if (!_exMissing)
+            {
+                try { return XInputGetStateEx(index, out state); }
+                catch (EntryPointNotFoundException) { _exMissing = true; }
+            }
+            return XInputGetState(index, out state);
+        }
         [DllImport("xinput1_4.dll")] public static extern uint XInputSetState(uint index, ref Vibration vibration);
     }
 }
