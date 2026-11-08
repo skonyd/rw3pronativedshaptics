@@ -117,6 +117,13 @@ public sealed class SensaHidTransport : IDisposable
             public ushort A, B, C, D, E, F, G, H, I, J;
         }
 
+        public static int OutputLength(SafeFileHandle h)
+        {
+            if (!HidD_GetPreparsedData(h, out IntPtr pd)) return 0;
+            try { return HidP_GetCaps(pd, out var caps) == 0x00110000 ? caps.OutputReportByteLength : 0; }
+            finally { HidD_FreePreparsedData(pd); }
+        }
+
         public static int InputLength(SafeFileHandle h)
         {
             if (!HidD_GetPreparsedData(h, out IntPtr pd)) return 0;

@@ -1124,3 +1124,54 @@ SpectralContracts.Run(Check);
     bool errors = HidHideControl.LooksLikeError("The command is not recognized.") && !HidHideControl.LooksLikeError("--cloak-on\r\n");
     Check(parse && nodes && path && errors, "HidHide: CLI parse, only the pad's XInput/IG nodes (never Sensa COL04), virtual path → instance, CLI error text");
 }
+
+// Game signal simulator: scenes carry real signal on the right sides; reports drive the same parser/interpreter.
+{
+    double Rms(float[] b, double from, double to)
+    {
+        int s = (int)(from * GameSignalSimulator.Rate), e = Math.Min(b.Length, (int)(to * GameSignalSimulator.Rate));
+        double sum = 0; for (int i = s; i < e; i++) sum += b[i] * b[i];
+        return e > s ? Math.Sqrt(sum / (e - s)) : 0;
+    }
+    bool audible = GameSignalSimulator.Scenes.Where(s => s.Id != "all").All(s =>
+    {
+        var (l, r) = GameSignalSimulator.Haptics(s.Id);
+        return Math.Max(Rms(l, 0, s.Seconds), Rms(r, 0, s.Seconds)) > 0.02 && l.All(float.IsFinite) && r.All(float.IsFinite)
+            && l.All(v => Math.Abs(v) <= 1f) && r.All(v => Math.Abs(v) <= 1f);
+    });
+    var (sl, sr) = GameSignalSimulator.Haptics("steps");            // step 1 (0.30 s) left only, step 2 (0.75 s) right only
+    bool steps = Rms(sl, 0.30, 0.40) > 10 * Rms(sr, 0.30, 0.40) && Rms(sr, 0.75, 0.85) > 10 * Rms(sl, 0.75, 0.85);
+    var (pl, pr) = GameSignalSimulator.Haptics("pan");              // starts left, middle right
+    bool pan = Rms(pl, 0.3, 0.5) > 4 * Rms(pr, 0.3, 0.5) && Rms(pr, 1.9, 2.1) > 4 * Rms(pl, 1.9, 2.1);
+    var (al, _) = GameSignalSimulator.Haptics("all");
+    bool all = Math.Abs(al.Length / (double)GameSignalSimulator.Rate - GameSignalSimulator.Duration("all")) < 0.01;
+    Check(audible && steps && pan && all, "Game simulator scenes: audible, bounded, left/right steps and pan on the right sides, full tour length");
+
+    double Pull(TriggerEffect eff)
+    {
+        var it = new TriggerEffectInterpreter(); it.SetEffect(eff);
+        double max = 0; for (int i = 0; i <= 250; i++) max = Math.Max(max, it.Update(i / 250.0, 0.004));
+        return max;
+    }
+    var weaponData = GameSignalSimulator.Outputs("weapon")[0].Data;
+    bool weapon = DualSenseOutputReport.TryParse(weaponData, out var wr) && wr.RightTriggerValid && wr.RightTrigger.Mode == 0x25
+        && wr.LeftTriggerValid && wr.LeftTrigger.IsOff && Pull(wr.RightTrigger) >= 0.7;
+    var bowData = GameSignalSimulator.Outputs("bow")[0].Data;
+    bool bow = DualSenseOutputReport.TryParse(bowData, out var br) && br.RightTrigger.Mode == 0x26 && br.LeftTrigger.Mode == 0x21
+        && Pull(br.RightTrigger) >= 0.7 && Pull(br.LeftTrigger) >= 0.6;
+    var boom = GameSignalSimulator.Outputs("explosion");
+    bool rumble = boom.Any(s => DualSenseOutputReport.TryParse(s.Data, out var x) && x.RumbleValid && x.RumbleLeft == 255 && x.RumbleRight == 200)
+        && DualSenseOutputReport.TryParse(boom[^1].Data, out var last) && last.RumbleValid && last.RumbleLeft == 0 && last.RightTrigger.IsOff;
+    bool tour = GameSignalSimulator.Outputs("all").Count == GameSignalSimulator.Scenes.Where(s => s.Id != "all").Sum(s => GameSignalSimulator.Outputs(s.Id).Count)
+        && GameSignalSimulator.Outputs("all").Zip(GameSignalSimulator.Outputs("all").Skip(1)).All(p => p.First.At <= p.Second.At);
+    Check(weapon && bow && rumble && tour && weaponData.Length == GameSignalSimulator.OutputDataLength,
+        "Game simulator reports: weapon 0x25 / bow 0x21+0x26 parse and drive the interpreter, explosion rumble on and off, ordered tour");
+
+    string ok = GameSimVerdict.Describe(120, 0.6f, 0.8f, 90, 40, 40, null, 12.5);
+    string deadEngine = GameSimVerdict.Describe(120, 0.6f, 0.8f, 0, 40, 40, null, 0.2);
+    string silent = GameSimVerdict.Describe(120, 0.0f, 0.0f, 0, 40, 0, null, null);
+    string noAudio = GameSimVerdict.Describe(0, 0, 0, 0, 0, 0, "HID açılamadı (5)", null);
+    Check(!ok.Contains('✗') && deadEngine.Contains("Sensa'ya hiç kare gitmedi") && deadEngine.Contains("✗ Mikrofon")
+          && silent.Contains("sessiz") && silent.Contains("köprüye ulaşmadı") && noAudio.Contains("almadı") && noAudio.Contains("yazılamadı"),
+        "Game simulator verdict names the failing stage (audio, Sensa engine, triggers, mic)");
+}

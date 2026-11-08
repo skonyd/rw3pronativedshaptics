@@ -121,8 +121,8 @@ public sealed class NativeBridgeService : IDisposable
             _sensitivityActive = false;
             ApplyGain();
             var endpoint = FindDualSenseEndpoint() ?? throw new InvalidOperationException(
-                "4 kanallÄ± DualSense ses aygÄ±tÄ± bulunamadÄ±. DualSense'i USB ile tak veya " +
-                "sanal DualSense sÃ¼rÃ¼cÃ¼nÃ¼ (PadForge/DSX+) baÅŸlat.");
+                "4 kanallı DualSense ses aygıtı bulunamadı. Ayarlar → Sanal DualSense → köprüyü başlat " +
+                "veya DualSense'i USB ile tak.");
             _source.Stop();
             await EnsureSensaAsync(token);
             _source.Start(endpoint.Id, _sensa, BridgeCaptureBufferMs);
@@ -217,6 +217,12 @@ public sealed class NativeBridgeService : IDisposable
     public string VirtualDualSenseInputCheck => _virtual?.InputCheck ?? "";
     public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
     public bool HidePadInGames { get; set; } = true;
+    public string? VirtualDualSenseHidPath => _virtual?.VirtualHidPath;
+    public (float Left, float Right) VirtualHapticPeaks => _virtual?.PeaksSinceMark ?? (0, 0);
+    public void MarkVirtualHapticPeaks() => _virtual?.MarkPeaks();
+    public string SensaEngineSummary =>
+        $"Sensa {(_sensa.IsRunning ? "running" : "STOPPED")}/{(_sensa.IsActive ? "active" : "inactive")}, frames {_sensa.DirectFramesSent}, " +
+        $"ticks {_sensa.EngineTicks}, slots {_sensa.Features.CompletedSlots}, gain {SourceGainPercent}%, level {_sensa.OutputLevelPercent}%, '{_sensa.Status}'";
     public (long Haptic, long Output, long Trigger) VirtualDualSenseCounters =>
         _virtual == null ? (0, 0, 0) : (_virtual.HapticBlocks, _virtual.OutputReports, _virtual.TriggerReports);
 
@@ -236,6 +242,15 @@ public sealed class NativeBridgeService : IDisposable
             _sensa.Features.Reset();
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
+            _virtual.EngineProbe = () => SensaEngineSummary;
+            // The bridge feeds the engine's feature extractor; if the engine thread is gone, nothing
+            // reaches the palms although the game's haptic audio keeps arriving. Restart it.
+            _virtual.EngineWatchdog = () =>
+            {
+                if (_sensa.IsRunning) return null;
+                bool ok = _sensa.Start();
+                return "Sensa engine was stopped; restart " + (ok ? "ok" : "failed: " + _sensa.Status);
+            };
             return _virtual.Start(_sensa.Features, xinputSlot);
         }
         finally { _gate.Release(); }

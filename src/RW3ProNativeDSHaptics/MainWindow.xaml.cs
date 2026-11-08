@@ -64,6 +64,8 @@ public partial class MainWindow : Window
         foreach (var demo in NativeDemoSignals.All)
             demoChoices.Add(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
         DemoSceneCombo.ItemsSource = demoChoices;
+        GameSimCombo.ItemsSource = GameSignalSimulator.Scenes;
+        GameSimCombo.SelectedIndex = 0;
         DemoSceneCombo.SelectedIndex = 0;
         ChannelSceneCombo.ItemsSource = DualSenseChannelFixtures.Scenes;
         ChannelSceneCombo.SelectedIndex = 0;
@@ -791,6 +793,50 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) { ChannelStatus.Text = "Durduruldu; çıkış kapatıldı. Tamamlanmış ölçüm raporu yok."; }
         catch (Exception ex) { NoteError("DualSense channel lab", ex); ChannelStatus.Text = "Test tamamlanmadı: " + ex.Message; }
         finally { _busy = false; SetTestButtons(true); }
+    }
+
+    // ───────────────────────── game signal simulator (virtual DualSense) ─────────────────────────
+
+    private CancellationTokenSource? _gameSimCancel;
+
+    private void GameSimCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (GameSimCombo.SelectedItem is GameSimScene s && GameSimStatus != null && _gameSimCancel == null)
+            GameSimStatus.Text = s.Hint;
+    }
+
+    private void GameSimStop_Click(object sender, RoutedEventArgs e) => _gameSimCancel?.Cancel();
+
+    private async void GameSim_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gameSimCancel != null || GameSimCombo.SelectedItem is not GameSimScene scene) return;
+        if (!_bridge.IsVirtualDualSenseRunning)
+        {
+            GameSimStatus.Text = "Önce Ayarlar → Sanal DualSense → köprüyü başlat. Simülasyon sanal DualSense'e, oyunun yolladığı gibi yollar.";
+            return;
+        }
+        string? endpoint = await Task.Run(GameSignalSimulator.FindEndpoint);
+        if (endpoint == null) { GameSimStatus.Text = "Sanal DualSense ses uç noktası bulunamadı."; return; }
+        string? micId = ChannelMicEnabled.IsChecked == true && ChannelMicCombo.SelectedItem is LabMicrophone m ? m.Id : null;
+        _gameSimCancel = new CancellationTokenSource();
+        GameSimBtn.IsEnabled = false;
+        var (h0, o0, t0) = _bridge.VirtualDualSenseCounters;
+        long f0 = _bridge.DirectFramesSent;
+        _bridge.MarkVirtualHapticPeaks();
+        GameSimStatus.Text = "Çalıyor: " + scene.Title + " — " + scene.Hint;
+        try
+        {
+            var res = await GameSignalSimulator.PlayAsync(scene.Id, endpoint, _bridge.VirtualDualSenseHidPath, micId, _gameSimCancel.Token);
+            await Task.Delay(300);
+            var (h1, o1, t1) = _bridge.VirtualDualSenseCounters;
+            long frames = _bridge.DirectFramesSent - f0;
+            var (pl, pr) = _bridge.VirtualHapticPeaks;
+            GameSimStatus.Text = GameSimVerdict.Describe(h1 - h0, pl, pr, frames, res.ReportsWritten, t1 - t0, res.HidError, res.MicDb);
+            DiagnosticsService.Info("Game simulator " + scene.Id + ": " + GameSimStatus.Text.Replace(Environment.NewLine, " | ") + " | " + _bridge.SensaEngineSummary);
+        }
+        catch (OperationCanceledException) { GameSimStatus.Text = "Durduruldu."; }
+        catch (Exception ex) { NoteError("Game simulator", ex); GameSimStatus.Text = "Hata: " + ex.Message; }
+        finally { _gameSimCancel.Dispose(); _gameSimCancel = null; GameSimBtn.IsEnabled = true; }
     }
 
     private async void DemoSelected_Click(object sender, RoutedEventArgs e)

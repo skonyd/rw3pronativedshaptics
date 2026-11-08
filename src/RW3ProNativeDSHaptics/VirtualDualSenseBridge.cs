@@ -32,6 +32,18 @@ public sealed class VirtualDualSenseBridge : IDisposable
     /// <summary>Hide the physical Xbox pad from games while running (HidHide), restore on stop.</summary>
     public bool HidePhysicalPad { get; set; }
     public string HidHideNote { get; private set; } = "";
+    /// <summary>HID path of the virtual DualSense (what games open); null until the readback found it.</summary>
+    public string? VirtualHidPath => _readback?.DevicePath;
+    /// <summary>Engine state for the periodic log (set by the owner).</summary>
+    public Func<string>? EngineProbe { get; set; }
+    /// <summary>Restarts the Sensa engine when it is not running; returns a note when it acted.</summary>
+    public Func<string?>? EngineWatchdog { get; set; }
+    /// <summary>Largest haptic sample (channels 3/4, 0..1) since <see cref="MarkPeaks"/>.</summary>
+    public (float Left, float Right) PeaksSinceMark { get { lock (_peakGate) return (_markL, _markR); } }
+    public void MarkPeaks() { lock (_peakGate) _markL = _markR = 0; }
+    private readonly object _peakGate = new();
+    private float _markL, _markR, _logL, _logR;
+    private readonly System.Collections.Generic.Dictionary<byte, long> _r2Modes = new(), _l2Modes = new();
     /// <summary>Result of the live readback comparison with the physical pad.</summary>
     public string InputCheck
     {
@@ -160,7 +172,15 @@ public sealed class VirtualDualSenseBridge : IDisposable
         // Interleaved PCM16, roles speakerLeft, speakerRight, hapticLeft, hapticRight = the DualSense
         // rear-channel layout the extractor already reads (channels 2/3).
         if (output.Channels != 4 || output.BitsPerSample != 16) return;
-        _target?.Push(pcm.Span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+        var span = pcm.Span;
+        float pl = 0, pr = 0;
+        for (int i = 0; i + 8 <= span.Length; i += 8)
+        {
+            pl = Math.Max(pl, Math.Abs((short)(span[i + 4] | (span[i + 5] << 8)) / 32768f));
+            pr = Math.Max(pr, Math.Abs((short)(span[i + 6] | (span[i + 7] << 8)) / 32768f));
+        }
+        lock (_peakGate) { _markL = Math.Max(_markL, pl); _markR = Math.Max(_markR, pr); _logL = Math.Max(_logL, pl); _logR = Math.Max(_logR, pr); }
+        _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
         Interlocked.Increment(ref _hapticBlocks);
     }
 
@@ -171,8 +191,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         if (!DualSenseOutputReport.TryParse(packet.Data.Span, out var r)) return;
         lock (_gate)
         {
-            if (r.LeftTriggerValid) { _left.SetEffect(r.LeftTrigger); _lastLeftEffect = r.LeftTrigger; }
-            if (r.RightTriggerValid) { _right.SetEffect(r.RightTrigger); _lastRightEffect = r.RightTrigger; }
+            if (r.LeftTriggerValid) { _left.SetEffect(r.LeftTrigger); _lastLeftEffect = r.LeftTrigger; _l2Modes[r.LeftTrigger.Mode] = _l2Modes.GetValueOrDefault(r.LeftTrigger.Mode) + 1; }
+            if (r.RightTriggerValid) { _right.SetEffect(r.RightTrigger); _lastRightEffect = r.RightTrigger; _r2Modes[r.RightTrigger.Mode] = _r2Modes.GetValueOrDefault(r.RightTrigger.Mode) + 1; }
             if (r.RumbleValid) { _rumbleLeft = r.RumbleLeft; _rumbleRight = r.RumbleRight; }
         }
         if (r.LeftTriggerValid || r.RightTriggerValid) Interlocked.Increment(ref _triggerReports);
@@ -222,10 +242,21 @@ public sealed class VirtualDualSenseBridge : IDisposable
             if (now >= nextLog)
             {
                 nextLog = now + 10;
-                TriggerEffect le, re; lock (_gate) { le = _lastLeftEffect; re = _lastRightEffect; }
-                DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks}, output reports {OutputReports}, trigger reports {TriggerReports}, " +
-                    $"L2 mode 0x{le.Mode:X2}, R2 mode 0x{re.Mode:X2}, rumble {_rumbleLeft}/{_rumbleRight}, " +
-                    $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}");
+                string l2, r2;
+                lock (_gate)
+                {
+                    static string Modes(System.Collections.Generic.Dictionary<byte, long> m) =>
+                        m.Count == 0 ? "-" : string.Join(" ", System.Linq.Enumerable.Select(m, kv => $"0x{kv.Key:X2}x{kv.Value}"));
+                    l2 = Modes(_l2Modes); r2 = Modes(_r2Modes); _l2Modes.Clear(); _r2Modes.Clear();
+                }
+                float wl, wr; lock (_peakGate) { wl = _logL; wr = _logR; _logL = _logR = 0; }
+                string? healed = null;
+                try { healed = EngineWatchdog?.Invoke(); } catch (Exception ex) { healed = "engine watchdog failed: " + ex.Message; }
+                string engine = "";
+                try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
+                DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks} (peak L {wl:F2} R {wr:F2}), output reports {OutputReports}, trigger reports {TriggerReports} " +
+                    $"(L2 modes {l2}; R2 modes {r2}), rumble {_rumbleLeft}/{_rumbleRight}, " +
+                    $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; {engine}" + (healed != null ? "; " + healed : ""));
             }
             Thread.Sleep(4);
         }
