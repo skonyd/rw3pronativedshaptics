@@ -36,6 +36,24 @@ public sealed class GameInputRumble : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool StateFn(IntPtr self, out PadState state);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void FocusFn(IntPtr self, uint policy);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int CreateRawFn(IntPtr self,uint id,int kind,out IntPtr report);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate nuint RawSizeFn(IntPtr self);
+    /// <summary>Read-only capability inspection; creates a report object but never submits it or takes exclusive access.
+    /// Slots14 (device CreateRawDeviceReport),4/5 (report info/size) follow the pinned SDK v0 header.</summary>
+    public string InspectRawOutput(uint id=9)
+    {
+        lock(_gate)
+        {
+            if(!TryAcquire())return LastError;
+            IntPtr report=IntPtr.Zero;
+            try {
+                int hr=Slot<CreateRawFn>(_device,14)(_device,id,1,out report);
+                if(hr<0 || report==IntPtr.Zero)return $"CreateRawDeviceReport({id},Output): 0x{hr:X8}";
+                IntPtr info=Slot<InfoFn>(report,4)(report);
+                return info==IntPtr.Zero?"Raw report info unavailable":$"Raw report kind={Marshal.ReadInt32(info)} id={Marshal.ReadInt32(info,4)} size={Marshal.ReadInt32(info,8)} dataSize={Slot<RawSizeFn>(report,5)(report)}";
+            }finally{Release(ref report);}
+        }
+    }
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void DeviceCallback(ulong token, IntPtr context, IntPtr device, ulong timestamp, uint current, uint previous);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int RegisterFn(IntPtr self, IntPtr device, uint kind, uint status, int enumeration, IntPtr context, DeviceCallback callback, out ulong token);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int RegisterSystemFn(IntPtr self, IntPtr device, uint filter, IntPtr context, DeviceCallback callback, out ulong token);

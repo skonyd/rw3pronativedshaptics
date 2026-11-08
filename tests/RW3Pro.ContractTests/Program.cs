@@ -1126,6 +1126,29 @@ SpectralContracts.Run(Check);
     Check(parse && nodes && path && errors, "HidHide: CLI parse, only the pad's XInput/IG nodes (never Sensa COL04), virtual path → instance, CLI error text");
 }
 
+// Modern Xbox driver game-facing children expose Microsoft IDs beneath the verified Razer parent.
+{
+    const string xbox="{05f5cfe2-4733-4950-a6bb-07aad01a3a84}", hid="{745a17a0-74d3-11d0-b6fe-00a0c90f57da}";
+    Guid container=Guid.NewGuid();
+    var root=new HidHideControl.PadNode(@"USB\VID_1532&PID_0A3F\W3",xbox,null,container);
+    var child=new HidHideControl.PadNode(@"USB\VID_045E&PID_02FF&IG_00\W3",hid,root.Id,container);
+    var grandchild=new HidHideControl.PadNode(@"HID\VID_045E&PID_02FF&IG_00\W3",hid,child.Id,container);
+    var unrelated=child with {Id=@"USB\VID_045E&PID_02FF&IG_00\OTHER",ParentId=@"USB\OTHER"};
+    var wrongContainer=child with {Id=@"USB\VID_045E&PID_02FF&IG_00\WRONG",ContainerId=Guid.NewGuid()};
+    var sensa=new HidHideControl.PadNode(@"HID\VID_1532&PID_0A4C&MI_01&COL04\W3",hid,root.Id,container);
+    var nodes=new[]{grandchild,unrelated,wrongContainer,sensa,child,root};
+    var selected=HidHideControl.SelectPadGameNodes(nodes);
+    Check(selected.Count==3 && new[]{root.Id,child.Id,grandchild.Id}.All(selected.Contains),
+        "HidHide: Microsoft-ID Xbox children require verified Razer ancestry and matching container, independent of inventory order");
+    Check(HidHideControl.SelectPadGameNodes(new[]{root with {ContainerId=Guid.Empty},child with {ContainerId=Guid.Empty}}).SequenceEqual(new[]{root.Id}),
+        "HidHide: absent container metadata cannot expand hiding to Microsoft children");
+    var cycle=child with {ParentId=grandchild.Id};
+    Check(HidHideControl.SelectPadGameNodes(new[]{root,cycle,grandchild}).SequenceEqual(new[]{root.Id}),
+        "HidHide: detached or cyclic game-node chain never acquires an unrelated controller");
+    Check(HidHideControl.LooksLikeError("The file name should be located on a storage volume (volume is case sensitive)."),
+        "HidHide: CLI path-format rejection is a failure even with exit zero");
+}
+
 // Game signal simulator: scenes carry real signal on the right sides; reports drive the same parser/interpreter.
 {
     double Rms(float[] b, double from, double to)

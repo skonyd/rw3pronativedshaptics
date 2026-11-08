@@ -2,7 +2,27 @@
 
 This snapshot reconciles the later Direct USB/virtual bridge work with older vendor-dependent roadmap entries. It does not replace historical negative results.
 
-Latest active user task: [microphone-free Synapse profile USB study](SYNAPSE_USB_PROFILE_STUDY_20261108.md).
+Current ordered remaining work: [9 November handoff](NEXT_WORK_20261109.md). User now
+explicitly authorized commit/push of the current changes; the older "no push requested"
+sentence below is historical. Keep the current branch; no main merge is implied.
+
+Latest user follow-up: [router/Audio+Xbox-game trigger audit and cleanup](HAPTIC_ROUTER_AUDIT_20261109.md).
+Remove unproven continuous endpoint polling and temporary traces; keep safety watchdogs.
+Native rumble/trigger routes exist, but general source selectors and Audio/game impulse mixing
+are not implemented. Opera focus failure remains open. User deferred physical tests for later;
+do not start new motor tests merely to answer this code review.
+
+Latest active priority (2026-11-09): [Opera foreground / YouTube seek interruption](SEEK_RECOVERY_20261109.md).
+The installed capture-recovery safeguard did not fix the physical issue. User-started app,
+XInput variants, inbox GameInput and WinRT WGI constant-body probes still cut in Opera.
+Do not claim a fix or resume profile/UI work first. [Temporary isolation plan](FOCUS_ISOLATION_TRIAL_20261109.md)
+was explicitly approved and completed: verified visibility isolation still cut physically
+in fresh Opera. Temporary settings restored (cloak OFF/inverse OFF). Production source
+now includes verified Microsoft-ID Wolverine descendants in HidHide inventory; this is
+not installed or an audio-focus fix. Wolverine subsequently disappeared from present PnP;
+unavailable-device checks must not be interpreted as hardware passes.
+
+Paused user task: [microphone-free Synapse profile USB study](SYNAPSE_USB_PROFILE_STUDY_20261108.md).
 Separate elevated capture helper and six-case Controlled pilot work; corrected306-case Controlled
 series started, not yet verified complete. Balanced/Dynamic/Custom capture and production profile
 integration remain open. Original Synapse Custom backup must be restored after study. Do not

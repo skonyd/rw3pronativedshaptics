@@ -6,7 +6,8 @@ namespace RW3ProNativeDSHaptics;
 
 /// <summary>
 /// Xbox-mode audio → body motors ONLY, using the two-channel XInput command.
-/// Never writes WGI/GameInput's four-channel state: normal game impulse-trigger output is not ours.
+/// Does not request audio-derived trigger vibration. XInput can still generate four-channel GIP
+/// packets below this API; concurrent game impulse feedback is not guaranteed or mixed here.
 ///
 /// Mapping per 5 ms block:
 ///   heavy (left) motor  ← bass  (&lt; 120 Hz) envelope, both channels

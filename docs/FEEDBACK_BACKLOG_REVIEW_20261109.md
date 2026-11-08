@@ -3,6 +3,13 @@
 Review is against current local working tree, including earlier uncommitted implementation;
 the pasted proposal describes several already-implemented items as absent.
 
+2026-11-09 follow-up: [Audio/game coexistence and router audit](HAPTIC_ROUTER_AUDIT_20261109.md).
+Items4/10 remain incomplete: add an authenticated game-feedback adapter, a common Xbox
+four-channel owner, independent PCM/rumble/trigger enable and gain/priority controls, then
+actual-game acceptance. The Native router subset already exists; do not duplicate it.
+Body-only XInput does not prove impulse preservation: observed GIP packets carried all-channel
+enable masks and zero triggers. General flexible routing UI is not currently implemented.
+
 | Item | Current assessment |
 |---|---|
 |1 Adaptive triggers|Implemented: genuine virtual DualSense HID effects plus physical pull; Xbox impulse output, PC classic body approximation. No resistance claim.|

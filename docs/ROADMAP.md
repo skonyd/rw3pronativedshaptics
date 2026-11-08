@@ -1,5 +1,11 @@
 # Roadmap — 2026-11-08
 
+2026-11-09 follow-up: [current router/coexistence audit](HAPTIC_ROUTER_AUDIT_20261109.md).
+Native report rumble/adaptive-trigger routing already exists; independent source switches,
+general priority mixer and Audio plus Xbox-game impulse preservation remain open.
+Unproven continuous endpoint polling and temporary audio traces were removed and the clean
+build installed. Safe-stop/watchdog retained; Opera foreground failure is not fixed.
+
 **Current reconciled plan:** [conversation snapshot](CURRENT_PLAN_20261108.md). Includes the user's later positive but approximate combined-demo physical feedback, remaining real-game/Classic/coexistence/safety acceptance, deferred latency work and a concrete live-level gap in the separate Xbox audio route. This supersedes older blanket “Synapse required” and “no user-felt Xbox output” claims below; historical tests remain unchanged.
 
 Local desktop preparation completed: original vector/controller-wave icon, multi-size Windows ICO, EXE/window/tray/installer integration, per-user program-folder copy and Start Menu shortcut. Published self-test passes and shortcut-launched UI was visually checked. See [Windows desktop setup](WINDOWS_APP.md#local-desktop-setup--2026-11-08). Public installer/signing/update and physical Native acceptance remain separate gates.

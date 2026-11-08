@@ -58,6 +58,38 @@ public static class HidHideControl
                                      || classGuid.Equals(XboxCompositeGuid, StringComparison.OrdinalIgnoreCase));
     }
 
+    public sealed record PadNode(string Id, string ClassGuid, string? ParentId, Guid ContainerId);
+
+    /// <summary>Modern dc1-controller exposes Microsoft-ID XInput children below the Razer Xbox
+    /// node. Include only game-facing descendants with BOTH verified ancestry and the same nonempty
+    /// container; VID alone must never hide an unrelated Microsoft pad or Razer Sensa collection.</summary>
+    public static List<string> SelectPadGameNodes(IReadOnlyList<PadNode> nodes)
+    {
+        var selected = new HashSet<string>(nodes.Where(n => IsPadGameNode(n.Id, n.ClassGuid))
+            .Select(n => n.Id), StringComparer.OrdinalIgnoreCase);
+        foreach (var root in nodes.Where(n => n.Id.StartsWith(@"USB\VID_1532&PID_0A3F\", StringComparison.OrdinalIgnoreCase)
+            && n.ClassGuid.Equals(XboxCompositeGuid, StringComparison.OrdinalIgnoreCase)
+            && n.ContainerId != Guid.Empty && n.ContainerId != new Guid("00000000-0000-0000-ffff-ffffffffffff")))
+        {
+            var descendants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { root.Id };
+            for (int depth = 0; depth < 4; depth++)
+            {
+                var next = nodes.Where(n => n.ParentId != null && descendants.Contains(n.ParentId)
+                    && !descendants.Contains(n.Id) && n.ContainerId == root.ContainerId
+                    && n.Id.Contains("&IG_", StringComparison.OrdinalIgnoreCase)
+                    && ((n.Id.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase)
+                         && (n.ClassGuid.Equals(XnaCompositeGuid, StringComparison.OrdinalIgnoreCase)
+                             || n.ClassGuid.Equals(HidClassGuid, StringComparison.OrdinalIgnoreCase)))
+                        || (n.Id.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase)
+                         && n.ClassGuid.Equals(HidClassGuid, StringComparison.OrdinalIgnoreCase))))
+                    .Select(n => n.Id).ToArray();
+                if (next.Length == 0) break;
+                foreach (string id in next) { descendants.Add(id); selected.Add(id); }
+            }
+        }
+        return nodes.Where(n => selected.Contains(n.Id)).Select(n => n.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     /// <summary>"\\?\hid#vid_054c&amp;pid_0ce6&amp;mi_03#4&amp;bcf55c7&amp;0&amp;0000#{guid}" → "HID\VID_054C&amp;PID_0CE6&amp;MI_03\4&amp;BCF55C7&amp;0&amp;0000".</summary>
     public static string? InstanceFromHidPath(string? path)
     {
@@ -222,16 +254,16 @@ public static class HidHideControl
     }
 
     public static bool LooksLikeError(string output) =>
-        new[] { "not recognized", "denied", "error", "failed", "invalid", "hata", "reddedildi" }
+        new[] { "not recognized", "denied", "error", "failed", "invalid", "file name should be located", "hata", "reddedildi" }
             .Any(w => output.Contains(w, StringComparison.OrdinalIgnoreCase));
 
     // ── device enumeration (SetupAPI, present devices of all classes) ──
 
     public static List<string> PadGameNodes()
     {
-        var r = new List<string>();
+        var nodes = new List<PadNode>();
         IntPtr set = SetupDiGetClassDevs(IntPtr.Zero, null, IntPtr.Zero, 0x2 | 0x4);   // PRESENT | ALLCLASSES
-        if (set == new IntPtr(-1)) return r;
+        if (set == new IntPtr(-1)) return new();
         try
         {
             var info = new DevInfo { Size = Marshal.SizeOf<DevInfo>() };
@@ -241,13 +273,31 @@ public static class HidHideControl
                 sb.Clear();
                 if (!SetupDiGetDeviceInstanceId(set, ref info, sb, sb.Capacity, out _)) continue;
                 string id = sb.ToString();
-                if (IsPadGameNode(id, info.ClassGuid.ToString("B"))) r.Add(id);
+                // Only roots and IG game-facing candidates need ancestry/property queries.
+                if (!IsPadGameNode(id, info.ClassGuid.ToString("B")) && !id.Contains("&IG_", StringComparison.OrdinalIgnoreCase)) continue;
+                string? parent = null;
+                if (CM_Get_Parent(out uint parentInst, info.DevInst, 0) == 0)
+                {
+                    var parentText = new System.Text.StringBuilder(512);
+                    if (CM_Get_Device_ID(parentInst, parentText, parentText.Capacity, 0) == 0) parent = parentText.ToString();
+                }
+                var key = new PropertyKey { Format = new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"), Id = 2 };
+                var containerBytes = new byte[16];
+                Guid container = SetupDiGetDeviceProperty(set, ref info, ref key, out uint type, containerBytes, 16, out uint required, 0)
+                    && type == 13 && required == 16 ? new Guid(containerBytes) : Guid.Empty;
+                nodes.Add(new PadNode(id, info.ClassGuid.ToString("B"), parent, container));
             }
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
-        return r;
+        return SelectPadGameNodes(nodes);
     }
 
+    [StructLayout(LayoutKind.Sequential)] private struct PropertyKey { public Guid Format; public uint Id; }
+    [DllImport("setupapi.dll", EntryPoint = "SetupDiGetDevicePropertyW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool SetupDiGetDeviceProperty(IntPtr set, ref DevInfo info, ref PropertyKey key, out uint type, [Out] byte[] data, uint size, out uint required, uint flags);
+    [DllImport("cfgmgr32.dll")] private static extern uint CM_Get_Parent(out uint parent, uint child, uint flags);
+    [DllImport("cfgmgr32.dll", EntryPoint = "CM_Get_Device_IDW", CharSet = CharSet.Unicode)]
+    private static extern uint CM_Get_Device_ID(uint instance, System.Text.StringBuilder id, int length, uint flags);
     [StructLayout(LayoutKind.Sequential)] private struct DevInfo { public int Size; public Guid ClassGuid; public uint DevInst; public IntPtr Reserved; }
     [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr SetupDiGetClassDevs(IntPtr cls, string? enumerator, IntPtr parent, uint flags);

@@ -388,8 +388,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }
                 if (_outputMode == WolverineControllerMode.Xbox)
                 {
-                    // Xbox mode: trigger effects on the real impulse-trigger motors (GameInput works in the
-                    // background); the haptic audio, which Sensa would play in PC mode, on the body motors.
+                    // Xbox mode: trigger effects target impulse motors and haptic envelopes target body
+                    // motors. API success does not establish background output; foreground loss remains open.
                     float el, er; long et;
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving

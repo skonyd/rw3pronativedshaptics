@@ -446,7 +446,7 @@
             <TextBlock Text="DualSense tetik efektleri (Xbox modunda)" Foreground="#EEF3FF" Margin="0,0,0,4"/>
             <WrapPanel Margin="0,0,0,8">
               <RadioButton x:Name="TriggerFeelMotors" Content="Haptik + tetik motorları" Tag="1" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="190" Checked="TriggerFeel_Checked"
-                           ToolTip="Yalnız Native DualSense: oyunun tetik kuvveti ve konumu tetik içi titreşime çevrilir; haptik sesi gövde motorlarında çalar. Fiziksel direnç üretmez. Ses modunda tetiklere komut gönderilmez."/>
+                           ToolTip="Yalnız Native DualSense: oyunun tetik kuvveti ve konumu tetik içi titreşime çevrilir; haptik sesi gövde motorlarında çalar. Fiziksel direnç üretmez. Ses modu yalnız gövde çıktısı üretir; oyunun tetik titreşimiyle eşzamanlı kullanım henüz doğrulanmadı."/>
               <RadioButton x:Name="TriggerFeelClassic" Content="Klasik (yalnız haptik)" Tag="0" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="170" Checked="TriggerFeel_Checked"
                            ToolTip="Tetik motorları kullanılmaz; tetik hissi de gövde titreşimiyle verilir (PC modundaki gibi)."/>
             </WrapPanel>

@@ -6,6 +6,34 @@ using NAudio.CoreAudioApi;
 using RW3ProNativeDSHaptics;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+if(args.FirstOrDefault()=="inspect-hidhide-nodes")
+{
+    Console.WriteLine(JsonSerializer.Serialize(HidHideControl.PadGameNodes(),jsonOptions));return;
+}
+if(args.FirstOrDefault()=="inspect-xinput-visibility")
+{
+    Console.WriteLine(JsonSerializer.Serialize(BodyFocusProbe.VisibleSlots()));return;
+}
+if(args.FirstOrDefault()=="inspect-gameinput-raw")
+{
+    using var input=new GameInputRumble(allowOutput:false);
+    foreach(uint id in new uint[]{0,1,9})Console.WriteLine(input.InspectRawOutput(id));return;
+}
+if(args.FirstOrDefault()=="body-focus-probe")
+{
+    if(args.Length is <3 or >4)throw new ArgumentException("body-focus-probe <xinput|xinput-enabled|xinput-legacy|gameinput|wgi> <report.json> [1..120 seconds]");
+    await BodyFocusProbe.RunAsync(args[1],Path.GetFullPath(args[2]),args.Length==4?int.Parse(args[3]):20);return;
+}
+if(args.FirstOrDefault()=="audio-seek-monitor")
+{
+    if(args.Length!=2)throw new ArgumentException("audio-seek-monitor <report.json>");
+    await AudioSeekRecoveryProbe.MonitorAsync(Path.GetFullPath(args[1]));return;
+}
+if(args.FirstOrDefault()=="audio-seek-recovery")
+{
+    if(args.Length!=2)throw new ArgumentException("audio-seek-recovery <report.json>");
+    await AudioSeekRecoveryProbe.RunAsync(Path.GetFullPath(args[1]));return;
+}
 if(args.FirstOrDefault()=="audio-structure-audit")
 {
     if(args.Length!=2)throw new ArgumentException("audio-structure-audit <report-directory>");

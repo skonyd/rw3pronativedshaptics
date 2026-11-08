@@ -1,5 +1,20 @@
 # Hardware test log
 
+## 2026-11-09 — foreground interruption remains open
+
+Independent40% body probes using XInput1.4, GameInputv0, XInputEnable, XInput9.1.0 and
+WinRT WGI still cut when Opera was foreground according to user feedback. User-started
+RW3 also failed. Continuing captured PCM and API-success telemetry are not motor proof.
+The installed capture-recovery safeguard is not a validated fix.
+
+User-approved temporary HidHide trial included Wolverine Xbox root and two parent/container
+verified Microsoft-ID children (dc1-controller.inf10.0.26100.9739). Non-allowlisted apphost
+saw no slot; allowed dotnet saw slot0. User still reported a cut in fresh Opera.1200 motor
+commands returned success; completion zeroed motors. Cloak/inverse/device/app settings
+were restored and matched the original snapshot. No driver/service/firmware/privacy/security
+change. Controller later absent from present PnP, so updated production inventory's fresh
+live three-node acceptance remains unavailable. [Full investigation](SEEK_RECOVERY_20261109.md).
+
 ## 2026-11-08 — User-felt combined-demo feedback after local app setup
 
 User reports the trigger motor test works and the combined haptic/trigger left/right/together demo feels apparently correct (“düzgün gibi”). This is subjective scene-specific physical feedback, not an instrumented measurement or original-game/phase/fidelity pass. Classic, cross/body-only/trigger-only phases, gain zero, stop/reconnection and Xbox-game audio coexistence remain separately unconfirmed. Preserve the four earlier unavailable-device probes as historical acquisition failures. [Current remaining plan](CURRENT_PLAN_20261108.md).
