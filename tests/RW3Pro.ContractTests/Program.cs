@@ -1007,3 +1007,19 @@ SpectralContracts.Run(Check);
     bool senderNoDevice = !SynapseSensaCheck.Evaluate(new[] { S("Starting the RPC server"), S("New sender registered, ID: 1"), S("SenderGetMetadata device \"2636-{x}\""), S("New sender registered, ID: 2") }, out _);
     Check(attached && afterReboot && senderNoDevice, "Synapse check: device line after last sender = attached; restart or newer sender without it = not attached");
 }
+{
+    // 3-band bitstream encoder vs multiband frames rendered by HAR (.haps 80+190 Hz left, 120+300 Hz right).
+    double P(double hz) => SensaFrameEncoder.PitchOf(hz);
+    var frame = new byte[SensaFrameEncoder.FrameLength];
+    SensaFrameEncoder.EncodeBands(
+        new[] { new SensaBand(15 / 63.0, 15 / 63.0, 15 / 63.0, 15 / 63.0, (17 + .5) / 127), new SensaBand(15 / 63.0, 15 / 63.0, 15 / 63.0, 15 / 63.0, (54 + .5) / 127) },
+        new[] { new SensaBand(15 / 63.0, 15 / 63.0, 15 / 63.0, 15 / 63.0, (30 + .5) / 127), new SensaBand(15 / 63.0, 15 / 63.0, 15 / 63.0, 15 / 63.0, (92 + .5) / 127) }, frame);
+    bool multi = Convert.ToHexString(frame).ToLowerInvariant() == "793c89e44f227919ed8f6c7b63db400000000000013cf1e78f3c79e9f70fb87dc3ee40000000000000";
+    var single = new byte[SensaFrameEncoder.FrameLength];
+    SensaFrameEncoder.EncodeBands(new[] { new SensaBand(1, 1, 1, 1, P(60)) }, new[] { SensaBand.Silent(P(50)) }, single);
+    var plain = new byte[SensaFrameEncoder.FrameLength];
+    SensaFrameEncoder.Encode(new double[] { 1, 1, 1, 1 }, P(60), new double[4], P(50), plain);
+    // Silent band 2/3 in a single-band frame carry pitch 0, while EncodeBands' silent right hand uses the given pitch.
+    bool same = single.AsSpan(0, 21).SequenceEqual(plain.AsSpan(0, 21));
+    Check(multi && same, "3-band encoder: reproduces HAR multiband frame (L 80+190, R 120+300) byte-exact; band 1 equals the plain encoder");
+}

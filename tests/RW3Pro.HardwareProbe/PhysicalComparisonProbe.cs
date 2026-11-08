@@ -111,7 +111,7 @@ internal static class PhysicalComparisonProbe
                     throw new InvalidOperationException("Measurement incomplete: "+engine.Status+" / "+mic.Failure);
                 bool unchanged=hash==Convert.ToHexString(SHA256.HashData(pcm));
                 if(!unchanged)throw new InvalidOperationException("Original source mutated.");
-                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,Method=transport==SensaTransport.DirectUsb?"Direct":method.ToString(),Transport=transport.ToString(),HybridMultiFrames=hybridMulti,HybridStandardFrames=hybridStandard,SourceHash=hash,SourceUnchanged=unchanged,
+                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,Method=Environment.GetEnvironmentVariable("RW3_COMPARE")=="transport"&&transport==SensaTransport.DirectUsb?"Direct":method.ToString(),Transport=transport.ToString(),HybridMultiFrames=hybridMulti,HybridStandardFrames=hybridStandard,SourceHash=hash,SourceUnchanged=unchanged,
                     Background=background,EngineIdle=idle,Driven=driven,EngineOff=off,Updates=updates,HeadroomReductions=reductions,
                     WorkerStopped=!engine.IsRunning,PhysicalFidelityVerified=false,
                     Limit="One processed/uncalibrated airborne mic. Nominal100ms tone bands are not calibrated motor spectrum. No absolute latency, phase or physical DualSense comparison. Same original source and100% gain/output; no loudness normalization."};
@@ -133,7 +133,8 @@ internal static class PhysicalComparisonProbe
             return (repeat+sceneIndex)%2==0
                 ?new[]{(SensaOutputMethod.Standard,SensaTransport.Synapse),(SensaOutputMethod.Standard,SensaTransport.DirectUsb)}
                 :new[]{(SensaOutputMethod.Standard,SensaTransport.DirectUsb),(SensaOutputMethod.Standard,SensaTransport.Synapse)};
-        return Order(repeat,sceneIndex,three).Select(m=>(m,SensaTransport.Synapse));
+        var tr=Environment.GetEnvironmentVariable("RW3_TRANSPORT")=="DirectUsb"?SensaTransport.DirectUsb:SensaTransport.Synapse;
+        return Order(repeat,sceneIndex,three).Select(m=>(m,tr));
     }
     private static SensaOutputMethod[] Order(int repeat,int sceneIndex,bool three)
     {

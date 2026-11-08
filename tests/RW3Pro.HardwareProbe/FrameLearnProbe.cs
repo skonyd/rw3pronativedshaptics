@@ -13,7 +13,9 @@ internal static class FrameLearnProbe
     public static async Task RunAsync(Action<string> resolve, string sdk, string outPath)
     {
         resolve(sdk);
-        using var engine = new SensaStereoPrototype { CaptureFrames = true, SourceGainPercent = 100, OutputLevelPercent = 100 };
+        bool multi = Environment.GetEnvironmentVariable("RW3_LEARN") == "multi";
+        using var engine = new SensaStereoPrototype { CaptureFrames = true, SourceGainPercent = 100, OutputLevelPercent = 100,
+            OutputMethod = multi ? SensaOutputMethod.Multiband : SensaOutputMethod.Standard };
         var lines = new List<string>();
         string phase = "start";
         engine.CommandProbe = (l, r, frame) =>
@@ -25,6 +27,32 @@ internal static class FrameLearnProbe
         if (!engine.IsActive) throw new InvalidOperationException(engine.Status);
         await Task.Delay(500);
 
+        double S(double hz, double t) => Math.Sin(2 * Math.PI * hz * t);
+        if (multi)
+        {
+            async Task FeedM(Func<double, (double, double)> wave, double seconds)
+            {
+                var buf = new float[480]; long n = 0; var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (n < seconds * 48000)
+                {
+                    for (int i = 0; i < 240; i++) { var (a, b) = wave((n + i) / 48000.0); buf[2 * i] = (float)a; buf[2 * i + 1] = (float)b; }
+                    engine.Features.PushStereo(buf); n += 240;
+                    while (sw.Elapsed.TotalMilliseconds < n / 48.0) await Task.Delay(1);
+                }
+            }
+            phase = "m-80"; await FeedM(t => (0.5 * S(80, t), 0), 2.5);
+            phase = "m-80+190"; await FeedM(t => (0.25 * (S(80, t) + S(190, t)), 0), 3);
+            phase = "m-40+120+300"; await FeedM(t => (0.2 * (S(40, t) + S(120, t) + S(300, t)), 0), 3);
+            phase = "m-80x.35+190x.15"; await FeedM(t => (0.35 * S(80, t) + 0.15 * S(190, t), 0), 3);
+            phase = "m-R190"; await FeedM(t => (0, 0.5 * S(190, t)), 2.5);
+            phase = "m-L80+190-R120+300"; await FeedM(t => (0.25 * (S(80, t) + S(190, t)), 0.25 * (S(120, t) + S(300, t))), 3);
+            phase = "silence"; await Task.Delay(600);
+            Console.WriteLine("engine status before stop: " + engine.Status);
+            engine.Stop();
+            lock (lines) File.WriteAllLines(outPath, lines);
+            Console.WriteLine($"LEARN {lines.Count} frames → {outPath}");
+            return;
+        }
         async Task Manual(float l, float r, int ms) { var sw = System.Diagnostics.Stopwatch.StartNew(); while (sw.ElapsedMilliseconds < ms) { engine.Submit(l, r); await Task.Delay(5); } }
         phase = "amp-sweep";
         for (int i = 0; i <= 40; i++) await Manual(i / 40f, (40 - i) / 40f, 400);

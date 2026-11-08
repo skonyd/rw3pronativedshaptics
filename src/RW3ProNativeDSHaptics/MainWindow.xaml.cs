@@ -78,6 +78,13 @@ public partial class MainWindow : Window
         _settings.OutputMethod = Math.Clamp(_settings.OutputMethod, 0, 2);
         _bridge.OutputMethod = (SensaOutputMethod)_settings.OutputMethod;
         _settings.Transport = Math.Clamp(_settings.Transport, 0, 1);
+        // Standalone install: without the licensed Razer DLLs the Synapse path cannot run, Direct USB can.
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "HAR.dll")) || !File.Exists(Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll")))
+        {
+            if (_settings.Transport != 1) DiagnosticsService.Info("Razer DLLs not present: using Direct USB.");
+            _settings.Transport = 1;
+            TransportSynapse.IsEnabled = false;
+        }
         _bridge.Transport = (SensaTransport)_settings.Transport;
         (_settings.Transport == 1 ? TransportDirect : TransportSynapse).IsChecked = true;
         _bridge.AudioSensitivityPercent = _settings.AudioSensitivityPercent;

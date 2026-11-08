@@ -1,7 +1,8 @@
 # Sensa USB transport (Synapse → Wolverine V3 Pro), captured 2026-11-08
 
-**Status: transport decoded from one capture of the user's own controller. Frame encoding
-(the 41/44-byte payload) is not decoded yet. Nothing has been written to the device by RW3.**
+**Status (2026-11-08, night): transport and frame format decoded; RW3 writes frames itself
+(Settings → Gelişmiş → Bağlantı yolu → Doğrudan USB). No Synapse, no HAR, no admin, no driver.
+Microphone comparison: Direct USB equals the Synapse path (level, L/R, frequency, hits, tail).**
 
 ## Setup
 
@@ -49,13 +50,45 @@ Example frames (first bytes after `0x79`; left block … right block):
 
 Left and right blocks are identical in layout, so the side is positional, not flagged.
 
+## Frame format (decoded)
+
+Learned from 1225 + 526 frames rendered by the licensed HAR/provider with known inputs
+(`RW3Pro.HardwareProbe frame-learn`, engine `CommandProbe`), then verified: our encoder
+(`SensaFrameEncoder`) reproduces **1696/1696** of those frames byte-exact, plus the frames
+captured from Synapse on the USB bus.
+
+The frame is one **MSB-first bit stream**:
+
+```
+7 bits   0111100                                         header
+per hand (left, then right):
+  3 x ( 1 bit = 1
+        4 x ( 6 bit strength = floor(a*63), 7 bit pitch = floor(p*127) ) )   band 1..3
+  1 bit  transient record follows (0/1)
+  [24 bit transient record, if flagged]
+pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two records)
+```
+
+- `a` is the strength 0..1 at the 4 points of the 33 ms frame; `p` is 0..1 linear over 30–400 Hz.
+- Band 1 is the plain signal. Bands 2–3 are extra simultaneous components; HAR fills them from
+  multi-melody `.haps` (e.g. 80+190 Hz → P 17 and P 54 in bands 1 and 2). Unused bands are
+  strength 0, pitch 0.
+- Silence frame = all strengths 0, band-1 pitch P 6 (50 Hz). Synapse sends nothing at rest, but
+  the controller keeps playing the last frame, so a direct sender must end with silence frames.
+- Transient record (24 bit): strength 6 = floor(a*63), pitch 7, time 8 (0.5 ms units within the
+  frame), then 3 bits `10x` whose last bit is not understood yet. RW3 does not write records;
+  it folds hits into the nearest strength point instead (measured as strong as Synapse's hits).
+
 ## What this enables
 
-1. **No Synapse in the path:** the same frames (HAR + provider produce them; the provider's
-   debug accessor returns exactly these bytes) can be written with `HidD_SetFeature` to the
-   controller's control collection. Needs an explicit, consented write experiment.
-2. **No HAR either:** requires decoding the frame (amplitude points, frequency, transients per
-   block) from more captures with swept known inputs.
+1. **Done:** `SensaHidTransport` writes feature report 4 (consented test 2026-11-08: captured
+   left/right frames gave +19 / +17 dB at the mic; the silence frame stops the motors).
+2. **Done:** `SensaFrameEncoder` builds frames itself, including 3 bands, so Standard, Hybrid
+   and Multiband run on the Direct USB path without HAR's `.haps` machinery.
+3. Mic comparison, 60 cases (TestResults/transport-comparison-20261108): Direct USB vs Synapse
+   medians within ~1 dB in every scene, same 80/190 Hz split in stereo, hits 6.2 vs 4.9 dB,
+   no tail on either.
 
-Open: does the firmware need a start/handshake command from Synapse; coexistence when Synapse
-is also writing; dongle/wireless transport (different path); Xbox mode.
+Open: a test with Synapse fully closed (closing it was blocked for the agent; the user can close
+it); wireless — the HyperSpeed dongle exposes the same COL04 collection when the cable is out,
+the transport picks it up automatically, untested; Xbox mode; coexistence when Synapse also writes.

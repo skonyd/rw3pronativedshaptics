@@ -263,7 +263,7 @@ public sealed class SensaStereoPrototype : IDisposable
             Volatile.Write(ref _stop, 0);
             Volatile.Write(ref _providerActive, 0);
             Volatile.Write(ref _renderTicks, 0);
-            Features.EnableSpectralAnalysis(Transport == SensaTransport.Synapse && OutputMethod != SensaOutputMethod.Standard);
+            Features.EnableSpectralAnalysis(OutputMethod != SensaOutputMethod.Standard);
             DirectFramesSent = 0;
             MultibandFrames = MultibandHeadroomReductions = HybridMultiFrames = HybridStandardFrames = 0;
             _worker = new Thread(Transport == SensaTransport.DirectUsb ? RunDirect : Run) { IsBackground = true, Name = "RW3-SensaStereo" };
@@ -312,6 +312,10 @@ public sealed class SensaStereoPrototype : IDisposable
             byte[] silence = SensaFrameEncoder.Silence();
             var la = new double[4]; var ra = new double[4];
             var lHold = new PitchHold(); var rHold = new PitchHold();
+            var method = OutputMethod;
+            bool multibandMode = method == SensaOutputMethod.Multiband, hybridMode = method == SensaOutputMethod.Hybrid;
+            var lPolicy = new HybridOutputPolicy(); var rPolicy = new HybridOutputPolicy();
+            var lBands = new SensaBand[3]; var rBands = new SensaBand[3];
             long cursor = Features.CompletedSlots;
             SideFeatures lastL = default, lastR = default;
             double lastSourceAt = -1, tickSec = TickMs / 1000.0, next = clock.Elapsed.TotalSeconds;
@@ -359,8 +363,11 @@ public sealed class SensaStereoPrototype : IDisposable
                     bool ok;
                     if (active)
                     {
-                        double lp = PitchFor(lHold.Resolve(fl.FrequencyHz, now)), rp = PitchFor(rHold.Resolve(fr.FrequencyHz, now));
-                        SensaFrameEncoder.Encode(la, lp, ra, rp, frame);
+                        HapticSpectrum ls = default, rs = default;
+                        bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
+                        int ln = DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
+                        int rn = DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
+                        SensaFrameEncoder.EncodeBands(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn), frame);
                         ok = tx.Send(frame);
                         silenceToSend = 2;
                         LastSentHz = (lHold.Last, rHold.Last);
@@ -397,6 +404,41 @@ public sealed class SensaStereoPrototype : IDisposable
             if (periodSet) Timing.timeEndPeriod(1);
             if (mmcss != IntPtr.Zero) { try { Timing.AvRevertMmThreadCharacteristics(mmcss); } catch { } }
         }
+    }
+
+    /// <summary>
+    /// One hand's bands for the Direct USB frame. Standard: one band (fast envelope, folded transients,
+    /// held pitch). Multiband: up to 3 spectral components, each shaped by the fast envelope.
+    /// Hybrid: HybridOutputPolicy decides per frame; standard frames of a mixed sound use its
+    /// strongest real component as pitch. Total strength across bands is kept ≤ 1.
+    /// </summary>
+    private int DirectBands(in SideFeatures f, double[] points, in HapticSpectrum spectrum, bool haveSpectrum,
+        bool multibandMode, bool hybridMode, HybridOutputPolicy policy, PitchHold hold, double level, double now, SensaBand[] bands)
+    {
+        bool multi = multibandMode ? haveSpectrum && spectrum.Count > 0
+                   : hybridMode && policy.Decide(f, spectrum, haveSpectrum, now);
+        if (!multi)
+        {
+            var g = hybridMode ? HybridOutputPolicy.StandardFrame(f, spectrum, haveSpectrum) : f;
+            bands[0] = new SensaBand(points[0], points[1], points[2], points[3], PitchFor(hold.Resolve(g.FrequencyHz, now)));
+            if (hybridMode && f.Peak > HybridOutputPolicy.ActiveThreshold) HybridStandardFrames++;
+            return 1;
+        }
+        var sp = hybridMode ? HybridOutputPolicy.ScaleToEnvelope(spectrum, f.Peak) : spectrum;
+        double sum = sp.AmplitudeSum * level, scale = sum > 1 ? level / sum : level;
+        double peak = f.Peak;
+        double Ratio(float v) => peak > 1e-6 ? Math.Clamp(v / peak, 0, 1) : 0;
+        int n = Math.Min(3, sp.Count);
+        for (int i = 0; i < n; i++)
+        {
+            var c = sp[i];
+            double a = c.Amplitude * scale;
+            bands[i] = new SensaBand(a * Ratio(f.P0), a * Ratio(f.P1), a * Ratio(f.P2), a * Ratio(f.P3), PitchFor(c.FrequencyHz));
+        }
+        hold.Resolve(n > 0 ? sp[0].FrequencyHz : 0, now);
+        if (hybridMode) HybridMultiFrames++; else MultibandFrames++;
+        if (sum > 1) MultibandHeadroomReductions++;
+        return Math.Max(1, n);
     }
 
     /// <summary>Per-hand pitch hold (same rule as the Synapse path: keep the last pitch for up to 1 s).</summary>

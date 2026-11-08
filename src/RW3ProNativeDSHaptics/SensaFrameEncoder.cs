@@ -2,15 +2,22 @@ using System;
 
 namespace RW3ProNativeDSHaptics;
 
+/// <summary>One band of one hand: 4 strength points (0..1) and one pitch (0..1 over 30–400 Hz).</summary>
+public readonly record struct SensaBand(double A0, double A1, double A2, double A3, double Pitch)
+{
+    public static SensaBand Silent(double pitch) => new(0, 0, 0, 0, pitch);
+}
+
 /// <summary>
 /// Builds the Wolverine V3 Pro Sensa frame without HAR/Synapse (decoded 2026-11-08, docs/SENSA_USB_PROTOCOL.md).
 ///
-/// Plain frame (41 bytes): 0x79 | left block (19 B) | 0x01 | right block (19 B) | 0x00.
-/// Block, MSB-first bit stream: 4 points × (strength 6 bit = ⌊a·63⌋, pitch 7 bit = ⌊p·127⌋), where p is
-/// 0..1 linear over 30–400 Hz; then bit 52 = 1, block byte 13 |= 0x40, everything else 0.
-/// Verified byte-exact against 1170 frames rendered by the licensed HAR/provider.
-/// Not covered yet: transient records (44/47-byte frames, inserted after the left block) and the
-/// extra bands that multi-melody .haps fill in the block tail.
+/// The frame is one MSB-first bit stream: 7-bit header 0111100, then per hand (left, right):
+/// 3 bands × ([1] + 4 points × (strength 6 bit = ⌊a·63⌋, pitch 7 bit = ⌊p·127⌋)) and 1 bit
+/// "transient record follows" (0 here); padded to 41 bytes. p is 0..1 linear over 30–400 Hz.
+/// Band 1 is the plain signal; bands 2–3 carry extra spectral components (what HAR's multi-melody
+/// .haps produce). Verified byte-exact against 1696 HAR-rendered frames (single- and multi-band).
+/// Not written: transient records (24 bits: strength 6, pitch 7, time 8 in 0.5 ms, 3 bits not yet
+/// understood) — hits are folded into the strength points instead.
 /// </summary>
 public static class SensaFrameEncoder
 {
@@ -23,6 +30,36 @@ public static class SensaFrameEncoder
 
     public static byte Quantize6(double a) => (byte)(double.IsFinite(a) ? Math.Clamp((int)Math.Floor(Math.Clamp(a, 0, 1) * 63), 0, 63) : 0);
     public static byte Quantize7(double p) => (byte)(double.IsFinite(p) ? Math.Clamp((int)Math.Floor(Math.Clamp(p, 0, 1) * 127), 0, 127) : 0);
+
+    /// <summary>Encodes a full frame with up to 3 bands per hand (missing bands are silent).</summary>
+    public static void EncodeBands(ReadOnlySpan<SensaBand> left, ReadOnlySpan<SensaBand> right, Span<byte> frame)
+    {
+        if (left.Length > 3 || right.Length > 3) throw new ArgumentException("at most 3 bands per hand");
+        frame.Slice(0, FrameLength).Clear();
+        int bit = 0;
+        Put(frame, ref bit, 0b0111100, 7);
+        WriteHand(frame, ref bit, left);
+        WriteHand(frame, ref bit, right);
+    }
+
+    private static void WriteHand(Span<byte> frame, ref int bit, ReadOnlySpan<SensaBand> bands)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Put(frame, ref bit, 1, 1);
+            if (i < bands.Length)
+            {
+                var b = bands[i];
+                byte p = Quantize7(b.Pitch);
+                Put(frame, ref bit, Quantize6(b.A0), 6); Put(frame, ref bit, p, 7);
+                Put(frame, ref bit, Quantize6(b.A1), 6); Put(frame, ref bit, p, 7);
+                Put(frame, ref bit, Quantize6(b.A2), 6); Put(frame, ref bit, p, 7);
+                Put(frame, ref bit, Quantize6(b.A3), 6); Put(frame, ref bit, p, 7);
+            }
+            else bit += 52;   // silent band: strength 0, pitch 0
+        }
+        Put(frame, ref bit, 0, 1);   // no transient record
+    }
 
     /// <summary>Encodes one block from 4 strengths and 4 pitches (0..1).</summary>
     public static void EncodeBlock(ReadOnlySpan<double> amps, ReadOnlySpan<double> pitches, Span<byte> block)
