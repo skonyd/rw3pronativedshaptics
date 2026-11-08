@@ -905,3 +905,66 @@ SpectralContracts.Run(Check);
     Check(left.Peak == 0 && right.Peak == 0 && left.TransientCount == 0 && right.TransientCount == 0,
         "Audio source stop publishes silence without replaying old feature history");
 }
+{
+    // Soft limiter: unchanged at gain <= 1, smooth and ordered above.
+    bool identity = Enumerable.Range(0, 101).All(i => Math.Abs(HapticLimiter.Apply(i / 100.0, 1) - i / 100.0) < 1e-12) &&
+                    HapticLimiter.Apply(1.5, 1) == 1 && HapticLimiter.Apply(double.NaN, 3) == 0 && HapticLimiter.Apply(-1, 3) == 0;
+    double prev = -1; bool monotonic = true, bounded = true;
+    for (int i = 0; i <= 2000; i++) { double y = HapticLimiter.Apply(i / 1000.0, 3); monotonic &= y > prev || i == 0; bounded &= y < 1; prev = y; }
+    double a = HapticLimiter.Apply(0.33, 3), b = HapticLimiter.Apply(0.5, 3), c = HapticLimiter.Apply(1.0, 3);
+    double slope = (HapticLimiter.Apply(HapticLimiter.Knee / 3 + 1e-6, 3) - HapticLimiter.Apply(HapticLimiter.Knee / 3, 3)) / 3e-6;
+    Check(identity && monotonic && bounded && b - a > 0.05 && c > b && Math.Abs(slope - 1) < 0.01 && Math.Abs(HapticLimiter.Apply(0.2, 3) - 0.6) < 1e-9,
+        $"Soft limiter: identity at gain<=1, monotonic, <1, slope 1 at knee; 300%: 0.33→{a:F2}, 0.5→{b:F2}, 1.0→{c:F3}");
+}
+{
+    // Hybrid policy: steady mixed sound -> multiband after 2 steady frames; hits and single tones stay standard.
+    SideFeatures Steady(float v) => new() { P0 = v, P1 = v, P2 = v, P3 = v, FrequencyHz = 130 };
+    var mixed = new HapticSpectrum(new(80, .25f, 0), new(190, .25f, 0), default, 2);
+    var single = new HapticSpectrum(new(80, .5f, 0), default, default, 1);
+    var weakSecond = new HapticSpectrum(new(80, .5f, 0), new(190, .05f, 0), default, 2);
+    var p = new HybridOutputPolicy(); double t = 0, dt = 0.033;
+    var seq = new List<bool>(); for (int i = 0; i < 6; i++) { seq.Add(p.Decide(Steady(.5f), mixed, true, t)); t += dt; }
+    bool enters = !seq[0] && !seq[1] && seq[3] && seq[4] && seq[5];
+    var hit = Steady(.5f); hit.TransientCount = 1; hit.T0Amplitude = .9f;
+    bool leavesOnHit = !p.Decide(hit, mixed, true, t);
+    var p2 = new HybridOutputPolicy(); bool singleStays = true; t = 0;
+    for (int i = 0; i < 6; i++) { singleStays &= !p2.Decide(Steady(.5f), single, true, t) && !p2.Decide(Steady(.5f), weakSecond, true, t); t += dt; }
+    var p3 = new HybridOutputPolicy(); var rising = new SideFeatures { P0 = .1f, P1 = .3f, P2 = .6f, P3 = .9f };
+    bool risingStays = true; t = 0; for (int i = 0; i < 6; i++) { risingStays &= !p3.Decide(rising, mixed, true, t); t += dt; }
+    var p4 = new HybridOutputPolicy(); bool silenceResets = true; t = 0;
+    for (int i = 0; i < 4; i++) { p4.Decide(Steady(.5f), mixed, true, t); t += dt; }
+    silenceResets &= !p4.Decide(default, mixed, true, t) && !p4.Decide(Steady(.5f), mixed, true, t + dt);
+    var sf = HybridOutputPolicy.StandardFrame(Steady(.5f), new HapticSpectrum(new(80, .2f, 0), new(190, .3f, 0), default, 2), true);
+    var sfSingle = HybridOutputPolicy.StandardFrame(Steady(.5f), single, true);
+    bool standardPitch = sf.FrequencyHz == 190 && sfSingle.FrequencyHz == 130 && HybridOutputPolicy.StandardFrame(Steady(.5f), mixed, false).FrequencyHz == 130;
+    var scaled = HybridOutputPolicy.ScaleToEnvelope(mixed, .8f);
+    bool scaleOk = Math.Abs(scaled.AmplitudeSum - .8f) < 1e-6 && Math.Abs(scaled.A.Amplitude - scaled.B.Amplitude) < 1e-6 && scaled.A.FrequencyHz == 80 && scaled.B.FrequencyHz == 190;
+    Check(enters && leavesOnHit && singleStays && risingStays && silenceResets && scaleOk && standardPitch,
+        "Hybrid policy: steady 80+190 → multiband after settle + 2 steady frames, hit/rising/single/weak-second stay standard, silence resets, strength = fast envelope split by spectral share");
+}
+{
+    // Hybrid on the real extractor + spectrum: a steady mixed 80+190 Hz scene must stay multiband (no toggling),
+    // a 120 Hz hit train must stay standard.
+    (int multi, int std, int switches) Run(Func<double, double> wave, double seconds)
+    {
+        var fx = new HapticFeatureExtractor(); fx.EnableSpectralAnalysis(true);
+        var policy = new HybridOutputPolicy(); long cur = 0; int m = 0, s = 0, sw = 0; bool last = false;
+        var buf = new float[1584 * 2];
+        for (int frame = 0; frame * 1584 < seconds * 48000; frame++)
+        {
+            for (int i = 0; i < 1584; i++) { buf[2 * i] = (float)wave((frame * 1584 + i) / 48000.0); buf[2 * i + 1] = 0; }
+            fx.PushStereo(buf);
+            fx.Take(ref cur, out var l, out _);
+            bool have = fx.TryTakeSpectrum(out var ls, out _);
+            bool d = policy.Decide(l, ls, have, frame * 0.033);
+            if (l.Peak > HybridOutputPolicy.ActiveThreshold) { if (d) m++; else s++; }
+            if (frame > 0 && d != last) sw++; last = d;
+        }
+        return (m, s, sw);
+    }
+    var mixedRun = Run(t => t < 0.2 ? 0 : 0.25 * (Math.Sin(2 * Math.PI * 80 * t) + Math.Sin(2 * Math.PI * 190 * t)), 1.8);
+    var hitsRun = Run(t => (t % .25) < .02 ? .5 * Math.Sin(2 * Math.PI * 120 * (t % .25)) : 0, 1.8);
+    Console.WriteLine($"  hybrid offline: mixed multi {mixedRun.multi}/std {mixedRun.std}/switches {mixedRun.switches}; hits multi {hitsRun.multi}/std {hitsRun.std}");
+    Check(mixedRun.switches <= 1 && mixedRun.multi >= mixedRun.std * 4 && hitsRun.multi == 0,
+        $"Hybrid on real extractor: steady 80+190 stays multiband ({mixedRun.multi} multi / {mixedRun.std} std frames, {mixedRun.switches} switch), hit train stays standard");
+}

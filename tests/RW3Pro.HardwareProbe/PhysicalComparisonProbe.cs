@@ -42,7 +42,7 @@ internal static class PhysicalComparisonProbe
         for(int i=0;i<40&&!engine.IsActive&&engine.IsRunning;i++)await Task.Delay(50,token);
         if(!engine.IsActive)throw new InvalidOperationException(engine.Status);
     }
-    public static async Task MeasureAsync(string sdk,string directory,string micId)
+    public static async Task MeasureAsync(string sdk,string directory,string micId,bool threeMethods=false)
     {
         Directory.CreateDirectory(directory);
         using var owner=new Mutex(true,"Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd",out bool created);
@@ -61,34 +61,46 @@ internal static class PhysicalComparisonProbe
                 SdkHashes=new[]{"HAR.dll","Interhaptics.RazerProvider.dll"}.ToDictionary(n=>n,n=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(sdk,n)))))},Json));
             for(int repeat=1;repeat<=5;repeat++)
             for(int sceneIndex=0;sceneIndex<Scenes.Length;sceneIndex++)
-            foreach(bool multi in (repeat+sceneIndex)%2==0?new[]{false,true}:new[]{true,false}) {
+            if(Environment.GetEnvironmentVariable("RW3_SCENES") is not string only || only.Split(',').Contains(Scenes[sceneIndex]))
+            foreach(var method in Order(repeat,sceneIndex,threeMethods)) {
+                bool multi=method==SensaOutputMethod.Multiband;
                 string scene=Scenes[sceneIndex];byte[] pcm=Source(scene);string hash=Convert.ToHexString(SHA256.HashData(pcm));
                 mic.BeginWindow();await Task.Delay(400,stop.Token);var background=mic.ReadWindow();
-                using var engine=new SensaStereoPrototype{ExperimentalMultiband=multi,SourceGainPercent=100,OutputLevelPercent=100};
+                using var engine=new SensaStereoPrototype{OutputMethod=method,SourceGainPercent=100,OutputLevelPercent=100};
                 await Start(engine,stop.Token);await Task.Delay(1000,stop.Token); // Predeclared settling, never fitted to match.
                 mic.BeginWindow();await Task.Delay(400,stop.Token);var idle=mic.ReadWindow();
                 mic.BeginWindow();
                 await ChannelLabRunner.ReplaySourceAsync(pcm,engine,stop.Token);
                 await Task.Delay(1100,stop.Token);var driven=mic.ReadWindow();
                 bool active=engine.IsActive;long updates=engine.MultibandFrames,reductions=engine.MultibandHeadroomReductions;
+                long hybridMulti=engine.HybridMultiFrames,hybridStandard=engine.HybridStandardFrames;
                 engine.Stop();mic.BeginWindow();await Task.Delay(400,stop.Token);var off=mic.ReadWindow();
                 if(!active||mic.Failure!=null||driven.Samples==0||driven.TruncatedBins>0||engine.IsRunning)
                     throw new InvalidOperationException("Measurement incomplete: "+engine.Status+" / "+mic.Failure);
                 bool unchanged=hash==Convert.ToHexString(SHA256.HashData(pcm));
                 if(!unchanged)throw new InvalidOperationException("Original source mutated.");
-                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,SourceHash=hash,SourceUnchanged=unchanged,
+                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,Method=method.ToString(),HybridMultiFrames=hybridMulti,HybridStandardFrames=hybridStandard,SourceHash=hash,SourceUnchanged=unchanged,
                     Background=background,EngineIdle=idle,Driven=driven,EngineOff=off,Updates=updates,HeadroomReductions=reductions,
                     WorkerStopped=!engine.IsRunning,PhysicalFidelityVerified=false,
                     Limit="One processed/uncalibrated airborne mic. Nominal100ms tone bands are not calibrated motor spectrum. No absolute latency, phase or physical DualSense comparison. Same original source and100% gain/output; no loudness normalization."};
                 File.WriteAllText(Path.Combine(directory,$"case-{reports.Count:000}.json"),JsonSerializer.Serialize(report,Json));reports.Add(report);
-                Console.WriteLine($"MEASURE {reports.Count}/60 {scene} repeat={repeat} complete");
+                Console.WriteLine($"MEASURE {reports.Count}/{(threeMethods?90:60)} {scene} {method} repeat={repeat} complete");
             }
         }
         catch(Exception ex){failure=ex.ToString();throw;}
         finally {
             Console.CancelKeyPress-=cancel;
-            File.WriteAllText(Path.Combine(directory,"completion.json"),JsonSerializer.Serialize(new{Completed=reports.Count==60,Cases=reports.Count,Failure=failure,PhysicalFidelityVerified=false},Json));
+            File.WriteAllText(Path.Combine(directory,"completion.json"),JsonSerializer.Serialize(new{Completed=reports.Count==(threeMethods?90:60),Cases=reports.Count,Failure=failure,PhysicalFidelityVerified=false},Json));
         }
+    }
+
+    /// <summary>Counterbalanced method order: two methods alternate (legacy run); three rotate (Latin square).</summary>
+    private static SensaOutputMethod[] Order(int repeat,int sceneIndex,bool three)
+    {
+        if(!three)return (repeat+sceneIndex)%2==0?new[]{SensaOutputMethod.Standard,SensaOutputMethod.Multiband}:new[]{SensaOutputMethod.Multiband,SensaOutputMethod.Standard};
+        var all=new[]{SensaOutputMethod.Standard,SensaOutputMethod.Hybrid,SensaOutputMethod.Multiband};
+        int k=(repeat+sceneIndex)%3;
+        return new[]{all[k],all[(k+1)%3],all[(k+2)%3]};
     }
 
     public static async Task BlindPairAsync(string sdk,string directory,string scene,int pair)

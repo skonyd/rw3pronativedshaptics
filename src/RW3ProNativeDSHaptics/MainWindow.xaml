@@ -383,56 +383,78 @@
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
 
       <Border Style="{StaticResource CardBorder}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel>
-          <TextBlock Text="Titreşim gücü" Style="{StaticResource CardTitle}"/>
-          <TextBlock Text="Bu uygulamanın gönderdiği titreşimler için. Oyunun kendi titreşimini değiştirmez." Style="{StaticResource Hint}" Margin="0,0,0,12"/>
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-            <RadioButton x:Name="Level25" Content="%25" Tag="25" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
-            <RadioButton x:Name="Level50" Content="%50" Tag="50" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
-            <RadioButton x:Name="Level75" Content="%75" Tag="75" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
-            <RadioButton x:Name="Level100" Content="%100" Tag="100" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,14">
+            <RadioButton x:Name="SettingsBasicTab" Content="Temel" GroupName="SettingsView" Style="{StaticResource PresetCard}" Width="96" IsChecked="True" Checked="SettingsView_Checked"/>
+            <RadioButton x:Name="SettingsAdvancedTab" Content="Gelişmiş" GroupName="SettingsView" Style="{StaticResource PresetCard}" Width="96" Checked="SettingsView_Checked"/>
           </StackPanel>
 
-          <TextBlock Text="Native güç (Wolverine)" Style="{StaticResource CardTitle}"/>
-          <TextBlock Text="Zayıf sinyalleri güçlendirir; en güçlü anlar zaten tam güçte. Daha fazlası için Synapse'teki cihaz yoğunluğunu artır." Style="{StaticResource Hint}" Margin="0,0,0,12"/>
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-            <RadioButton x:Name="GainNormal" Content="Normal" Tag="140" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
-            <RadioButton x:Name="GainStrong" Content="Güçlü" Tag="200" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
-            <RadioButton x:Name="GainMax" Content="Maksimum" Tag="300" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
+          <!-- Temel -->
+          <StackPanel x:Name="SettingsBasicPanel">
+            <TextBlock Text="Titreşim gücü" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Bu uygulamanın gönderdiği titreşimler için. Oyunun kendi titreşimini değiştirmez." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+              <RadioButton x:Name="Level25" Content="%25" Tag="25" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
+              <RadioButton x:Name="Level50" Content="%50" Tag="50" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
+              <RadioButton x:Name="Level75" Content="%75" Tag="75" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
+              <RadioButton x:Name="Level100" Content="%100" Tag="100" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
+            </StackPanel>
+
+            <TextBlock Text="Native güç (Wolverine)" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Zayıf sinyalleri güçlendirir; güçlü anlar yumuşak sınırlayıcıyla birbirinden ayrı kalır." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+              <RadioButton x:Name="GainNormal" Content="Normal" Tag="140" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
+              <RadioButton x:Name="GainStrong" Content="Güçlü" Tag="200" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
+              <RadioButton x:Name="GainMax" Content="Maksimum" Tag="300" GroupName="NativeGain" Style="{StaticResource PresetCard}" Width="118" Checked="NativeGain_Checked"/>
+            </StackPanel>
+
+            <TextBlock Text="Sesten titreşim hassasiyeti" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Oyun sesi oyundan oyuna farklı yüksekliktedir. Ses dalgası kırpılmaz; güçlü anlar sınırlayıcıyla korunur. Test sekmesindeki ses testlerini etkilemez." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+              <RadioButton x:Name="SensNormal" Content="Normal" Tag="100" GroupName="AudioSens" Style="{StaticResource PresetCard}" Width="118" Checked="AudioSensitivity_Checked"/>
+              <RadioButton x:Name="SensHigh" Content="Yüksek" Tag="160" GroupName="AudioSens" Style="{StaticResource PresetCard}" Width="118" Checked="AudioSensitivity_Checked"/>
+              <RadioButton x:Name="SensMax" Content="Çok yüksek" Tag="250" GroupName="AudioSens" Style="{StaticResource PresetCard}" Width="118" Checked="AudioSensitivity_Checked"/>
+            </StackPanel>
+
+            <TextBlock Text="Kontrolcü" Style="{StaticResource CardTitle}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+              <TextBlock Text="Xbox kontrolcü yuvası:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+              <ComboBox x:Name="DeviceSlotCombo" Width="170" SelectionChanged="DeviceSlot_Changed">
+                <ComboBoxItem Content="Otomatik"/>
+                <ComboBoxItem Content="Yuva 1"/>
+                <ComboBoxItem Content="Yuva 2"/>
+                <ComboBoxItem Content="Yuva 3"/>
+                <ComboBoxItem Content="Yuva 4"/>
+              </ComboBox>
+            </StackPanel>
+            <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
+                      Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
           </StackPanel>
 
-          <CheckBox x:Name="ExperimentalMultibandBox" Foreground="#EEF3FF" Content="Deneysel çok bantlı Wolverine çıkışı"
-                    Checked="ExperimentalMultiband_Changed" Unchecked="ExperimentalMultiband_Changed" Margin="0,0,0,8"/>
-          <TextBlock Text="Native, PC ses modu ve Wolverine demoları için en fazla üç ayrık frekans. 85 ms analiz geçmişi gerekir; yakın frekanslar ve kısa darbeler kaybolabilir. Faz korunmaz, fiziksel birebirlik doğrulanmadı. Varsayılan kapalıdır."
-                     Style="{StaticResource Hint}" Margin="0,0,0,24"/>
+          <!-- Gelişmiş -->
+          <StackPanel x:Name="SettingsAdvancedPanel" Visibility="Collapsed">
+            <TextBlock Text="Wolverine çıkış yöntemi" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Standart: elde tek frekans, hızlı vuruşlar. Hibrit: vuruşlar standart, karışık sürekli sesler (ör. 80+190 Hz) çok bantlı. Çok bantlı: her zaman en fazla üç frekans; kısa vuruşlar kaybolur, 85 ms analiz gecikmesi. Hibrit ve Çok bantlı deneyseldir."
+                       Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <WrapPanel Margin="0,0,0,8">
+              <RadioButton x:Name="MethodStandard" Content="Standart" Tag="0" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
+              <RadioButton x:Name="MethodHybrid" Content="Hibrit" Tag="2" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
+              <RadioButton x:Name="MethodMultiband" Content="Çok bantlı" Tag="1" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
+            </WrapPanel>
+            <TextBlock x:Name="OutputMethodStatus" Style="{StaticResource Hint}" Margin="0,0,0,18"/>
 
-          <TextBlock Text="Ses senkronu (Sesten titreşim)" Style="{StaticResource CardTitle}"/>
-          <TextBlock Text="Bluetooth hoparlör ve kulaklıklar sesi geç çalar; titreşim sesten önce gelir. Oyunlarda titreşimi o kadar geciktirir (Test sekmesindeki ses testi her zaman gecikmesiz). Otomatik: Bluetooth ise 300 ms, kabloluysa 0." Style="{StaticResource Hint}" Margin="0,0,0,12"/>
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-            <RadioButton x:Name="SyncAuto" Content="Otomatik" Tag="-1" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="88" Checked="AudioSync_Checked"/>
-            <RadioButton x:Name="Sync0" Content="0 ms" Tag="0" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="70" Checked="AudioSync_Checked"/>
-            <RadioButton x:Name="Sync150" Content="150 ms" Tag="150" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="70" Checked="AudioSync_Checked"/>
-            <RadioButton x:Name="Sync300" Content="300 ms" Tag="300" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="70" Checked="AudioSync_Checked"/>
-            <RadioButton x:Name="Sync450" Content="450 ms" Tag="450" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="70" Checked="AudioSync_Checked"/>
+            <TextBlock Text="Ses senkronu (Sesten titreşim)" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Bluetooth hoparlör ve kulaklıklar sesi geç çalar; titreşim sesten önce gelir. Oyunlarda titreşimi o kadar geciktirir (Test sekmesindeki ses testi her zaman gecikmesiz). Otomatik: Bluetooth ise 300 ms, kabloluysa 0." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <WrapPanel Margin="0,0,0,8">
+              <RadioButton x:Name="SyncAuto" Content="Otomatik" Tag="-1" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="118" Checked="AudioSync_Checked"/>
+              <RadioButton x:Name="Sync0" Content="0 ms" Tag="0" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="92" Checked="AudioSync_Checked"/>
+              <RadioButton x:Name="Sync150" Content="150 ms" Tag="150" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="92" Checked="AudioSync_Checked"/>
+              <RadioButton x:Name="Sync300" Content="300 ms" Tag="300" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="92" Checked="AudioSync_Checked"/>
+              <RadioButton x:Name="Sync450" Content="450 ms" Tag="450" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="92" Checked="AudioSync_Checked"/>
+            </WrapPanel>
+            <TextBlock x:Name="AudioSyncStatus" Style="{StaticResource Hint}"/>
           </StackPanel>
-          <TextBlock x:Name="AudioSyncStatus" Style="{StaticResource Hint}" Margin="0,0,0,24"/>
-
-          <TextBlock Text="Kontrolcü" Style="{StaticResource CardTitle}"/>
-          <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
-            <TextBlock Text="Xbox kontrolcü yuvası:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <ComboBox x:Name="DeviceSlotCombo" Width="170" SelectionChanged="DeviceSlot_Changed">
-              <ComboBoxItem Content="Otomatik"/>
-              <ComboBoxItem Content="Yuva 1"/>
-              <ComboBoxItem Content="Yuva 2"/>
-              <ComboBoxItem Content="Yuva 3"/>
-              <ComboBoxItem Content="Yuva 4"/>
-            </ComboBox>
-          </StackPanel>
-          <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
-                    Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
-        </StackPanel>
-        </ScrollViewer>
+        </DockPanel>
       </Border>
 
       <Grid Grid.Column="2">

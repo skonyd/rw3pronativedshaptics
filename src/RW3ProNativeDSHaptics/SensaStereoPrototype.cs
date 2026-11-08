@@ -58,6 +58,8 @@ public sealed class SensaStereoPrototype : IDisposable
             double textureOffset, double stiffnessOffset);
         [DllImport(Dll)] public static extern void ComputeAllEvents(double currentSeconds);
         [DllImport(Dll)] public static extern void StopAllEvents();
+        /// <summary>Stops one event (public Interhaptics API: StopEvent(int hMaterialId)).</summary>
+        [DllImport(Dll)] public static extern void StopEvent(int materialId);
         // Official SDK: looping is configured per event (HapticSource.ApplyLooping).
         [DllImport(Dll)] public static extern void SetEventLoop(int id, int loopValue);
     }
@@ -77,16 +79,25 @@ public sealed class SensaStereoPrototype : IDisposable
 
     /// <summary>Feature source for the live bridge (DualSense rear channels).</summary>
     public HapticFeatureExtractor Features { get; } = new();
-    /// <summary>Experimental public .haps multiband mapping; set only while stopped. No phase control.</summary>
-    private bool _experimentalMultiband;
-    public bool ExperimentalMultiband
+    /// <summary>Output method; set only while stopped. Multiband/Hybrid are experimental, no phase control.</summary>
+    private int _outputMethod;
+    public SensaOutputMethod OutputMethod
     {
-        get => Volatile.Read(ref _experimentalMultiband);
+        get => (SensaOutputMethod)Volatile.Read(ref _outputMethod);
         set { lock (_lifecycle) {
             if (_worker?.IsAlive == true) throw new InvalidOperationException("Stop the engine before changing its output backend.");
-            Volatile.Write(ref _experimentalMultiband, value);
+            Volatile.Write(ref _outputMethod, (int)value);
         } }
     }
+    /// <summary>Compatibility switch: true = <see cref="SensaOutputMethod.Multiband"/>.</summary>
+    public bool ExperimentalMultiband
+    {
+        get => OutputMethod == SensaOutputMethod.Multiband;
+        set => OutputMethod = value ? SensaOutputMethod.Multiband : SensaOutputMethod.Standard;
+    }
+    /// <summary>Hybrid: frames per hand sent as multiband / as standard (diagnostics).</summary>
+    public long HybridMultiFrames { get; private set; }
+    public long HybridStandardFrames { get; private set; }
     public long MultibandFrames { get; private set; }
     public long MultibandHeadroomReductions { get; private set; }
 
@@ -95,7 +106,7 @@ public sealed class SensaStereoPrototype : IDisposable
     public int SourceGainPercent
     {
         get => Volatile.Read(ref _sourceGainPercent);
-        set => Volatile.Write(ref _sourceGainPercent, Math.Clamp(value, 10, 400));
+        set => Volatile.Write(ref _sourceGainPercent, Math.Clamp(value, 10, 1200));   // × audio sensitivity; HapticLimiter keeps it bounded
     }
 
     private long _tickCount, _lastRateTicks, _lastRateStamp;
@@ -235,8 +246,8 @@ public sealed class SensaStereoPrototype : IDisposable
             Volatile.Write(ref _stop, 0);
             Volatile.Write(ref _providerActive, 0);
             Volatile.Write(ref _renderTicks, 0);
-            Features.EnableSpectralAnalysis(ExperimentalMultiband);
-            MultibandFrames = MultibandHeadroomReductions = 0;
+            Features.EnableSpectralAnalysis(OutputMethod != SensaOutputMethod.Standard);
+            MultibandFrames = MultibandHeadroomReductions = HybridMultiFrames = HybridStandardFrames = 0;
             _worker = new Thread(Run) { IsBackground = true, Name = "RW3-SensaStereo" };
             _worker.Start();
             return true;
@@ -277,8 +288,9 @@ public sealed class SensaStereoPrototype : IDisposable
             if (!init) { Report("HAR.Init returned false"); return; }
             clock.Restart();
             double[] silent = { 0, 0, 1, 0 };
-            bool multiband = ExperimentalMultiband;
-            string initialHaps = multiband ? MultibandHaps.Build(default, default, 1, out _) : "";
+            var method = OutputMethod;
+            bool multiband = method == SensaOutputMethod.Multiband, hybrid = method == SensaOutputMethod.Hybrid;
+            string initialHaps = multiband || hybrid ? MultibandHaps.Build(default, default, 1, out _) : "";
             int left = multiband ? Engine.AddHM(initialHaps.Replace("RW3 experimental", "RW3 left experimental", StringComparison.Ordinal)) : Engine.AddParametricEffect(silent, 4, null, 0, FrequencyMinHz, FrequencyMaxHz, null, 0, false);
             int right = multiband ? Engine.AddHM(initialHaps.Replace("RW3 experimental", "RW3 right experimental", StringComparison.Ordinal)) : Engine.AddParametricEffect(silent, 4, null, 0, FrequencyMinHz, FrequencyMaxHz, null, 0, false);
             if (left < 0 || right < 0) { Report("Failed to create stereo parametric effects"); return; }
@@ -288,12 +300,27 @@ public sealed class SensaStereoPrototype : IDisposable
             Engine.AddTargetToEventMarshal(right, new[] { new CommandData(rightTarget.Group, rightTarget.Side) }, 1);
             Engine.SetEventIntensity(left, 1);
             Engine.SetEventIntensity(right, 1);
+            int leftHm = -1, rightHm = -1;
+            if (hybrid)
+            {
+                // Hybrid keeps the parametric effects (standard frames) and adds one .haps effect per hand.
+                leftHm = Engine.AddHM(initialHaps.Replace("RW3 experimental", "RW3 left hybrid", StringComparison.Ordinal));
+                rightHm = Engine.AddHM(initialHaps.Replace("RW3 experimental", "RW3 right hybrid", StringComparison.Ordinal));
+                if (leftHm < 0 || rightHm < 0 || leftHm == rightHm) { Report("Failed to create hybrid .haps effects"); return; }
+                Engine.AddTargetToEventMarshal(leftHm, new[] { new CommandData(leftTarget.Group, leftTarget.Side) }, 1);
+                Engine.AddTargetToEventMarshal(rightHm, new[] { new CommandData(rightTarget.Group, rightTarget.Side) }, 1);
+                Engine.SetEventIntensity(leftHm, 1);
+                Engine.SetEventIntensity(rightHm, 1);
+            }
+            var leftPolicy = new HybridOutputPolicy();
+            var rightPolicy = new HybridOutputPolicy();
 
             Report("Interhaptics engine started; finding Razer runtime");
             providerInit = Provider.ProviderInit();
             if (!providerInit) { Report("Razer runtime unavailable; install Synapse 4 + Chroma + PC mode"); return; }
             Volatile.Write(ref _providerActive, 1);
-            Report("Razer provider initialized • " + (multiband ? "EXPERIMENTAL multiband .haps, phase/transient loss • " : "v2 stream ") + TickMs + " ms");
+            Report("Razer provider initialized • " + (multiband ? "EXPERIMENTAL multiband .haps, phase/transient loss • " :
+                hybrid ? "EXPERIMENTAL hybrid (standard hits + multiband steady mixes) • " : "v2 stream ") + TickMs + " ms");
 
             var leftOut = new SideOutput(left);
             var rightOut = new SideOutput(right);
@@ -342,6 +369,7 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         Engine.StopAllEvents();
                         leftOut.Reset(); rightOut.Reset();
+                        leftPolicy.Reset(); rightPolicy.Reset();
                         idle = true;
                     }
                 }
@@ -374,9 +402,18 @@ public sealed class SensaStereoPrototype : IDisposable
                         MultibandFrames++;
                         if (reducedL || reducedR) MultibandHeadroomReductions++;
                     }
+                    else if (hybrid)
+                    {
+                        HapticSpectrum ls = default, rs = default;
+                        bool haveSpectrum = !manual && (!IsSilent(fl) || !IsSilent(fr)) && Features.TryTakeSpectrum(out ls, out rs);
+                        nativeStage = "hybrid update";
+                        HybridSide(leftPolicy, leftOut, leftHm, fl, ls, haveSpectrum, level, tickSec, now);
+                        HybridSide(rightPolicy, rightOut, rightHm, fr, rs, haveSpectrum, level, tickSec, now);
+                    }
                     else { leftOut.Apply(fl, level, tickSec, now); rightOut.Apply(fr, level, tickSec, now); }
                 }
                 if (!idle) LastSentHz = multiband ? (0, 0) : (leftOut.UsedHz, rightOut.UsedHz);
+                if (!idle && hybrid) LastHybridMulti = (leftPolicy.Multi, rightPolicy.Multi);
                 FrameProbe?.Invoke(fl, fr, level, idle);
                 nativeStage = "ComputeAllEvents";
                 Engine.ComputeAllEvents(now);
@@ -386,7 +423,7 @@ public sealed class SensaStereoPrototype : IDisposable
                     nativeStage = "provider render";
                     // The vendor debug accessor indexes a material frame; .haps idle after StopAllEvents
                     // has no material frame and throws natively. Normal render still publishes silence.
-                    if (CaptureFrames && !(multiband && idle))
+                    if (CaptureFrames && !((multiband || hybrid) && idle))
                     {
                         int len = Provider.RenderHapticsDebug(_frameScratch, 0, _frameScratch.Length);
                         if (len > 0 && len <= _frameScratch.Length)
@@ -397,7 +434,7 @@ public sealed class SensaStereoPrototype : IDisposable
                     }
                     else {
                         Provider.ProviderRenderHaptics();
-                        if (multiband && idle && CaptureFrames) lock (_lock) _lastFrame = Array.Empty<byte>();
+                        if ((multiband || hybrid) && idle && CaptureFrames) lock (_lock) _lastFrame = Array.Empty<byte>();
                     }
                     Interlocked.Increment(ref _renderTicks);
                 }
@@ -421,7 +458,7 @@ public sealed class SensaStereoPrototype : IDisposable
                 for (int i = 0; i < ZeroOutTicks; i++)
                 {
                     double t = clock.Elapsed.TotalSeconds;
-                    if (multiband) Engine.StopAllEvents();
+                    if (multiband || hybrid) Engine.StopAllEvents();
                     else { leftOut.Apply(default, 1, tickSec, t); rightOut.Apply(default, 1, tickSec, t); }
                     Engine.ComputeAllEvents(t);
                     Provider.ProviderRenderHaptics();
@@ -474,6 +511,39 @@ public sealed class SensaStereoPrototype : IDisposable
     private const double IdleAfterSeconds = 0.100;
     private const int ZeroOutTicks = 10;
     private const double IdlePollSeconds = 0.005;
+
+    /// <summary>Hybrid: which hands were in multiband on the last frame (diagnostics).</summary>
+    public (bool Left, bool Right) LastHybridMulti { get; private set; }
+
+    /// <summary>
+    /// One hand, one hybrid frame. Multiband: the .haps note set gets the fast envelope split by the
+    /// spectral shares and the parametric effect is sent silence. Standard: the parametric effect
+    /// plays as usual and the .haps note is left to expire (its curve reaches zero at 66 ms).
+    /// </summary>
+    private void HybridSide(HybridOutputPolicy policy, SideOutput standard, int hm, in SideFeatures f,
+        in HapticSpectrum spectrum, bool haveSpectrum, double level, double tickSec, double now)
+    {
+        bool wasMulti = policy.Multi;
+        if (policy.Decide(f, spectrum, haveSpectrum, now))
+        {
+            // The parametric effect is STOPPED, not fed a zero curve: a playing all-zero curve hums at
+            // its pitch (2026-11-07), which in the 90-case run put a mixed 80+190 Hz scene at ~130 Hz
+            // although 90 % of its frames were multiband.
+            if (!wasMulti) { Engine.StopEvent(standard.MaterialId); standard.Reset(); }
+            var scaled = HybridOutputPolicy.ScaleToEnvelope(spectrum, f.Peak);
+            string haps = MultibandHaps.Build(scaled, f, level, out bool reduced);
+            if (!Engine.UpdateHM(hm, haps)) throw new InvalidOperationException("Hybrid .haps update rejected.");
+            Engine.PlayEvent(hm, -now, 0, 0);
+            HybridMultiFrames++;
+            if (reduced) MultibandHeadroomReductions++;
+        }
+        else
+        {
+            if (wasMulti) Engine.StopEvent(hm);
+            standard.Apply(HybridOutputPolicy.StandardFrame(f, spectrum, haveSpectrum), level, tickSec, now);
+            if (f.Peak > HybridOutputPolicy.ActiveThreshold) HybridStandardFrames++;
+        }
+    }
 
     private static void WaitUntil(IntPtr timer, Stopwatch clock, double at)
     {
@@ -537,6 +607,8 @@ public sealed class SensaStereoPrototype : IDisposable
 
         public SideOutput(int id) { _id = id; }
 
+        public int MaterialId => _id;
+
         /// <summary>Frequency sent with the last frame (0 = engine default, the resonance).</summary>
         public double UsedHz { get; private set; }
 
@@ -545,7 +617,7 @@ public sealed class SensaStereoPrototype : IDisposable
 
         public void Apply(in SideFeatures f, double gain, double tickSec, double now)
         {
-            double a0 = Clamp01(f.P0 * gain), a1 = Clamp01(f.P1 * gain), a2 = Clamp01(f.P2 * gain), a3 = Clamp01(f.P3 * gain);
+            double a0 = HapticLimiter.Apply(f.P0, gain), a1 = HapticLimiter.Apply(f.P1, gain), a2 = HapticLimiter.Apply(f.P2, gain), a3 = HapticLimiter.Apply(f.P3, gain);
             bool restart = RestartEachTick || double.IsNaN(_playStart) || now - _playStart > RestartAfterSeconds;
             if (restart) _playStart = now;
             // Curve times are on the effect's own clock (0 = last PlayEvent). The stream is kept
@@ -570,8 +642,8 @@ public sealed class SensaStereoPrototype : IDisposable
             if (SendTransients && f.TransientCount >= 1)
             {
                 tr = f.TransientCount >= 2 ? _tr2 : _tr1;
-                tr[0] = e + f.T0Position * tickSec; tr[1] = Clamp01(f.T0Amplitude * gain); tr[2] = p;
-                if (f.TransientCount >= 2) { tr[3] = e + f.T1Position * tickSec; tr[4] = Clamp01(f.T1Amplitude * gain); tr[5] = p; }
+                tr[0] = e + f.T0Position * tickSec; tr[1] = HapticLimiter.Apply(f.T0Amplitude, gain); tr[2] = p;
+                if (f.TransientCount >= 2) { tr[3] = e + f.T1Position * tickSec; tr[4] = HapticLimiter.Apply(f.T1Amplitude, gain); tr[5] = p; }
                 trLen = tr.Length;
             }
             Engine.UpdateParametricEffect(_id, _amp, _amp.Length, _pitch, _pitch.Length,
@@ -579,7 +651,6 @@ public sealed class SensaStereoPrototype : IDisposable
             if (restart) Engine.PlayEvent(_id, -now, 0, 0);
         }
 
-        private static double Clamp01(double v) => double.IsFinite(v) ? Math.Clamp(v, 0, 1) : 0;
     }
 
     private void UpdateRate()

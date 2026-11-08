@@ -33,6 +33,15 @@ public sealed class NativeBridgeService : IDisposable
             _sensa.ExperimentalMultiband = value;
         }
     }
+    public SensaOutputMethod OutputMethod
+    {
+        get => _sensa.OutputMethod;
+        set {
+            if (_sensa.IsRunning) throw new InvalidOperationException("Stop the engine before changing its output backend.");
+            _sensa.OutputMethod = value;
+        }
+    }
+    public (long Multi, long Standard) HybridFrames => (_sensa.HybridMultiFrames, _sensa.HybridStandardFrames);
     public string SourceStatus => _source.Status;
     public string? SourceName { get; private set; }
     public float LeftRms => _source.LeftRms;
@@ -41,12 +50,30 @@ public sealed class NativeBridgeService : IDisposable
         HapticSafetyRules.HasRecentChannelEnergy(_source.IsCapturing,
             _source.LastLeftEnergyTick, _source.LastRightEnergyTick, Environment.TickCount64);
 
-    /// <summary>Native v2 source gain in percent (Settings: Normal 140 / GÃ¼Ã§lÃ¼ 200 / Maksimum 300).</summary>
+    private int _nativeGainPercent = 140, _audioSensitivityPercent = 100;
+    private bool _sensitivityActive;
+
+    /// <summary>Native v2 source gain in percent (Settings: Normal 140 / Güçlü 200 / Maksimum 300).</summary>
     public int SourceGainPercent
     {
-        get => _sensa.SourceGainPercent;
-        set => _sensa.SourceGainPercent = value;
+        get => _nativeGainPercent;
+        set { _nativeGainPercent = value; ApplyGain(); }
     }
+
+    /// <summary>
+    /// "Sesten titreşim" sensitivity: extra feature-level gain for game audio only (game mixes are
+    /// quieter than DualSense haptic channels and vary per title). Applied after extraction, so the
+    /// waveform is never clipped; <see cref="HapticLimiter"/> keeps strong moments distinct.
+    /// Not applied to the Test tab sound tests, which must reach the engine at the demo level.
+    /// </summary>
+    public int AudioSensitivityPercent
+    {
+        get => _audioSensitivityPercent;
+        set { _audioSensitivityPercent = Math.Clamp(value, 50, 400); ApplyGain(); }
+    }
+
+    private void ApplyGain() =>
+        _sensa.SourceGainPercent = _sensitivityActive ? _nativeGainPercent * _audioSensitivityPercent / 100 : _nativeGainPercent;
 
     public int OutputLevelPercent
     {
@@ -82,6 +109,8 @@ public sealed class NativeBridgeService : IDisposable
         await _gate.WaitAsync(token);
         try
         {
+            _sensitivityActive = false;
+            ApplyGain();
             var endpoint = FindDualSenseEndpoint() ?? throw new InvalidOperationException(
                 "4 kanallÄ± DualSense ses aygÄ±tÄ± bulunamadÄ±. DualSense'i USB ile tak veya " +
                 "sanal DualSense sÃ¼rÃ¼cÃ¼nÃ¼ (PadForge/DSX+) baÅŸlat.");
@@ -148,11 +177,14 @@ public sealed class NativeBridgeService : IDisposable
     public string? AudioFailure => _audio?.Failure;
 
     /// <summary>Game audio (default playback device) → haptic low-pass → v2 Sensa engine.</summary>
-    public async Task StartAudioToSensaAsync(CancellationToken token = default, string? deviceId = null, int? syncDelayOverrideMs = null)
+    public async Task StartAudioToSensaAsync(CancellationToken token = default, string? deviceId = null, int? syncDelayOverrideMs = null,
+        bool applySensitivity = true)
     {
         await _gate.WaitAsync(token);
         try
         {
+            _sensitivityActive = applySensitivity;
+            ApplyGain();
             _source.Stop();
             _audio?.Dispose();
             _audio = null;
@@ -172,6 +204,8 @@ public sealed class NativeBridgeService : IDisposable
 
     public void Stop()
     {
+        _sensitivityActive = false;
+        ApplyGain();
         _audio?.Dispose();
         _audio = null;
         _source.Stop();

@@ -16,7 +16,12 @@ public sealed class UserSettings
     // Native v2: source envelope -> Sensa amplitude gain (140 normal, 200 strong, 300 max).
     public int NativeGainPercent { get; set; } = 140;
     // Opt-in: richer .haps output; still lossy, phase/short-transient acceptance unproven.
+    /// <summary>Legacy (pre-2026-11-08 builds): true meant Multiband. Read once into <see cref="OutputMethod"/>.</summary>
     public bool ExperimentalMultiband { get; set; }
+    /// <summary>Wolverine output method: 0 Standard, 1 Multiband (experimental), 2 Hybrid (experimental).</summary>
+    public int OutputMethod { get; set; }
+    /// <summary>Sesten titreşim sensitivity in percent (Normal 100 / Yüksek 160 / Çok yüksek 250).</summary>
+    public int AudioSensitivityPercent { get; set; } = 100;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
 }

@@ -73,8 +73,15 @@ public partial class MainWindow : Window
         _rumble.OutputLevelPercent = _settings.OutputLevelPercent;
         _bridge.OutputLevelPercent = _settings.OutputLevelPercent;
         _bridge.SourceGainPercent = _settings.NativeGainPercent;
-        _bridge.ExperimentalMultiband = _settings.ExperimentalMultiband;
-        ExperimentalMultibandBox.IsChecked = _settings.ExperimentalMultiband;
+        if (_settings.ExperimentalMultiband && _settings.OutputMethod == 0) _settings.OutputMethod = (int)SensaOutputMethod.Multiband;
+        _settings.ExperimentalMultiband = false;
+        _settings.OutputMethod = Math.Clamp(_settings.OutputMethod, 0, 2);
+        _bridge.OutputMethod = (SensaOutputMethod)_settings.OutputMethod;
+        _bridge.AudioSensitivityPercent = _settings.AudioSensitivityPercent;
+        ((SensaOutputMethod)_settings.OutputMethod switch
+            { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
+        (_settings.AudioSensitivityPercent >= 250 ? SensMax : _settings.AudioSensitivityPercent >= 160 ? SensHigh : SensNormal).IsChecked = true;
+        UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
 
         try { using var self = Process.GetCurrentProcess(); _originalPriority = self.PriorityClass; }
@@ -828,7 +835,7 @@ public partial class MainWindow : Window
             if (mode == WolverineMode.Pc)
             {
                 // The test follows the on-screen caption, not a speaker: no Bluetooth sync delay.
-                await _bridge.StartAudioToSensaAsync(token, null, 0);
+                await _bridge.StartAudioToSensaAsync(token, null, 0, applySensitivity: false);
                 route = "PC modu → Sensa motorları";
             }
             else if (mode == WolverineMode.Xbox)
@@ -1160,18 +1167,54 @@ public partial class MainWindow : Window
         UpdateAudioSyncStatus();
     }
 
-    private void ExperimentalMultiband_Changed(object sender, RoutedEventArgs e)
+    private void SettingsView_Checked(object sender, RoutedEventArgs e)
     {
-        if (!_initialized) return;
-        bool enabled = ExperimentalMultibandBox.IsChecked == true;
-        if (enabled == _settings.ExperimentalMultiband) return;
-        if (_busy || _starting) { ExperimentalMultibandBox.IsChecked = _settings.ExperimentalMultiband; return; }
+        if (SettingsBasicPanel == null) return;
+        bool advanced = SettingsAdvancedTab.IsChecked == true;
+        SettingsBasicPanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
+        SettingsAdvancedPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
+        if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
+    }
+
+    private void OutputMethod_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int method = int.Parse(tag);
+        if (method == _settings.OutputMethod) return;
+        if (_busy || _starting)
+        {
+            ((SensaOutputMethod)_settings.OutputMethod switch
+                { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
+            return;
+        }
         StopAll();
-        _bridge.ExperimentalMultiband = enabled;
-        _settings.ExperimentalMultiband = enabled;
-        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Experimental multiband", ex); }
-        DiagnosticsService.Info("Experimental multiband .haps output " + (enabled ? "enabled; phase/transient loss remains" : "disabled") + ".");
+        _bridge.OutputMethod = (SensaOutputMethod)method;
+        _settings.OutputMethod = method;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Output method", ex); }
+        DiagnosticsService.Info("Wolverine output method: " + (SensaOutputMethod)method + ".");
+        UpdateOutputMethodStatus();
         _ = EnsureModeRunningAsync();
+    }
+
+    private void UpdateOutputMethodStatus()
+    {
+        var (multi, standard) = _bridge.HybridFrames;
+        OutputMethodStatus.Text = (SensaOutputMethod)_settings.OutputMethod switch
+        {
+            SensaOutputMethod.Hybrid => "Hibrit açık" + (multi + standard > 0 ? $" • son çalışmada karelerin %{100.0 * multi / (multi + standard):F0}'i çok bantlı" : "") + ".",
+            SensaOutputMethod.Multiband => "Çok bantlı açık: kısa vuruşlar zayıf hissedilebilir.",
+            _ => "Standart (önerilen)."
+        };
+    }
+
+    private void AudioSensitivity_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int sens = int.Parse(tag);
+        _settings.AudioSensitivityPercent = sens;
+        _bridge.AudioSensitivityPercent = sens;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Audio sensitivity", ex); }
+        DiagnosticsService.Info("Audio-to-haptics sensitivity " + sens + "%.");
     }
 
     private void UpdateAudioSyncStatus()
