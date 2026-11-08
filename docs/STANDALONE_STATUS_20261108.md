@@ -41,3 +41,17 @@ Contract suite: 412/412.
   folded into the strength points — measured at least as strong as Synapse's.
 - Bands 2–3 come from the 85 ms spectrum (Hybrid/Multiband); Standard frames have no added delay.
 - Xbox mode (impulse triggers) has no Sensa; trigger effects go to rumble motors in PC mode.
+
+## Virtual DualSense with a game and the game simulator (2026-11-08, late morning)
+
+- TLOU2 Part II through the virtual DualSense: PlayStation icons, buttons and sticks correct after the
+  axis-range fix; live readback matched the Xbox pad in every report (e.g. 102 152 / 102 152).
+- HidHide (already installed for DSX) hides the Wolverine's XInput and DirectInput nodes while the
+  bridge runs and restores the previous configuration on stop.
+- No palm haptics at first: the engine ran the Synapse path (saved transport, Razer DLLs beside the
+  debug build) while Synapse was closed. Fixed: Synapse is used only when it runs and has attached the
+  controller, otherwise Direct USB. Game simulator afterwards: every scene "frames sent to Sensa".
+- **Trigger motors:** in PC mode the Wolverine is an XUSB ("Xbox 360") device. Webcam-mic probe:
+  XInput body motors +20.0 / +20.9 dB; Windows.Gaming.Input trigger vibration 0 dB (its body channels
+  0 dB too, foreground window). There is no OS route to the impulse-trigger motors in PC mode, so
+  DualSense trigger effects are rendered on the body motors (felt as a pulse, not in the trigger).
