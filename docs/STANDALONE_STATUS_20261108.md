@@ -16,17 +16,24 @@ Goal (user): the app installed alone does everything, without Synapse or any oth
 
 Contract suite: 412/412.
 
-## Needs the user (could not be done unattended)
+## Morning tests (user present)
 
-1. **Synapse fully closed test.** Closing Synapse was blocked for the agent. Close Synapse
-   (tray icon → Exit), select Doğrudan USB, run Test → Sol/Sağ and a sound test.
-2. **Wireless (dongle).** Unplug the cable with the dongle in, select Doğrudan USB, try
-   Test → Sol/Sağ. The transport picks the dongle's control collection automatically; whether
-   the dongle forwards frames is unknown.
-3. **Virtual DualSense with a game.** Settings → Sanal DualSense → "Yönetici olarak başlat"
+- **Synapse fully closed** (user exited it; RazerAppEngine 0 for the whole run), USB cable:
+  direct write left +10…+20 dB, right +10.5…+11.3 dB, silence stops; engine 45 cases
+  (TestResults/direct-synapse-closed-20261108): Hybrid puts mixed 80+190 Hz at 80/190 Hz,
+  hits 14.9 dB = Standard 15.0 dB, no tails. **Synapse is not needed.**
+- **Wireless (HyperSpeed dongle only, cable out, Synapse closed):** the dongle exposes its own
+  COL04 (`B&11DF2D84`); direct write left +21…+23 dB, right +17…+19 dB, silence stops — Synapse
+  itself never drove Sensa over the dongle. Engine 45 cases (TestResults/direct-wireless-20261108):
+  same picture (Hybrid mixed 80/190 = 5.1×/24.6× vs wrong bands 2.1×/2.1×, hits 12.1 dB, no tails).
+  Writes over the dongle are a little slower (40–43 instead of 46 per 1.5 s); no backlog observed.
+
+## Still needs the user
+
+1. **Virtual DualSense with a game.** Settings → Sanal DualSense → "Yönetici olarak başlat"
    (UAC), then a DualSense-native game. Check: buttons/sticks (Y axis direction is a guess),
    haptic block counter rising, trigger reports, double input (HidHide not configured).
-4. **Blind hand test** Standard vs Hybrid on Direct USB.
+2. **Blind hand test** Standard vs Hybrid on Direct USB.
 
 ## Known limits
 

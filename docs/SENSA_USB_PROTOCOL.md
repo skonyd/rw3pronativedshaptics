@@ -89,6 +89,6 @@ pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two reco
    medians within ~1 dB in every scene, same 80/190 Hz split in stereo, hits 6.2 vs 4.9 dB,
    no tail on either.
 
-Open: a test with Synapse fully closed (closing it was blocked for the agent; the user can close
-it); wireless — the HyperSpeed dongle exposes the same COL04 collection when the cable is out,
-the transport picks it up automatically, untested; Xbox mode; coexistence when Synapse also writes.
+Verified 2026-11-08 morning: works with Synapse fully closed, and **wirelessly** through the
+HyperSpeed dongle (its own COL04 collection, same report) — which Synapse never did.
+Open: Xbox mode; coexistence when Synapse also writes.
