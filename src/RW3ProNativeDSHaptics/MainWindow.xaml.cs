@@ -252,7 +252,44 @@ public partial class MainWindow : Window
         VcUninstallBtn.IsEnabled = st.SdkPresent && (st.DriverInstalled || st.UsbipAvailable) && !_vcBusy;
         VcBridgeBtn.IsEnabled = st.Ready && !_vcBusy;
         await RefreshHidHideAsync();
+        await RefreshPadModeAsync();
         UpdateBridgeStatus();
+    }
+
+    // Controller mode: PC (Sensa) or Xbox (impulse-trigger motors). PC → Xbox by software, back by key combo.
+    private bool _padModeBusy;
+
+    private async Task RefreshPadModeAsync(string? note = null)
+    {
+        if (PadModeText == null) return;
+        var m = await Task.Run(WolverineModeControl.Detect);
+        PadModeText.Text = (note != null ? note + Environment.NewLine : "") + m switch
+        {
+            WolverineControllerMode.Pc => "PC modu: avuçlarda Sensa HD titreşim; DualSense tetik efektleri gövde motorlarında. Tetiklerin içinde hissetmek için Xbox moduna geç.",
+            WolverineControllerMode.Xbox => "Xbox modu: DualSense tetik efektleri tetik motorlarında, titreşim sesi gövde motorlarında (bu modda Sensa yok). " + WolverineModeControl.PcComboHint,
+            _ => "Kol bulunamadı (kablo ya da alıcıyla bağlı ve açık olmalı)."
+        };
+        PadModeXboxBtn.IsEnabled = m == WolverineControllerMode.Pc && !_padModeBusy;
+    }
+
+    private async void PadModeRefresh_Click(object sender, RoutedEventArgs e) => await RefreshPadModeAsync();
+
+    private async void PadModeXbox_Click(object sender, RoutedEventArgs e)
+    {
+        if (_padModeBusy) return;
+        _padModeBusy = true;
+        PadModeXboxBtn.IsEnabled = false;
+        PadModeText.Text = "Xbox moduna geçiliyor (kol bir an bağlantıyı kesip yeniden bağlanır)…";
+        string note;
+        try
+        {
+            var (ok, msg) = await WolverineModeControl.SwitchToXboxAsync();
+            note = msg;
+            DiagnosticsService.Info("Controller mode switch to Xbox: " + (ok ? "ok" : "failed") + " - " + msg);
+        }
+        catch (Exception ex) { NoteError("Mode switch", ex); note = "Hata: " + ex.Message; }
+        _padModeBusy = false;
+        await RefreshPadModeAsync(note);
     }
 
     // HidHide: hides the physical Xbox pad from games while the virtual DualSense runs.
@@ -826,12 +863,15 @@ public partial class MainWindow : Window
         GameSimStatus.Text = "Çalıyor: " + scene.Title + " — " + scene.Hint;
         try
         {
+            long x0 = _bridge.VirtualXboxMotorWrites;
             var res = await GameSignalSimulator.PlayAsync(scene.Id, endpoint, _bridge.VirtualDualSenseHidPath, micId, _gameSimCancel.Token);
             await Task.Delay(300);
             var (h1, o1, t1) = _bridge.VirtualDualSenseCounters;
             long frames = _bridge.DirectFramesSent - f0;
             var (pl, pr) = _bridge.VirtualHapticPeaks;
-            GameSimStatus.Text = GameSimVerdict.Describe(h1 - h0, pl, pr, frames, res.ReportsWritten, t1 - t0, res.HidError, res.MicDb);
+            bool xbox = _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox;
+            GameSimStatus.Text = GameSimVerdict.Describe(h1 - h0, pl, pr, frames, res.ReportsWritten, t1 - t0, res.HidError, res.MicDb,
+                xbox ? _bridge.VirtualXboxMotorWrites - x0 : null, xbox ? _bridge.VirtualXboxStatus : null);
             DiagnosticsService.Info("Game simulator " + scene.Id + ": " + GameSimStatus.Text.Replace(Environment.NewLine, " | ") + " | " + _bridge.SensaEngineSummary);
         }
         catch (OperationCanceledException) { GameSimStatus.Text = "Durduruldu."; }

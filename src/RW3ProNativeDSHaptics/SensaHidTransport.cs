@@ -95,6 +95,15 @@ public sealed class SensaHidTransport : IDisposable
         return true;
     }
 
+    /// <summary>Sends a complete 91-byte feature report (Razer control commands, see <see cref="RazerCommand"/>).</summary>
+    public bool SendRaw(byte[] report)
+    {
+        if (!IsOpen || report.Length != FeatureLength) return false;
+        if (Hid.HidD_SetFeature(_handle!, report, report.Length)) return true;
+        LastError = Marshal.GetLastWin32Error();
+        return false;
+    }
+
     public void Close() { _handle?.Dispose(); _handle = null; DevicePath = null; }
     public void Dispose() => Close();
 

@@ -240,6 +240,9 @@ public sealed class NativeBridgeService : IDisposable
     public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
     public bool HidePadInGames { get; set; } = true;
     public string? VirtualDualSenseHidPath => _virtual?.VirtualHidPath;
+    public WolverineControllerMode VirtualDualSenseMode => _virtual?.ControllerMode ?? WolverineControllerMode.NotFound;
+    public long VirtualXboxMotorWrites => _virtual?.XboxMotorWrites ?? 0;
+    public string VirtualXboxStatus => _virtual?.XboxStatus ?? "";
     public (float Left, float Right) VirtualHapticPeaks => _virtual?.PeaksSinceMark ?? (0, 0);
     public void MarkVirtualHapticPeaks() => _virtual?.MarkPeaks();
     public string SensaEngineSummary =>

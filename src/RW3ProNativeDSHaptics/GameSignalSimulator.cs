@@ -360,14 +360,17 @@ public static class GameSimVerdict
     public const double FeltDb = 3.0;
 
     public static string Describe(long hapticBlocks, float peakL, float peakR, long sensaFrames,
-        int reportsWritten, long triggerReports, string? hidError, double? micDb)
+        int reportsWritten, long triggerReports, string? hidError, double? micDb, long? xboxWrites = null, string? xboxStatus = null)
     {
         var lines = new System.Collections.Generic.List<string>();
         bool audio = hapticBlocks > 0 && Math.Max(peakL, peakR) >= SilentPeak;
         if (hapticBlocks == 0) lines.Add("✗ Sanal DualSense titreşim sesini almadı (Windows ses yolu).");
         else if (!audio) lines.Add($"✗ Titreşim sesi sessiz geldi (tepe L {peakL:F2} R {peakR:F2}).");
         else lines.Add($"✓ Titreşim sesi köprüde: {hapticBlocks} blok, tepe L {peakL:F2} R {peakR:F2}.");
-        if (audio)
+        if (xboxWrites is long xw)
+            lines.Add(xw > 0 ? $"✓ Xbox modu: tetik + gövde motorlarına {xw} komut gitti."
+                             : "✗ Xbox modu: motorlara komut gitmedi" + (string.IsNullOrEmpty(xboxStatus) ? "." : " (" + xboxStatus + ")."));
+        else if (audio)
             lines.Add(sensaFrames > 0 ? $"✓ Sensa'ya {sensaFrames} kare gitti."
                                       : "✗ Sensa'ya hiç kare gitmedi: motor (Sensa) tarafı çalışmıyor.");
         if (hidError != null) lines.Add("✗ Tetik komutu yazılamadı: " + hidError);

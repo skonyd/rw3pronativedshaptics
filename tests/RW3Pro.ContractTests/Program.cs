@@ -1175,3 +1175,17 @@ SpectralContracts.Run(Check);
           && silent.Contains("sessiz") && silent.Contains("köprüye ulaşmadı") && noAudio.Contains("almadı") && noAudio.Contains("yazılamadı"),
         "Game simulator verdict names the failing stage (audio, Sensa engine, triggers, mic)");
 }
+
+// Wolverine mode switch: our packets equal Synapse's (USB capture 2026-11-08, PC → Xbox), CRC included.
+{
+    string prepare = "040000000000030c950102" + new string('0', 2 * 78) + "9900";
+    string sw = "0400010000000100530100" + new string('0', 2 * 78) + "5300";
+    string Hex(byte[] b) => Convert.ToHexString(b).ToLowerInvariant();
+    bool same = Hex(RazerCommand.XboxModePrepare()) == prepare && Hex(RazerCommand.XboxModeSwitch()) == sw
+        && RazerCommand.Build(0x1d, 0x0C, 0x95, [0x01, 0x01, 0x00])[89] == 0x9a;
+    Check(same && prepare.Length == 2 * SensaHidTransport.FeatureLength, "Razer mode commands byte-identical to Synapse's (0C95 01 02 00 → 00 53 01), checksums included");
+    string xOk = GameSimVerdict.Describe(100, 0.6f, 0.6f, 0, 40, 40, null, null, 120, "Xbox modu");
+    string xBad = GameSimVerdict.Describe(100, 0.6f, 0.6f, 0, 40, 40, null, null, 0, "GameInput kolu bulamadı");
+    Check(xOk.Contains("✓ Xbox modu") && !xOk.Contains("Sensa") && xBad.Contains("✗ Xbox modu") && xBad.Contains("GameInput"),
+        "Simulator verdict in Xbox mode reports the trigger/body motor commands instead of Sensa");
+}

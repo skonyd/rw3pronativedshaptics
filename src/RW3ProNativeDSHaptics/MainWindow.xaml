@@ -436,6 +436,12 @@
                 <ComboBoxItem Content="Yuva 4"/>
               </ComboBox>
             </StackPanel>
+            <TextBlock Text="Kol modu" Style="{StaticResource CardTitle}" Margin="0,4,0,0"/>
+            <TextBlock x:Name="PadModeText" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+            <WrapPanel Margin="0,0,0,8">
+              <Button x:Name="PadModeXboxBtn" Content="Xbox moduna geç (tetik motorları)" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeXbox_Click"/>
+              <Button Content="↻ Algıla" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeRefresh_Click"/>
+            </WrapPanel>
             <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
                       Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
           </StackPanel>

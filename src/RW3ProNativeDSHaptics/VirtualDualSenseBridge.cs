@@ -44,6 +44,22 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private readonly object _peakGate = new();
     private float _markL, _markR, _logL, _logR;
     private readonly System.Collections.Generic.Dictionary<byte, long> _r2Modes = new(), _l2Modes = new();
+
+    // ── Xbox mode (no Sensa): haptic audio → body motors, trigger effects → impulse-trigger motors ──
+    /// <summary>Haptic envelope → body motor scale in Xbox mode.</summary>
+    public static double XboxHapticGain = 1.6;
+    public WolverineControllerMode ControllerMode => _mode;
+    public long XboxMotorWrites => _xbox?.Writes ?? 0;
+    public string XboxStatus => _mode != WolverineControllerMode.Xbox ? "" :
+        _xbox?.HasDevice == true ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu: GameInput kolu bulamadı (" + (_xbox?.LastError ?? "") + ")";
+    private volatile WolverineControllerMode _mode = WolverineControllerMode.NotFound;
+    private GameInputRumble? _xbox;
+    private float _envStateL, _envStateR;           // OnFrames thread only
+    private float _envL, _envR;                     // published, under _peakGate
+    private long _envTick;
+    private System.Threading.Timer? _modeTimer;
+    private const float EnvAttack = 0.0104f;        // ≈ 2 ms at 48 kHz
+    private const float EnvRelease = 0.99974f;      // ≈ 80 ms
     /// <summary>Result of the live readback comparison with the physical pad.</summary>
     public string InputCheck
     {
@@ -102,6 +118,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _input = new Thread(InputLoop) { IsBackground = true, Name = "RW3-VirtualDualSense", Priority = ThreadPriority.AboveNormal };
             _input.Start();
             IsRunning = true;
+            _mode = WolverineModeControl.Detect();
+            DiagnosticsService.Info("Virtual DualSense: controller mode " + _mode + ".");
+            _modeTimer = new System.Threading.Timer(_ => CheckMode(), null, 2000, 2000);
             StartReadback(before);
             if (!HidHideInstalled)
                 DiagnosticsService.Info("Virtual DualSense: HidHide not installed - the game can also see the Xbox pad (double input possible).");
@@ -160,6 +179,19 @@ public sealed class VirtualDualSenseBridge : IDisposable
         }
     }
 
+    private void CheckMode()
+    {
+        if (!IsRunning) return;
+        WolverineControllerMode m;
+        try { m = WolverineModeControl.Detect(); } catch { return; }
+        if (m == _mode) return;
+        var old = _mode;
+        _mode = m;
+        DiagnosticsService.Info($"Virtual DualSense: controller mode {old} → {m}.");
+        // New mode = new device node: hide that one from games too.
+        if (HidePhysicalPad && m != WolverineControllerMode.NotFound) HidePad(VirtualHidPath);
+    }
+
     private void OnReadback(double t, DualSenseInputState actual)
     {
         var problem = _verifier.Observe(t, actual);
@@ -179,7 +211,19 @@ public sealed class VirtualDualSenseBridge : IDisposable
             pl = Math.Max(pl, Math.Abs((short)(span[i + 4] | (span[i + 5] << 8)) / 32768f));
             pr = Math.Max(pr, Math.Abs((short)(span[i + 6] | (span[i + 7] << 8)) / 32768f));
         }
-        lock (_peakGate) { _markL = Math.Max(_markL, pl); _markR = Math.Max(_markR, pr); _logL = Math.Max(_logL, pl); _logR = Math.Max(_logR, pr); }
+        float el = _envStateL, er = _envStateR;
+        for (int i = 0; i + 8 <= span.Length; i += 8)
+        {
+            float a = Math.Abs((short)(span[i + 4] | (span[i + 5] << 8)) / 32768f), b = Math.Abs((short)(span[i + 6] | (span[i + 7] << 8)) / 32768f);
+            el = a > el ? el + (a - el) * EnvAttack * 8 : el * EnvRelease;
+            er = b > er ? er + (b - er) * EnvAttack * 8 : er * EnvRelease;
+        }
+        _envStateL = el; _envStateR = er;
+        lock (_peakGate)
+        {
+            _markL = Math.Max(_markL, pl); _markR = Math.Max(_markR, pr); _logL = Math.Max(_logL, pl); _logR = Math.Max(_logR, pr);
+            _envL = el; _envR = er; _envTick = Environment.TickCount64;
+        }
         _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
         Interlocked.Increment(ref _hapticBlocks);
     }
@@ -203,7 +247,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         double last = 0;
         ushort lastL = 0, lastR = 0;
-        double nextLog = 10;
+        double nextLog = 10, nextAcquire = 0;
         var state = new HMGamepadState();
         // Every axis the profile declares gets its rest value, so none falls back to the encoder default.
         var axes = new System.Collections.Generic.Dictionary<HMAxis, float>();
@@ -230,13 +274,30 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 try { _ctrl.SubmitState(in state); } catch (Exception ex) { Status = "Giriş gönderilemedi: " + ex.Message; }
                 double lt, rt; byte rl, rr;
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }
-                // Wolverine has no adaptive triggers: trigger effects become rumble on that side.
-                ushort ml = (ushort)(Math.Max(rl / 255.0, lt) * 65535), mr = (ushort)(Math.Max(rr / 255.0, rt) * 65535);
-                if (ml != lastL || mr != lastR)
+                if (_mode == WolverineControllerMode.Xbox)
                 {
-                    var v = new XInput.Vibration { wLeftMotorSpeed = ml, wRightMotorSpeed = mr };
-                    XInput.XInputSetState((uint)_slot, ref v);
-                    lastL = ml; lastR = mr;
+                    // Xbox mode: trigger effects on the real impulse-trigger motors (GameInput works in the
+                    // background); the haptic audio, which Sensa would play in PC mode, on the body motors.
+                    _xbox ??= new GameInputRumble();
+                    if (!_xbox.HasDevice && now >= nextAcquire) { _xbox.TryAcquire(); nextAcquire = now + 1; }
+                    float el, er; long et;
+                    lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
+                    if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
+                    double body = XboxHapticGain;
+                    _xbox.Set(Math.Max(rl / 255.0, el * body), Math.Max(rr / 255.0, er * body), lt, rt);
+                    if (lastL != 0 || lastR != 0) { var z = new XInput.Vibration(); XInput.XInputSetState((uint)_slot, ref z); lastL = lastR = 0; }
+                }
+                else
+                {
+                    if (_xbox?.HasDevice == true) _xbox.Forget();
+                    // PC mode: no trigger motors reachable (XUSB): trigger effects become body rumble on that side.
+                    ushort ml = (ushort)(Math.Max(rl / 255.0, lt) * 65535), mr = (ushort)(Math.Max(rr / 255.0, rt) * 65535);
+                    if (ml != lastL || mr != lastR)
+                    {
+                        var v = new XInput.Vibration { wLeftMotorSpeed = ml, wRightMotorSpeed = mr };
+                        XInput.XInputSetState((uint)_slot, ref v);
+                        lastL = ml; lastR = mr;
+                    }
                 }
             }
             if (now >= nextLog)
@@ -256,12 +317,14 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                 DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks} (peak L {wl:F2} R {wr:F2}), output reports {OutputReports}, trigger reports {TriggerReports} " +
                     $"(L2 modes {l2}; R2 modes {r2}), rumble {_rumbleLeft}/{_rumbleRight}, " +
-                    $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; {engine}" + (healed != null ? "; " + healed : ""));
+                    $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; mode {_mode}" +
+                    (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites})" : "") + $"; {engine}" + (healed != null ? "; " + healed : ""));
             }
             Thread.Sleep(4);
         }
         var off = new XInput.Vibration();
         XInput.XInputSetState((uint)_slot, ref off);
+        _xbox?.Dispose(); _xbox = null;
     }
 
     private static HMButton MapButtons(ushort b)
@@ -298,6 +361,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         try { _ctx?.Dispose(); } catch { }
         _ctrl = null; _ctx = null;
 #endif
+        _modeTimer?.Dispose(); _modeTimer = null;
         _readback?.Dispose(); _readback = null;
         if (IsElevated && HidHideControl.RestorePending)
         {
