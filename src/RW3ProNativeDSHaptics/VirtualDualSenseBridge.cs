@@ -248,6 +248,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         double last = 0;
         ushort lastL = 0, lastR = 0;
         double nextLog = 10, nextAcquire = 0;
+        int xboxMisses = 0;
         var state = new HMGamepadState();
         // Every axis the profile declares gets its rest value, so none falls back to the encoder default.
         var axes = new System.Collections.Generic.Dictionary<HMAxis, float>();
@@ -279,7 +280,18 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     // Xbox mode: trigger effects on the real impulse-trigger motors (GameInput works in the
                     // background); the haptic audio, which Sensa would play in PC mode, on the body motors.
                     _xbox ??= new GameInputRumble();
-                    if (!_xbox.HasDevice && now >= nextAcquire) { _xbox.TryAcquire(); nextAcquire = now + 1; }
+                    if (!_xbox.HasDevice && now >= nextAcquire)
+                    {
+                        nextAcquire = now + 1;
+                        if (!_xbox.TryAcquire()) { xboxMisses++; }
+                        // HidHide may hide the pad from the GameInput service too; allow it after 3 failed tries.
+                        if (!_xbox.HasDevice && xboxMisses == 3 && HidePhysicalPad && HidHideControl.RestorePending)
+                        {
+                            try { DiagnosticsService.Info("Virtual DualSense: GameInput cannot see the pad while hidden; " + HidHideControl.AllowApp(HidHideControl.GameInputServicePath)); }
+                            catch (Exception ex) { DiagnosticsService.Error("HidHide allow GameInput", ex); }
+                        }
+                        if (_xbox.HasDevice) { DiagnosticsService.Info("Virtual DualSense: GameInput drives the Xbox-mode motors (triggers + body)."); xboxMisses = 0; }
+                    }
                     float el, er; long et;
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving

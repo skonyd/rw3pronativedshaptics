@@ -36,7 +36,7 @@ public static class HidHideControl
     private static string RestoreFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RW3ProNativeDSHaptics", "hidhide-restore.json");
 
-    private sealed record RestoreState(bool CloakWasOn, List<string> AddedHidden, List<string> RemovedHidden);
+    private sealed record RestoreState(bool CloakWasOn, List<string> AddedHidden, List<string> RemovedHidden, List<string>? AddedApps = null);
 
     // ── pure helpers (contract-tested) ──
 
@@ -174,6 +174,7 @@ public static class HidHideControl
         var args = new List<string>();
         foreach (var p in st.AddedHidden) { args.Add("--dev-unhide"); args.Add(Quote(p)); }
         foreach (var r in st.RemovedHidden) { args.Add("--dev-hide"); args.Add(Quote(r)); }
+        foreach (var a in st.AddedApps ?? new List<string>()) { args.Add("--app-unreg"); args.Add(Quote(a)); }
         args.Add(st.CloakWasOn ? "--cloak-on" : "--cloak-off");
         Run(cli, string.Join(' ', args));
         File.Delete(RestoreFile);
@@ -181,6 +182,24 @@ public static class HidHideControl
     }
 
     public static bool RestorePending => File.Exists(RestoreFile);
+
+    public static string GameInputServicePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "GameInputSvc.exe");
+
+    /// <summary>Lets one more program see the hidden pad for the rest of this run (undone by <see cref="Restore"/>).
+    /// Used for the GameInput service in Xbox mode: the trigger motors are driven through it.</summary>
+    public static string AllowApp(string path)
+    {
+        var cli = FindCli() ?? throw new InvalidOperationException("HidHide kurulu değil");
+        if (!File.Exists(RestoreFile)) return "gizleme etkin değil";
+        var st = JsonSerializer.Deserialize<RestoreState>(File.ReadAllText(RestoreFile)) ?? new RestoreState(false, new(), new());
+        var apps = ParseQuoted(Run(cli, "--app-list"), "--app-reg");
+        if (apps.Contains(path, StringComparer.OrdinalIgnoreCase)) return path + " zaten izinli";
+        var added = st.AddedApps ?? new List<string>();
+        added.Add(path);
+        File.WriteAllText(RestoreFile, JsonSerializer.Serialize(st with { AddedApps = added }));
+        Run(cli, "--app-reg " + Quote(path));
+        return path + " izinli listeye eklendi";
+    }
 
     private static string Quote(string s) => "\"" + s + "\"";
 

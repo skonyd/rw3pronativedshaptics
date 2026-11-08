@@ -56,7 +56,14 @@ public sealed class NativeBridgeService : IDisposable
     {
         var t = _preferredTransport;
         string? reason = null;
-        if (t == SensaTransport.Synapse && !SynapseSensaCheck.UsableNow(out var why)) { t = SensaTransport.DirectUsb; reason = why; }
+        if (t == SensaTransport.Synapse)
+        {
+            // Sensa exists only in PC mode; the Razer library throws (SEH) at initialization otherwise
+            // (Xbox mode with Synapse open, 2026-11-08).
+            var mode = WolverineModeControl.Detect();
+            if (mode != WolverineControllerMode.Pc) { t = SensaTransport.DirectUsb; reason = "kol " + (mode == WolverineControllerMode.Xbox ? "Xbox modunda" : "bulunamadı"); }
+            else if (!SynapseSensaCheck.UsableNow(out var why)) { t = SensaTransport.DirectUsb; reason = why; }
+        }
         if (reason != TransportFallbackReason)
             DiagnosticsService.Info(reason != null ? "Synapse path not usable (" + reason + "): engine uses Direct USB." : "Engine transport: " + t + ".");
         TransportFallbackReason = reason;
@@ -263,7 +270,14 @@ public sealed class NativeBridgeService : IDisposable
             _source.Stop();
             _audio?.Dispose(); _audio = null;
             _sensitivityActive = false; ApplyGain();
-            await EnsureSensaAsync(token);
+            // The bridge does not depend on Sensa: in Xbox mode there is none and triggers/body motors go
+            // through GameInput. A Sensa start failure is logged; the watchdog keeps retrying.
+            try { await EnsureSensaAsync(token); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                DiagnosticsService.Info("Virtual DualSense: Sensa engine not available (" + ex.Message + "); bridge continues.");
+                try { _sensa.Stop(); } catch { }
+            }
             _sensa.Features.Reset();
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
@@ -273,6 +287,7 @@ public sealed class NativeBridgeService : IDisposable
             _virtual.EngineWatchdog = () =>
             {
                 if (_sensa.IsRunning) return null;
+                ResolveTransport();
                 bool ok = _sensa.Start();
                 return "Sensa engine was stopped; restart " + (ok ? "ok" : "failed: " + _sensa.Status);
             };
