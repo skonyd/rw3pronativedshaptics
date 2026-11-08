@@ -505,7 +505,7 @@
                 <TextBlock x:Name="VcBadgeText" Text="…" FontSize="12" Foreground="#EEF3FF"/>
               </Border>
             </Grid>
-            <TextBlock Text="Oyun gerçek bir DualSense görür: titreşim sesi (kanal 3/4) ve tetik komutları buraya gelir; fiziksel DualSense gerekmez. Kurulum ve sağlık testi yönetici izni ister." Style="{StaticResource Hint}" Margin="0,0,0,8"/>
+            <TextBlock Text="Oyun gerçek bir DualSense görür (titreşim sesi + tetikler); fiziksel DualSense gerekmez. Yönetici izni ister." Style="{StaticResource Hint}" Margin="0,0,0,8"/>
             <TextBlock x:Name="VcDriverText" Style="{StaticResource Hint}"/>
             <TextBlock x:Name="VcUsbipText" Style="{StaticResource Hint}"/>
             <TextBlock x:Name="VcSelfTestText" Style="{StaticResource Hint}" Margin="0,0,0,8" TextWrapping="Wrap"/>
@@ -514,6 +514,10 @@
               <Button x:Name="VcTestBtn" Content="Sağlık testi" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="VcSelfTest_Click"/>
               <Button x:Name="VcUninstallBtn" Content="Kaldır" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="VcUninstall_Click"/>
             </WrapPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+              <Button x:Name="VcBridgeBtn" Content="Köprüyü başlat" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" Margin="0,0,10,0" Click="VcBridge_Click"/>
+              <TextBlock x:Name="VcBridgeText" Style="{StaticResource Hint}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
+            </StackPanel>
           </StackPanel>
         </Border>
       </Grid>

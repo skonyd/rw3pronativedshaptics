@@ -114,6 +114,8 @@ public partial class MainWindow : Window
             _ => ModeNormal
         }).IsChecked = true;
         _initialized = true;
+        if (Environment.GetCommandLineArgs().Contains("--start-virtual-dualsense", StringComparer.OrdinalIgnoreCase))
+            Dispatcher.BeginInvoke(new Action(async () => { await StartVirtualBridgeAsync(); }));
 
         ShowFeelResults();
         _timer.Tick += Timer_Tick;
@@ -244,6 +246,8 @@ public partial class MainWindow : Window
         VcInstallBtn.IsEnabled = st.SdkPresent && !_vcBusy;
         VcTestBtn.IsEnabled = st.Ready && !_vcBusy;
         VcUninstallBtn.IsEnabled = st.SdkPresent && (st.DriverInstalled || st.UsbipAvailable) && !_vcBusy;
+        VcBridgeBtn.IsEnabled = st.Ready && !_vcBusy;
+        UpdateBridgeStatus();
     }
 
     private async Task RunVirtualControllerStepAsync(string arg, string working)
@@ -264,6 +268,59 @@ public partial class MainWindow : Window
         await RunVirtualControllerStepAsync(VirtualControllerSetup.InstallArg, "Kuruluyor");
         if (VirtualControllerSetup.Query().Ready)
             await RunVirtualControllerStepAsync(VirtualControllerSetup.SelfTestArg, "Kurulum tamam, sağlık testi yapılıyor");
+    }
+
+    private async void VcBridge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_bridge.IsVirtualDualSenseRunning)
+        {
+            _bridge.StopVirtualDualSense();
+            _bridge.Stop();
+            _run = RunState.Off;
+            UpdateBridgeStatus();
+            _ = EnsureModeRunningAsync();
+            return;
+        }
+        if (!VirtualDualSenseBridge.IsElevated)
+        {
+            var answer = System.Windows.MessageBox.Show(
+                "Sanal DualSense oluşturmak yönetici izni ister. Uygulama yönetici olarak yeniden başlatılsın mı?",
+                "Sanal DualSense köprüsü", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+            try
+            {
+                Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--start-virtual-dualsense") { UseShellExecute = true, Verb = "runas" });
+                _realExit = true;
+                System.Windows.Application.Current.Shutdown();
+            }
+            catch (System.ComponentModel.Win32Exception) { VcBridgeText.Text = "Yönetici izni verilmedi."; }
+            return;
+        }
+        await StartVirtualBridgeAsync();
+    }
+
+    private async Task StartVirtualBridgeAsync()
+    {
+        if (_busy) return;
+        StopAll();
+        _busy = true;
+        try
+        {
+            int slot = _settings.PreferredXInputSlot is >= 0 and <= 3 ? _settings.PreferredXInputSlot : 0;
+            bool ok = await _bridge.StartVirtualDualSenseAsync(slot);
+            if (ok) _run = RunState.Native;
+        }
+        catch (Exception ex) { NoteError("Virtual DualSense", ex); }
+        finally { _busy = false; UpdateBridgeStatus(); }
+    }
+
+    private void UpdateBridgeStatus()
+    {
+        if (VcBridgeBtn == null) return;
+        bool running = _bridge.IsVirtualDualSenseRunning;
+        VcBridgeBtn.Content = running ? "Köprüyü durdur" : VirtualDualSenseBridge.IsElevated ? "Köprüyü başlat" : "Yönetici olarak başlat";
+        var (h, o, t) = _bridge.VirtualDualSenseCounters;
+        VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}" : "");
     }
 
     private async void VcSelfTest_Click(object sender, RoutedEventArgs e) =>
@@ -462,7 +519,7 @@ public partial class MainWindow : Window
                 StopAll();
                 _nextAutoStartTick = Environment.TickCount64 + RetryMs;
             }
-            if (_run == RunState.Native && !_busy && !_bridge.IsBridgeRunning)
+            if (_run == RunState.Native && !_busy && !_bridge.IsBridgeRunning && !_bridge.IsVirtualDualSenseRunning)
             {
                 _lastErrorNoted = "Native köprü durdu: " + _bridge.SensaStatus + " / " + _bridge.SourceStatus;
                 DiagnosticsService.Info(_lastErrorNoted);
@@ -470,6 +527,7 @@ public partial class MainWindow : Window
                 _nextAutoStartTick = Environment.TickCount64 + RetryMs;
             }
             if (_tickCount % 4 == 0) _ = EnsureModeRunningAsync();   // auto-run / resume after tests
+            if (TabSettings.IsChecked == true && _bridge.IsVirtualDualSenseRunning) UpdateBridgeStatus();
             RefreshStatus();
         }
         catch (Exception ex) { NoteError("Status refresh", ex); }

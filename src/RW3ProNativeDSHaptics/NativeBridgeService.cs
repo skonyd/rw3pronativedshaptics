@@ -211,8 +211,37 @@ public sealed class NativeBridgeService : IDisposable
         finally { _gate.Release(); }
     }
 
+    private VirtualDualSenseBridge? _virtual;
+    public bool IsVirtualDualSenseRunning => _virtual?.IsRunning == true;
+    public string VirtualDualSenseStatus => _virtual?.Status ?? "Durdu";
+    public (long Haptic, long Output, long Trigger) VirtualDualSenseCounters =>
+        _virtual == null ? (0, 0, 0) : (_virtual.HapticBlocks, _virtual.OutputReports, _virtual.TriggerReports);
+
+    /// <summary>
+    /// Virtual DualSense mode: the game's haptic PCM arrives from the HIDMaestro device straight into
+    /// the v2 engine (no loopback); trigger effects go to the Wolverine's rumble motors. Admin only.
+    /// </summary>
+    public async Task<bool> StartVirtualDualSenseAsync(int xinputSlot, CancellationToken token = default)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            _source.Stop();
+            _audio?.Dispose(); _audio = null;
+            _sensitivityActive = false; ApplyGain();
+            await EnsureSensaAsync(token);
+            _sensa.Features.Reset();
+            _virtual ??= new VirtualDualSenseBridge();
+            return _virtual.Start(_sensa.Features, xinputSlot);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public void StopVirtualDualSense() => _virtual?.Stop();
+
     public void Stop()
     {
+        _virtual?.Stop();
         _sensitivityActive = false;
         ApplyGain();
         _audio?.Dispose();

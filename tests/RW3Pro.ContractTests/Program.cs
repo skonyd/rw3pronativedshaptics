@@ -1023,3 +1023,39 @@ SpectralContracts.Run(Check);
     bool same = single.AsSpan(0, 21).SequenceEqual(plain.AsSpan(0, 21));
     Check(multi && same, "3-band encoder: reproduces HAR multiband frame (L 80+190, R 120+300) byte-exact; band 1 equals the plain encoder");
 }
+{
+    // DualSense output report 0x02 (bytes after the report ID) and trigger-effect interpretation.
+    var data = new byte[47];
+    data[0] = 0x0F;                       // rumble + both triggers valid
+    data[2] = 40; data[3] = 200;          // right (light), left (heavy) rumble
+    data[10] = 0x26; data[11] = 0xF0; data[12] = 0x03;   // R2 vibration, zones 4..9
+    data[13] = 0xFF; data[14] = 0xFF; data[15] = 0xFF; data[16] = 0xFF;
+    data[21] = 0x25; data[22] = 0x04; data[23] = 0x01; data[24] = 0x07;   // L2 weapon: zones 2..8, strength 8
+    bool parsed = DualSenseOutputReport.TryParse(data, out var rep) && rep.RumbleValid && rep.RumbleLeft == 200 && rep.RumbleRight == 40
+        && rep.RightTriggerValid && rep.RightTrigger.Mode == 0x26 && rep.LeftTriggerValid && rep.LeftTrigger.Mode == 0x25;
+    bool shortRejected = !DualSenseOutputReport.TryParse(new byte[10], out _);
+
+    // Weapon: light click at the start zone, strong click at the break, nothing in between/after.
+    var w = new TriggerEffectInterpreter(); w.SetEffect(rep.LeftTrigger);
+    double maxStart = 0, maxBreak = 0, mid = 0, after = 0;
+    for (int i = 0; i <= 100; i++)
+    {
+        double pull = i / 100.0, v = w.Update(pull, 0.004);
+        if (pull >= .2 && pull < .24) maxStart = Math.Max(maxStart, v);
+        if (pull >= .9 && pull < .94) maxBreak = Math.Max(maxBreak, v);
+        if (pull >= .5 && pull < .6) mid = Math.Max(mid, v);
+    }
+    for (int i = 0; i < 30; i++) after = w.Update(1.0, 0.004);
+    bool weapon = maxStart > .2 && maxStart < .5 && maxBreak > .9 && mid == 0 && after == 0;
+
+    // Vibration zones: vibrates only while the trigger is inside the active zones.
+    var vib = new TriggerEffectInterpreter(); vib.SetEffect(rep.RightTrigger);
+    double low = vib.Update(.1, .004), high = vib.Update(.7, .004);
+    bool vibration = low == 0 && high > .9;
+
+    // Off effect stays silent.
+    var off = new TriggerEffectInterpreter(); off.SetEffect(new TriggerEffect(0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+    bool silent = Enumerable.Range(0, 50).All(i => off.Update(i / 50.0, .004) == 0);
+    Check(parsed && shortRejected && weapon && vibration && silent,
+        $"DualSense report 0x02 parse + trigger interpreter: weapon start {maxStart:F2} / break {maxBreak:F2}, vibration zones {low:F2}→{high:F2}, off silent");
+}

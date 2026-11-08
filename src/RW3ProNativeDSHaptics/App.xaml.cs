@@ -29,6 +29,12 @@ public partial class App : System.Windows.Application
         }
         const string mutexName = "Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd";
         _singleInstance = new Mutex(true, mutexName, out bool created);
+        // Elevated restart for the virtual DualSense: the previous instance is still shutting down.
+        if (!created && e.Args.Contains("--start-virtual-dualsense", StringComparer.OrdinalIgnoreCase))
+        {
+            try { created = _singleInstance.WaitOne(TimeSpan.FromSeconds(8)); }
+            catch (AbandonedMutexException) { created = true; }
+        }
         if (!created)
         {
             System.Windows.MessageBox.Show("RW3 Pro Haptics zaten çalışıyor. Sistem tepsisindeki simgesini açın.", "RW3 Pro Haptics",
