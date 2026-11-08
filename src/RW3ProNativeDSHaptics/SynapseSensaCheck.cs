@@ -15,6 +15,20 @@ public static class SynapseSensaCheck
     public static string LogPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Razer", "RazerAppEngine", "User Data", "Logs", "RzInterHaptics.log");
 
+    /// <summary>Synapse's app engine process (hosts the haptics service the Synapse path talks to).</summary>
+    public static bool IsSynapseRunning()
+    {
+        try { return System.Diagnostics.Process.GetProcessesByName("RazerAppEngine").Length > 0; }
+        catch { return false; }
+    }
+
+    /// <summary>The Synapse path can only drive Sensa when Synapse runs AND has attached the controller.</summary>
+    public static bool UsableNow(out string why)
+    {
+        if (!IsSynapseRunning()) { why = "Synapse çalışmıyor"; return false; }
+        return LooksAttached(out why);
+    }
+
     /// <summary>True when the latest sender registration in the log is followed by a device line.</summary>
     public static bool LooksAttached(out string detail)
     {

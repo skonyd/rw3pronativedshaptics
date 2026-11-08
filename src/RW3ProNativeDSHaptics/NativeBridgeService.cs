@@ -33,13 +33,34 @@ public sealed class NativeBridgeService : IDisposable
             _sensa.ExperimentalMultiband = value;
         }
     }
+    /// <summary>The user's choice. The engine may run Direct USB instead (see <see cref="EffectiveTransport"/>).</summary>
     public SensaTransport Transport
     {
-        get => _sensa.Transport;
+        get => _preferredTransport;
         set {
             if (_sensa.IsRunning) throw new InvalidOperationException("Stop the engine before changing its transport.");
+            _preferredTransport = value;
             _sensa.Transport = value;
         }
+    }
+    private SensaTransport _preferredTransport = SensaTransport.DirectUsb;
+    /// <summary>What the engine actually uses.</summary>
+    public SensaTransport EffectiveTransport => _sensa.Transport;
+    /// <summary>Why the engine is not on the chosen transport (null when it is).</summary>
+    public string? TransportFallbackReason { get; private set; }
+
+    /// <summary>Synapse chosen but not usable (closed, or the controller not attached): run Direct USB,
+    /// which needs nothing else. Without this the engine "ran" on the Synapse path and nothing reached
+    /// the palms while Synapse was closed (virtual DualSense test, 2026-11-08).</summary>
+    private void ResolveTransport()
+    {
+        var t = _preferredTransport;
+        string? reason = null;
+        if (t == SensaTransport.Synapse && !SynapseSensaCheck.UsableNow(out var why)) { t = SensaTransport.DirectUsb; reason = why; }
+        if (reason != TransportFallbackReason)
+            DiagnosticsService.Info(reason != null ? "Synapse path not usable (" + reason + "): engine uses Direct USB." : "Engine transport: " + t + ".");
+        TransportFallbackReason = reason;
+        _sensa.Transport = t;
     }
     public long DirectFramesSent => _sensa.DirectFramesSent;
     public SensaOutputMethod OutputMethod
@@ -107,6 +128,7 @@ public sealed class NativeBridgeService : IDisposable
     public async Task EnsureSensaAsync(CancellationToken token = default)
     {
         if (_sensa.IsActive) return;
+        if (!_sensa.IsRunning) ResolveTransport();
         if (!_sensa.Start()) throw new InvalidOperationException(_sensa.Status);
         for (int i = 0; i < 30 && !_sensa.IsActive && _sensa.IsRunning; i++)
             await Task.Delay(80, token);

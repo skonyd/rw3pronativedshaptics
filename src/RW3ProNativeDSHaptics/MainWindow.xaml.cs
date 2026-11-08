@@ -1382,12 +1382,13 @@ public partial class MainWindow : Window
     private void UpdateTransportStatus()
     {
         if (TransportStatus == null) return;
-        if (_settings.Transport == 1)
+        if (_settings.Transport == 1 || _bridge.TransportFallbackReason != null)
         {
             var paths = SensaHidTransport.Candidates();
-            TransportStatus.Text = paths.Count > 0
+            string prefix = _settings.Transport == 1 ? "" : "Synapse seçili ama kullanılamıyor (" + _bridge.TransportFallbackReason + ") → ";
+            TransportStatus.Text = prefix + (paths.Count > 0
                 ? "Doğrudan USB: Wolverine bulundu" + (_bridge.DirectFramesSent > 0 ? $" • {_bridge.DirectFramesSent} kare gönderildi" : "") + "."
-                : "Doğrudan USB: Wolverine bulunamadı. Kolu USB kablosuyla bağla ve PC modunda olduğundan emin ol.";
+                : "Doğrudan USB: Wolverine bulunamadı. Kolu USB kablosu ya da kendi alıcısıyla bağla ve PC modunda olduğundan emin ol.");
         }
         else
         {

@@ -21,7 +21,8 @@ public sealed class UserSettings
     /// <summary>Wolverine output method: 0 Standard, 1 Multiband (experimental), 2 Hybrid (experimental).</summary>
     public int OutputMethod { get; set; }
     /// <summary>Path to the controller: 0 Synapse (HAR + Razer runtime), 1 Direct USB (own encoder, no Synapse).</summary>
-    public int Transport { get; set; }
+    /// <summary>0 = Synapse, 1 = Direct USB (default: the app needs no Razer software).</summary>
+    public int Transport { get; set; } = 1;
     /// <summary>Sesten titreşim sensitivity in percent (Normal 100 / Yüksek 160 / Çok yüksek 250).</summary>
     public int AudioSensitivityPercent { get; set; } = 100;
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>
