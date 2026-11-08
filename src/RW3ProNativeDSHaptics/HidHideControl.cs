@@ -21,7 +21,8 @@ public sealed record HidHideStatus(
 /// DualSense runs, so the game gets one controller instead of two. RW3 registers itself as an allowed
 /// app (it still reads the pad through XInput and writes Sensa frames), hides only the pad's game
 /// nodes (XInput/XnaComposite and the DirectInput "IG_" HID collection, never the Sensa control
-/// collection), and restores the previous HidHide configuration when the bridge stops. The previous
+/// collection), and restores the previous HidHide configuration when the bridge stops. Hiding applies
+/// to new opens: a game that is already running must be restarted once. The previous
 /// state is written to disk first, so a crash can be undone on the next start.
 /// Writes need administrator rights (the bridge already runs elevated).
 /// </summary>
@@ -158,10 +159,10 @@ public static class HidHideControl
         foreach (var r in remove) { args.Add("--dev-unhide"); args.Add(Quote(r)); }
         args.Add("--cloak-on");
         Run(cli, string.Join(' ', args));
-        // Games that already opened the pad keep their handle; a device restart makes them re-enumerate.
-        int failed = pads.Count(p => !RestartDevice(p));
-        return $"Xbox kolu oyundan gizlendi ({pads.Count} düğüm)" +
-               (failed > 0 ? $"; {failed} düğüm yeniden başlatılamadı, açık oyunu yeniden başlat." : ".");
+        // No device restart: pnputil /restart-device blocks while the game (and our own XInput) hold the
+        // pad open (hung 2026-11-08). HidHide applies to new opens, so a game already running keeps
+        // seeing the pad until it is restarted.
+        return $"Xbox kolu oyundan gizlendi ({pads.Count} düğüm; açık oyun varsa onu yeniden başlat).";
     }
 
     /// <summary>Puts HidHide back the way it was before <see cref="HidePad"/>. Safe to call when nothing is pending.</summary>
@@ -176,7 +177,6 @@ public static class HidHideControl
         args.Add(st.CloakWasOn ? "--cloak-on" : "--cloak-off");
         Run(cli, string.Join(' ', args));
         File.Delete(RestoreFile);
-        foreach (var p in st.AddedHidden) RestartDevice(p);
         return "HidHide eski hâline döndü.";
     }
 
@@ -205,19 +205,6 @@ public static class HidHideControl
     public static bool LooksLikeError(string output) =>
         new[] { "not recognized", "denied", "error", "failed", "invalid", "hata", "reddedildi" }
             .Any(w => output.Contains(w, StringComparison.OrdinalIgnoreCase));
-
-    private static bool RestartDevice(string instanceId)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("pnputil.exe", "/restart-device " + Quote(instanceId)) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
-            using var p = Process.Start(psi);
-            if (p == null) return false;
-            p.StandardOutput.ReadToEnd();
-            return p.WaitForExit(10000) && p.ExitCode == 0;
-        }
-        catch { return false; }
-    }
 
     // ── device enumeration (SetupAPI, present devices of all classes) ──
 
