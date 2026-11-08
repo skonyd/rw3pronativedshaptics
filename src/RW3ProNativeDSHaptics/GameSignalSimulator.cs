@@ -13,6 +13,8 @@ using NAudio.Wave;
 namespace RW3ProNativeDSHaptics;
 
 public sealed record GameSimScene(string Id, string Title, string Hint, double Seconds);
+public sealed record GameSimPhase(double Start, string Title, string Hint, bool BodyLeft, bool BodyRight,
+    TriggerEffect LeftTrigger, TriggerEffect RightTrigger);
 
 /// <summary>One output report a game would send at <see cref="At"/> seconds (data after report id 0x02).</summary>
 public readonly record struct SimOutputStep(double At, byte[] Data);
@@ -33,6 +35,7 @@ public static class GameSignalSimulator
 
     public static readonly IReadOnlyList<GameSimScene> Scenes =
     [
+        new("combined", "Haptik + tetik: sol / sağ / birlikte", "35 sn. Xbox modu ve tetik motorları seçeneği açık olmalı. Ekrandaki aşamaya göre L2/R2'yi çekip bırak; gövde haptikleri aynı anda çalar. Sentetik oyun sinyali testidir.", 35),
         new("weapon", "Silah: R2 tetik + atışlar", "R2'yi yavaşça sonuna kadar çek: yolun ortasında tık; atışlar iki avuçta, sağ daha güçlü.", 4.6),
         new("bow", "Yay: L2 direnç, R2 titreşim", "L2'yi çek (kademeli tıklar), R2'yi yarıdan fazla çek (sürekli titreşim); yay gerilir ve bırakılır.", 4.2),
         new("steps", "Ayak sesleri: sol-sağ adımlar", "Tetik yok. Sol, sağ, sol… sırayla yumuşak adımlar.", 4.0),
@@ -41,7 +44,7 @@ public static class GameSignalSimulator
         new("rain", "Yağmur: rastgele tıkırtılar", "İki avuçta dağınık, hafif tıkırtılar.", 4.0),
         new("pan", "Sol → sağ → sol kayma", "120 Hz titreşim sol avuçtan sağa, sonra geri kayar.", 4.0),
         new("triggers", "Tetik motoru testi (ses yok)", "Yalnız tetik komutları, gövdede titreşim yok: L2 ve R2'yi yarıya kadar çekip tut, sonra sonuna kadar. Ne hissedersen tetiklerdedir.", 8.0),
-        new("all", "Tam tur (hepsi art arda)", "Bütün sahneler sırayla, aralarında kısa sessizlik (~32 sn).", 0),
+        new("all", "Tam tur (hepsi art arda)", "Birleşik haptik/tetik testi ve diğer sahneler sırayla; aralarında kısa sessizlik.", 0),
     ];
 
     public static GameSimScene Scene(string id) => Scenes.First(s => s.Id == id);
@@ -66,6 +69,19 @@ public static class GameSignalSimulator
         var rng = new Random(7);
         switch (id)
         {
+            case "combined":
+                foreach (var phase in CombinedPhases)
+                {
+                    // Distinct stereo textures; no legacy rumble to disguise a wrong PCM route.
+                    if (phase.BodyLeft) Tone(L, phase.Start + .15, 4.55, 80, .55, .03, 10);
+                    if (phase.BodyRight) Tone(R, phase.Start + .15, 4.55, 180, .45, .03, 10);
+                    for (int hit = 0; hit < 4; hit++)
+                    {
+                        if (phase.BodyLeft) Click(L, phase.Start + .6 + hit, .3);
+                        if (phase.BodyRight) Click(R, phase.Start + .9 + hit, .3);
+                    }
+                }
+                break;
             case "weapon":
                 foreach (double t in new[] { 0.6, 1.4, 2.2, 3.0, 3.8 })
                 {
@@ -144,7 +160,39 @@ public static class GameSignalSimulator
 
     public static readonly TriggerEffect Off = new(0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-    /// <summary>Weapon (0x25): resistance from zone <paramref name="start"/>, "breaks" after zone <paramref name="end"/>.</summary>
+    // Seven five-second phases. Both generators use this one timeline; tests verify wire-channel isolation.
+    public static readonly IReadOnlyList<GameSimPhase> CombinedPhases =
+    [
+        new(0, "Sol gövde + L2", "L2'yi yavaşça çek, yarıda tut, bırak. Sağ taraf sessiz olmalı.", true, false, Zones(0x21, 2, 4), Off),
+        new(5, "Sağ gövde + R2", "R2'yi yavaşça çek, yarıda tut, bırak. Sol taraf sessiz olmalı.", false, true, Off, Zones(0x21, 2, 8)),
+        new(10, "Stereo gövde + iki tetik", "L2 ve R2'yi birlikte çek: L2 silah kırılması, R2 ritmik titreşim; iki gövde kanalı da açık.", true, true, Weapon(3, 7, 7), Zones(0x26, 2, 6, 8)),
+        new(15, "Çapraz: sol gövde + R2", "R2'yi çek. Gövdede yalnız sol, tetikte yalnız sağ çalışmalı.", true, false, Off, Zones(0x26, 2, 7, 12)),
+        new(20, "Çapraz: sağ gövde + L2", "L2'yi çek. Gövdede yalnız sağ, tetikte yalnız sol çalışmalı.", false, true, Weapon(2, 8, 8), Off),
+        new(25, "Yalnız stereo haptik", "İki tetiği de çekip bırak: tetikler sessiz, gövde haptikleri sürmeli.", true, true, Off, Off),
+        new(30, "Yalnız iki tetik", "L2/R2'yi sırayla çekip bırak: gövde sessiz, yalnız tetikler çalışmalı.", false, false, Zones(0x21, 2, 6), Zones(0x26, 2, 8, 40)),
+    ];
+
+    public static string PhaseHint(string id, double seconds)
+    {
+        if (id == "all")
+        {
+            foreach (var scene in Scenes.Where(s => s.Id != "all"))
+            {
+                if (seconds < scene.Seconds) return PhaseHint(scene.Id, seconds);
+                seconds -= scene.Seconds;
+                if (seconds < .6) return "Ara · tetikler ve haptikler kapalı";
+                seconds -= .6;
+            }
+            return "Bitti · tetikler ve haptikler kapalı";
+        }
+        if (id != "combined") return Scene(id).Hint;
+        if (seconds >= 35) return "Bitti · tetikler ve haptikler kapalı";
+        int phase = Math.Clamp((int)(seconds / 5), 0, CombinedPhases.Count - 1);
+        var p = CombinedPhases[phase];
+        return $"{phase + 1}/{CombinedPhases.Count} · {p.Title} ({p.Start:0}–{p.Start + 5:0} sn)\n{p.Hint}";
+    }
+
+    /// <summary>Weapon (0x25): resistance from zone <paramref name="start"/>, breaks at zone <paramref name="end"/>.</summary>
     public static TriggerEffect Weapon(int start, int end, int strength) =>
         new(0x25, (byte)((1 << start) | (1 << end)), (byte)(((1 << start) | (1 << end)) >> 8), (byte)Math.Clamp(strength - 1, 0, 7), 0, 0, 0, 0, 0, 0, 0);
 
@@ -188,6 +236,10 @@ public static class GameSignalSimulator
         var sc = Scene(id);
         switch (id)
         {
+            case "combined":
+                foreach (var phase in CombinedPhases)
+                    steps.Add(new(phase.Start, OutputData(phase.RightTrigger, phase.LeftTrigger, 0, 0)));
+                break;
             case "weapon": steps.Add(new(0, OutputData(Weapon(3, 7, 6), Off))); break;
             case "bow": steps.Add(new(0, OutputData(Zones(0x26, 4, 6, 30), Zones(0x21, 2, 5)))); break;
             case "engine": steps.Add(new(0, OutputData(Zones(0x26, 1, 4, 40), Off))); break;
@@ -211,15 +263,20 @@ public static class GameSignalSimulator
     public static string? FindEndpoint()
     {
         using var en = new MMDeviceEnumerator();
+        string? found = null;
         foreach (var d in en.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
             using (d)
                 if ((d.FriendlyName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) || d.FriendlyName.Contains("Wireless Controller", StringComparison.OrdinalIgnoreCase))
                     && d.AudioClient.MixFormat.Channels == 4)
-                    return d.ID;
-        return null;
+                {
+                    if (found != null) return null; // never silently choose a physical reference over the virtual bridge
+                    found = d.ID;
+                }
+        return found;
     }
 
-    public static async Task<GameSimResult> PlayAsync(string sceneId, string endpointId, string? hidPath, string? micId, CancellationToken token)
+    public static async Task<GameSimResult> PlayAsync(string sceneId, string endpointId, string? hidPath, string? micId, CancellationToken token,
+        IProgress<string>? progress = null)
     {
         var (l, r) = Haptics(sceneId);
         var steps = Outputs(sceneId);
@@ -228,7 +285,7 @@ public static class GameSignalSimulator
         using var en = new MMDeviceEnumerator();
         using var dev = en.GetDevice(endpointId);
         var fmt = dev.AudioClient.MixFormat;
-        if (fmt.Channels != 4) throw new InvalidOperationException("DualSense uç noktası 4 kanallı değil: " + fmt);
+        if (fmt.Channels != 4 || fmt.SampleRate != Rate) throw new InvalidOperationException("DualSense uç noktası 4 kanal / 48 kHz olmalı: " + fmt);
         byte[] pcm = Interleave(l, r, fmt);
 
         using var mic = micId != null ? new MicLevel(micId) : null;
@@ -252,11 +309,14 @@ public static class GameSignalSimulator
             var clock = Stopwatch.StartNew();
             output.Play();
             int next = 0; byte[]? current = null; double lastSend = -1;
+            string? lastHint = null;
             if (mic != null) mic.Take();
             while (clock.Elapsed.TotalSeconds < seconds + 0.25)
             {
                 token.ThrowIfCancellationRequested();
                 double t = clock.Elapsed.TotalSeconds;
+                string hint = PhaseHint(sceneId, t);
+                if (hint != lastHint) { progress?.Report(hint); lastHint = hint; }
                 bool changed = false;
                 while (next < steps.Count && steps[next].At <= t) { current = steps[next++].Data; changed = true; }
                 // Games resend their output state continuously; every 100 ms here.

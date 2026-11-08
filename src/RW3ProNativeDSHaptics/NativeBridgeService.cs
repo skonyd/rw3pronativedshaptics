@@ -115,7 +115,7 @@ public sealed class NativeBridgeService : IDisposable
     public int OutputLevelPercent
     {
         get => _sensa.OutputLevelPercent;
-        set => _sensa.OutputLevelPercent = value;
+        set { _sensa.OutputLevelPercent = value; if (_virtual != null) _virtual.OutputLevelPercent = value; }
     }
 
     /// <summary>
@@ -289,6 +289,7 @@ public sealed class NativeBridgeService : IDisposable
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
             _virtual.TriggerMotors = _triggerMotors;
+            _virtual.OutputLevelPercent = OutputLevelPercent;
             _virtual.EngineProbe = () => SensaEngineSummary;
             // The bridge feeds the engine's feature extractor; if the engine thread is gone, nothing
             // reaches the palms although the game's haptic audio keeps arriving. Restart it.

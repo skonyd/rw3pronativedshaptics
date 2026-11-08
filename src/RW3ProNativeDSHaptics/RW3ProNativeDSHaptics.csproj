@@ -11,6 +11,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>RW3ProNativeDSHaptics</RootNamespace>
     <AssemblyName>RW3ProNativeDSHaptics</AssemblyName>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
     <Version>0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PublishTrimmed>false</PublishTrimmed>
@@ -29,6 +30,7 @@
     <None Include="$(HidMaestroDir)THIRD-PARTY-NOTICES.txt" Link="third_party\HIDMaestro-THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="Assets\App.ico" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>

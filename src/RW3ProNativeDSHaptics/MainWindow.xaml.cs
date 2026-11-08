@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     private Forms.NotifyIcon? _tray;
+    private System.Drawing.Icon? _trayIcon;
     private Forms.ToolStripMenuItem? _normalMenu, _audioMenu, _nativeMenu;
 
     private enum RunState { Off, Audio, Native }
@@ -148,9 +149,12 @@ public partial class MainWindow : Window
         menu.Items.Add(_nativeMenu);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Çıkış", null, (_, _) => Dispatcher.Invoke(ExitCompletely));
+        using var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/App.ico")).Stream;
+        using var embeddedIcon = new System.Drawing.Icon(iconStream);
+        _trayIcon = (System.Drawing.Icon)embeddedIcon.Clone();
         _tray = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = _trayIcon,
             Text = "RW3 Pro Haptics",
             Visible = true,
             ContextMenuStrip = menu
@@ -209,6 +213,7 @@ public partial class MainWindow : Window
             _tray.Dispose();
             _tray = null;
         }
+        _trayIcon?.Dispose(); _trayIcon = null;
         System.Windows.Application.Current.Shutdown();
     }
 
@@ -405,12 +410,13 @@ public partial class MainWindow : Window
 
     private async Task StartVirtualBridgeAsync()
     {
-        if (_busy) return;
-        StopAll();
+        if (_busy || _starting) return;
         _busy = true;
         try
         {
-            int slot = _settings.PreferredXInputSlot is >= 0 and <= 3 ? _settings.PreferredXInputSlot : 0;
+            StopAll();
+            ModeNative.IsChecked = true; // trigger conversion must never run under the Audio/Normal label
+            int slot = _settings.PreferredXInputSlot is >= 0 and <= 3 ? _settings.PreferredXInputSlot : -1;
             bool ok = await _bridge.StartVirtualDualSenseAsync(slot);
             if (ok) _run = RunState.Native;
         }
@@ -536,7 +542,7 @@ public partial class MainWindow : Window
         {
             if (mode == HapticMode.Audio)
             {
-                // Route by controller protocol: PC mode → Sensa, Xbox mode → motors + triggers.
+                // Audio owns body motors only. Native trigger interpretation is a separate mode.
                 _audioRoute = await Task.Run(WolverineModeDetector.Detect);
                 if (_audioRoute == WolverineMode.Pc)
                 {
@@ -545,7 +551,7 @@ public partial class MainWindow : Window
                 }
                 else if (_audioRoute == WolverineMode.Xbox)
                 {
-                    _xboxAudio = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent });
+                    _xboxAudio = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent, PreferredIndex = _settings.PreferredXInputSlot });
                     _xboxAudio.Start();
                 }
                 else
@@ -660,7 +666,7 @@ public partial class MainWindow : Window
                 string route = _audioRoute switch
                 {
                     WolverineMode.Pc => "PC modu → Sensa motorları (sol/sağ, v2)",
-                    WolverineMode.Xbox => "Xbox modu → ana motorlar + tetik motorları",
+                    WolverineMode.Xbox => "Xbox modu → yalnız gövde motorları",
                     _ => "Klasik Xbox titreşimi"
                 };
                 bool sound = _audioRoute switch
@@ -673,7 +679,7 @@ public partial class MainWindow : Window
                 StatusDetail.Text = running
                     ? route + " • " + (sound ? "ses algılanıyor." : "şu an ses yok veya çok sessiz. Ses kaydedilmez.")
                     : waitText;
-                ModeNote.Text = "Kolun modu otomatik algılanır: PC modunda Sensa, Xbox modunda ana motorlar + tetikler. " +
+                ModeNote.Text = "Ses yalnız gövde titreşimi üretir: PC modunda Sensa, Xbox modunda ana motorlar. Tetiklere ses komutu gönderilmez. " +
                                 "Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.";
                 SetBadge(running ? GoodBrush : WarnBrush, running ? "Çalışıyor" : "Bekliyor");
                 break;
@@ -864,19 +870,38 @@ public partial class MainWindow : Window
             GameSimStatus.Text = "Önce Ayarlar → Sanal DualSense → köprüyü başlat. Simülasyon sanal DualSense'e, oyunun yolladığı gibi yollar.";
             return;
         }
-        string? endpoint = await Task.Run(GameSignalSimulator.FindEndpoint);
-        if (endpoint == null) { GameSimStatus.Text = "Sanal DualSense ses uç noktası bulunamadı."; return; }
+        if ((scene.Id is "combined" or "all") &&
+            (_bridge.VirtualDualSenseMode != WolverineControllerMode.Xbox || !_bridge.TriggerMotors))
+        {
+            GameSimStatus.Text = "Birleşik test için Wolverine Xbox modunda ve Ayarlar → DualSense tetik efektleri → Haptik + tetik motorları açık olmalı. Ayarlar otomatik değiştirilmedi.";
+            return;
+        }
+        if (_bridge.VirtualDualSenseHidPath == null)
+        {
+            GameSimStatus.Text = "Sanal DualSense HID yolu henüz hazır değil; tetik raporlarını göndermek için köprünün hazır olmasını bekle.";
+            return;
+        }
         string? micId = ChannelMicEnabled.IsChecked == true && ChannelMicCombo.SelectedItem is LabMicrophone m ? m.Id : null;
-        _gameSimCancel = new CancellationTokenSource();
+        var run = new CancellationTokenSource();
+        _gameSimCancel = run;
         GameSimBtn.IsEnabled = false;
+        GameSimCombo.IsEnabled = false;
         var (h0, o0, t0) = _bridge.VirtualDualSenseCounters;
         long f0 = _bridge.DirectFramesSent;
         _bridge.MarkVirtualHapticPeaks();
         GameSimStatus.Text = "Çalıyor: " + scene.Title + " — " + scene.Hint;
         try
         {
+            string? endpoint = await Task.Run(GameSignalSimulator.FindEndpoint);
+            run.Token.ThrowIfCancellationRequested();
+            if (endpoint == null) { GameSimStatus.Text = "Tek bir DualSense ses uç noktası bulunamadı. Sanal köprü açık olmalı; fiziksel DualSense bağlıysa test sırasında ayır."; return; }
             long x0 = _bridge.VirtualXboxMotorWrites;
-            var res = await GameSignalSimulator.PlayAsync(scene.Id, endpoint, _bridge.VirtualDualSenseHidPath, micId, _gameSimCancel.Token);
+            var progress = new Progress<string>(hint =>
+            {
+                if (ReferenceEquals(_gameSimCancel, run) && !run.IsCancellationRequested)
+                    GameSimStatus.Text = "Çalıyor: " + scene.Title + "\n" + hint;
+            });
+            var res = await GameSignalSimulator.PlayAsync(scene.Id, endpoint, _bridge.VirtualDualSenseHidPath, micId, run.Token, progress);
             await Task.Delay(300);
             var (h1, o1, t1) = _bridge.VirtualDualSenseCounters;
             long frames = _bridge.DirectFramesSent - f0;
@@ -888,7 +913,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException) { GameSimStatus.Text = "Durduruldu."; }
         catch (Exception ex) { NoteError("Game simulator", ex); GameSimStatus.Text = "Hata: " + ex.Message; }
-        finally { _gameSimCancel.Dispose(); _gameSimCancel = null; GameSimBtn.IsEnabled = true; }
+        finally { run.Dispose(); _gameSimCancel = null; GameSimBtn.IsEnabled = true; GameSimCombo.IsEnabled = true; }
     }
 
     private async void DemoSelected_Click(object sender, RoutedEventArgs e)
@@ -1060,9 +1085,9 @@ public partial class MainWindow : Window
             }
             else if (mode == WolverineMode.Xbox)
             {
-                xbox = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent }) { DelayOverrideMs = 0 };
+                xbox = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent, PreferredIndex = _settings.PreferredXInputSlot }) { DelayOverrideMs = 0 };
                 xbox.Start();
-                route = "Xbox modu → ana motorlar + tetikler";
+                route = "Xbox modu → yalnız gövde motorları";
             }
             else throw new InvalidOperationException("Wolverine bulunamadı (PC veya Xbox modunda bağlı olmalı).");
             await Task.Delay(300, token);
@@ -1362,6 +1387,7 @@ public partial class MainWindow : Window
         _settings.OutputLevelPercent = next;
         _rumble.OutputLevelPercent = next;
         _bridge.OutputLevelPercent = next;
+        _xboxAudio?.SetXboxOutputLevel(next);
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Output level", ex); }
     }
 

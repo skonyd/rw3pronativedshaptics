@@ -1,5 +1,11 @@
 # Windows app — build, install, update
 
+## Local desktop setup — 2026-11-08
+
+The current Release was published framework-dependent (uses the installed x64 .NET 10 Desktop runtime), copied to `C:\Users\fakir\AppData\Local\Programs\RW3ProNativeDSHaptics`, and launched successfully through `C:\Users\fakir\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\RW3 Pro Haptics.lnk`. Shortcut target, working directory, embedded icon and EXE hash were checked. This local copy is not an installer registration or a signed public release; subsequent development builds require republishing/copying to update this installed copy.
+
+`Assets/AppIcon.svg` is the editable vector source. `tools/build-app-icon.ps1` uses Windows WPF rendering to regenerate `Assets/App.ico` (16/24/32/48/64/128/256px) and `AppIcon.png`, without external image dependencies. The icon is embedded in the EXE, used by the main window/tray and referenced by the Inno Setup script. Release publish and published `--self-test` pass; the installed app's real window/title icon and combined Native demo were visually checked. This packaging check does not add physical motor/game-fidelity evidence.
+
 **Technology:** .NET 10 WPF, WinForms NotifyIcon, NAudio WASAPI loopback, XInput 1.4 (Windows 11).
 The app UI is functional independently of the Razer native PCM research blocker.
 

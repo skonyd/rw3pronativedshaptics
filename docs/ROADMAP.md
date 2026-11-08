@@ -1,5 +1,13 @@
 # Roadmap — 2026-11-08
 
+**Current reconciled plan:** [conversation snapshot](CURRENT_PLAN_20261108.md). Includes the user's later positive but approximate combined-demo physical feedback, remaining real-game/Classic/coexistence/safety acceptance, deferred latency work and a concrete live-level gap in the separate Xbox audio route. This supersedes older blanket “Synapse required” and “no user-felt Xbox output” claims below; historical tests remain unchanged.
+
+Local desktop preparation completed: original vector/controller-wave icon, multi-size Windows ICO, EXE/window/tray/installer integration, per-user program-folder copy and Start Menu shortcut. Published self-test passes and shortcut-launched UI was visually checked. See [Windows desktop setup](WINDOWS_APP.md#local-desktop-setup--2026-11-08). Public installer/signing/update and physical Native acceptance remain separate gates.
+
+The Native test card now includes the [combined 35s seven-phase demo](XBOX_NATIVE_ROUTING_20261108.md#combined-demo-on-the-native-test-card) needed for the next physical acceptance: same-side, stereo, crossed body/trigger and independent off controls with live instructions. Software source/wire tests pass; retain physical verification as open.
+
+Latest user increment: [Native trigger conversion / Audio separation](XBOX_NATIVE_ROUTING_20261108.md). Software implemented/tested: actual DualSense report + device-bound physical pull → Xbox impulse motors, simultaneous rear-PCM body output, live global level and safe-stop guards. Audio no longer synthesizes impulse feedback or writes four-channel WGI state. Next gate is a visible wired Wolverine and real L2/R2 ranges, followed by simultaneous trigger/body and normal Xbox-game impulse coexistence tests. Four read-only attempts found no Wolverine; no physical acceptance was obtained. Review [standalone status](STANDALONE_STATUS_20261108.md) for already committed Direct USB/Hybrid work before repeating old vendor-dependency tasks.
+
 ## Objective from the conversation
 
 Use the comfortable Wolverine V3 Pro for Windows 11 story games while preserving as much of the game-authored DualSense body-haptic signal as the supported output path permits. Keep Normal Rumble, Audio-to-Haptics and Native DualSense Haptics distinct. Synthetic game-free tests must exercise production input/processing, preserve original source bytes and disclose conversion losses. A successful software test must never become a claim of physical DualSense equivalence.

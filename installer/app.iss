@@ -24,6 +24,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\RW3ProNativeDSHaptics.exe
 DisableProgramGroupPage=yes
 WizardStyle=modern
+SetupIconFile=..\src\RW3ProNativeDSHaptics\Assets\App.ico
 CloseApplications=yes
 
 [Files]

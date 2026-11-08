@@ -20,6 +20,18 @@ public sealed class AudioSinkDelivery : IDisposable
 
     public AudioSinkDelivery(IAudioHapticSink sink) => _sink = sink;
 
+    public void Configure(Action<IAudioHapticSink> update)
+    {
+        lock (_gate)
+        {
+            if (_stopped) return;
+            update(_sink);
+            // Serialize with Accept and zero the previous command immediately.
+            _sink.Silence();
+            _silent = true;
+        }
+    }
+
     public void Enqueue(ReadOnlySpan<float> stereo, long nowMs, int delayMs)
     {
         if (stereo.Length % 2 != 0 || stereo.Length > MaximumQueuedSamples)

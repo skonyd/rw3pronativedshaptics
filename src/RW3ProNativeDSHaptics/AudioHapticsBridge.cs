@@ -27,6 +27,16 @@ public sealed class AudioHapticsBridge : IDisposable
 
     public AudioHapticsBridge(IAudioHapticSink sink) { _sink = sink; }
 
+    public void SetXboxOutputLevel(int percent)
+    {
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return;
+            if (_delivery != null) _delivery.Configure(sink => { if (sink is XboxAudioSink x) x.OutputLevelPercent = HapticOutputLevel.Limit(percent); });
+            else if (_sink is XboxAudioSink xbox) xbox.OutputLevelPercent = HapticOutputLevel.Limit(percent);
+        }
+    }
+
     /// <summary>App-wide setting: -1 = automatic (Bluetooth output -> <see cref="AudioSyncDelay.BluetoothAutoMs"/>, else 0), otherwise ms.</summary>
     public static int SyncDelaySetting = -1;
 

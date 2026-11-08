@@ -1,95 +1,158 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace RW3ProNativeDSHaptics;
 
-/// <summary>
-/// Xbox-mode motors through GameInput (inbox System32\GameInput.dll, v0 ABI): body motors and the
-/// impulse-trigger motors. Measured 2026-11-08 with the webcam mic on the Wolverine in Xbox mode:
-/// triggers +27.4 / +19.4 dB and body +18.2 dB while this process was in the BACKGROUND — unlike
-/// Windows.Gaming.Input, which only vibrates for the foreground window (0 dB in the background).
-/// Only the Wolverine (VID 1532) is driven. Interop by vtable slot (IUnknown 0–2):
-/// IGameInput 4 GetCurrentReading; IGameInputReading 6 GetDevice; IGameInputDevice 3 GetDeviceInfo, 10 SetRumbleState.
-/// </summary>
+/// <summary>Inbox GameInput v0, Windows SDK 10.0.26100.0 um/GameInput.h:
+/// device-bound Wolverine Xbox input and four-motor output. Never load the redist v1+ ABI.</summary>
 public sealed class GameInputRumble : IDisposable
 {
     public const uint KindGamepad = 0x00040000;
-    public bool HasDevice => _device != IntPtr.Zero;
-    public ushort ProductId { get; private set; }
-    public string LastError { get; private set; } = "";
-    public long Writes { get; private set; }
-
+    private readonly object _gate = new();
     private IntPtr _gi, _device;
+    private bool _disposed;
+    private readonly bool _allowOutput;
+    public GameInputRumble(bool allowOutput = true) => _allowOutput = allowOutput;
+    private DeviceCallback? _guideCallback;
+    private ulong _guideToken;
+    private bool _guideRegistered;
+    private int _guidePressed;
     private Rumble _last;
     private long _lastWriteTick;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Rumble { public float Low, High, LeftTrigger, RightTrigger; }
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint ReleaseFn(IntPtr self);
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int GetCurrentReadingFn(IntPtr self, uint kind, IntPtr device, out IntPtr reading);
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void GetDeviceFn(IntPtr self, out IntPtr device);
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate IntPtr GetDeviceInfoFn(IntPtr self);
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void SetRumbleStateFn(IntPtr self, ref Rumble rumble);
-
-    [DllImport("GameInput.dll")] private static extern int GameInputCreate(out IntPtr gameInput);
-
+    public bool HasDevice { get { lock (_gate) return Connected(); } }
+    public ushort ProductId { get; private set; }
+    public string LastError { get; private set; } = "";
+    public string LastEnumeration { get; private set; } = "";
+    public long Writes { get; private set; }
+    [StructLayout(LayoutKind.Sequential)] private struct Rumble { public float Low, High, LeftTrigger, RightTrigger; }
+    [StructLayout(LayoutKind.Sequential)] private struct PadState
+    { public uint Buttons; public float LeftTrigger, RightTrigger, LX, LY, RX, RY; }
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint RefFn(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ReadingFn(IntPtr self, uint kind, IntPtr device, out IntPtr reading);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate IntPtr InfoFn(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint StatusFn(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void RumbleFn(IntPtr self, ref Rumble value);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool StateFn(IntPtr self, out PadState state);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void FocusFn(IntPtr self, uint policy);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void DeviceCallback(ulong token, IntPtr context, IntPtr device, ulong timestamp, uint current, uint previous);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int RegisterFn(IntPtr self, IntPtr device, uint kind, uint status, int enumeration, IntPtr context, DeviceCallback callback, out ulong token);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int RegisterSystemFn(IntPtr self, IntPtr device, uint filter, IntPtr context, DeviceCallback callback, out ulong token);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool UnregisterFn(IntPtr self, ulong token, ulong timeout);
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("GameInput.dll", ExactSpelling = true)] private static extern int GameInputCreate(out IntPtr gameInput);
     private static T Slot<T>(IntPtr obj, int index) where T : Delegate =>
         Marshal.GetDelegateForFunctionPointer<T>(Marshal.ReadIntPtr(Marshal.ReadIntPtr(obj), index * IntPtr.Size));
-
     private static void Release(ref IntPtr obj)
+    { if (obj == IntPtr.Zero) return; Slot<RefFn>(obj, 2)(obj); obj = IntPtr.Zero; }
+    private bool Connected()
     {
-        if (obj == IntPtr.Zero) return;
-        try { Slot<ReleaseFn>(obj, 2)(obj); } catch { }
-        obj = IntPtr.Zero;
+        if (_device == IntPtr.Zero) return false;
+        if ((Slot<StatusFn>(_device, 4)(_device) & 1) != 0) return true;
+        DropDevice(); LastError = "Wolverine disconnected"; return false;
     }
-
-    /// <summary>Finds the Wolverine among GameInput gamepads. Cheap to call again after a failure.</summary>
+    private void DropDevice()
+    {
+        if (_guideRegistered) { Slot<UnregisterFn>(_gi, 13)(_gi, _guideToken, ulong.MaxValue); _guideRegistered = false; }
+        _guideCallback = null; System.Threading.Interlocked.Exchange(ref _guidePressed, 0);
+        Release(ref _device);
+    }
     public bool TryAcquire()
     {
-        if (_device != IntPtr.Zero) return true;
-        try
+        lock (_gate)
         {
-            if (_gi == IntPtr.Zero)
+            if (_disposed) return false;
+            if (Connected()) return true;
+            try
             {
-                int hr = GameInputCreate(out _gi);
-                if (hr != 0) { LastError = $"GameInputCreate 0x{hr:X8}"; _gi = IntPtr.Zero; return false; }
+                if (_gi == IntPtr.Zero)
+                {
+                    int hr = GameInputCreate(out _gi);
+                    if (hr < 0 || _gi == IntPtr.Zero) { LastError = $"GameInputCreate 0x{hr:X8}"; Release(ref _gi); return false; }
+                    Slot<FocusFn>(_gi, 21)(_gi, 0); // SDK v0 default; DisableBackgroundInput is not set
+                }
+                var found = new List<IntPtr>();
+                var identities = new List<string>();
+                DeviceCallback callback = (_, _, device, _, current, _) =>
+                {
+                    try
+                    {
+                        if ((current & 1) == 0) return;
+                        IntPtr info = Slot<InfoFn>(device, 3)(device);
+                        if (info == IntPtr.Zero || Marshal.ReadInt32(info) < 8) return;
+                        ushort vid = (ushort)Marshal.ReadInt16(info, 4), pid = (ushort)Marshal.ReadInt16(info, 6);
+                        lock (identities) identities.Add($"{vid:X4}:{pid:X4} status={current:X}");
+                        if (!GameInputPadMapping.IsWolverine(vid, pid)) return;
+                        lock (found)
+                        {
+                            if (found.Contains(device)) return;
+                            Slot<RefFn>(device, 1)(device); found.Add(device);
+                        }
+                    }
+                    catch { /* Never throw across the native callback boundary. */ }
+                };
+                // Blocking initial enumeration; finish callbacks before releasing their delegate.
+                int r = Slot<RegisterFn>(_gi, 9)(_gi, IntPtr.Zero, KindGamepad, 1, 2, IntPtr.Zero, callback, out ulong token);
+                if (r >= 0) Slot<UnregisterFn>(_gi, 13)(_gi, token, ulong.MaxValue);
+                GC.KeepAlive(callback);
+                LastEnumeration = string.Join(", ", identities);
+                if (r >= 0 && found.Count == 1)
+                {
+                    _device = found[0]; ProductId = 0x0A3F; _lastWriteTick = 0; LastError = "";
+                    // Guide is a system button, absent from GameInputGamepadState.
+                    _guideCallback = (_, _, _, _, current, _) => System.Threading.Interlocked.Exchange(ref _guidePressed, (current & 1) != 0 ? 1 : 0);
+                    _guideRegistered = Slot<RegisterSystemFn>(_gi, 10)(_gi, _device, 1, IntPtr.Zero, _guideCallback, out _guideToken) >= 0;
+                    return true;
+                }
+                foreach (IntPtr p in found) { IntPtr release = p; Release(ref release); }
+                LastError = r < 0 ? $"enumeration 0x{r:X8}" : found.Count == 0 ? "Wolverine 1532:0A3F not visible" : "multiple Wolverines: selection ambiguous";
+                return false;
             }
-            int r = Slot<GetCurrentReadingFn>(_gi, 4)(_gi, KindGamepad, IntPtr.Zero, out IntPtr reading);
-            if (r != 0 || reading == IntPtr.Zero) { LastError = $"no gamepad reading 0x{r:X8}"; return false; }
-            Slot<GetDeviceFn>(reading, 6)(reading, out IntPtr device);
-            Release(ref reading);
-            if (device == IntPtr.Zero) { LastError = "reading without device"; return false; }
-            IntPtr info = Slot<GetDeviceInfoFn>(device, 3)(device);
-            ushort vid = info == IntPtr.Zero ? (ushort)0 : (ushort)Marshal.ReadInt16(info, 4);
-            ushort pid = info == IntPtr.Zero ? (ushort)0 : (ushort)Marshal.ReadInt16(info, 6);
-            if (vid != 0x1532) { LastError = $"gamepad {vid:X4}:{pid:X4} is not the Wolverine"; Release(ref device); return false; }
-            _device = device; ProductId = pid; LastError = "";
-            return true;
+            catch (Exception ex) { LastError = ex.GetType().Name + ": " + ex.Message; return false; }
         }
-        catch (Exception ex) { LastError = ex.GetType().Name + ": " + ex.Message; return false; }
     }
-
-    /// <summary>Sets all four motors (0..1). Writes on change, plus a 100 ms keep-alive.</summary>
+    public bool TryReadPad(out XInputPad pad)
+    {
+        lock (_gate)
+        {
+            pad = default;
+            if (_disposed || !Connected()) return false;
+            IntPtr reading = IntPtr.Zero;
+            try
+            {
+                int hr = Slot<ReadingFn>(_gi, 4)(_gi, KindGamepad, _device, out reading);
+                if (hr < 0 || reading == IntPtr.Zero) { LastError = $"Wolverine reading 0x{hr:X8}"; return false; }
+                if (!Slot<StateFn>(reading, 22)(reading, out var s)) { LastError = "Wolverine gamepad state unavailable"; return false; }
+                pad = GameInputPadMapping.Map(s.Buttons, s.LeftTrigger, s.RightTrigger, s.LX, s.LY, s.RX, s.RY);
+                if (System.Threading.Volatile.Read(ref _guidePressed) != 0) pad = pad with { Buttons = (ushort)(pad.Buttons | XInputPad.Guide) };
+                LastError = ""; return true;
+            }
+            catch (Exception ex) { LastError = ex.Message; return false; }
+            finally { Release(ref reading); }
+        }
+    }
     public void Set(double low, double high, double leftTrigger, double rightTrigger)
     {
-        if (_device == IntPtr.Zero) return;
-        var r = new Rumble { Low = Q(low), High = Q(high), LeftTrigger = Q(leftTrigger), RightTrigger = Q(rightTrigger) };
-        long now = Environment.TickCount64;
-        if (r.Equals(_last) && now - _lastWriteTick < 100) return;
-        try { Slot<SetRumbleStateFn>(_device, 10)(_device, ref r); Writes++; _last = r; _lastWriteTick = now; }
-        catch (Exception ex) { LastError = ex.Message; Release(ref _device); }
+        lock (_gate)
+        {
+            if (_disposed || !_allowOutput || !Connected()) return;
+            var r = new Rumble { Low = Q(low), High = Q(high), LeftTrigger = Q(leftTrigger), RightTrigger = Q(rightTrigger) };
+            long now = Environment.TickCount64;
+            if (r.Equals(_last) && now - _lastWriteTick < 100) return;
+            try { Slot<RumbleFn>(_device, 10)(_device, ref r); Writes++; _last = r; _lastWriteTick = now; }
+            catch (Exception ex) { LastError = ex.Message; DropDevice(); }
+        }
     }
-
     private static float Q(double v) => (float)Math.Round(Math.Clamp(double.IsFinite(v) ? v : 0, 0, 1) * 100) / 100f;
-
-    /// <summary>Drops the device (e.g. the controller left Xbox mode); the next TryAcquire looks again.</summary>
-    public void Forget() { Set(0, 0, 0, 0); Release(ref _device); }
-
+    public void Forget() { lock (_gate) { Set(0, 0, 0, 0); DropDevice(); } }
     public void Dispose()
     {
-        if (_device != IntPtr.Zero) { try { var z = new Rumble(); Slot<SetRumbleStateFn>(_device, 10)(_device, ref z); } catch { } }
-        Release(ref _device);
-        Release(ref _gi);
+        lock (_gate)
+        {
+            if (_disposed) return;
+            Forget(); _disposed = true; Release(ref _gi);
+        }
     }
 }

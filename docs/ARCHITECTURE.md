@@ -1,5 +1,7 @@
 # Architecture — 2026-11-07
 
+2026-11-08: [current virtual Native Xbox routing and audio separation](XBOX_NATIVE_ROUTING_20261108.md) supersedes the WGI audio-trigger route below. Native Xbox uses a single verified GameInput device for physical input plus four-motor output; Audio Xbox uses body-only XInput, without DualSense trigger interpretation. PC Direct USB/Hybrid/Multiband are already implemented; see [standalone status](STANDALONE_STATUS_20261108.md). Historical provider-only statements below are not the complete current inventory.
+
 Read [implementation status](IMPLEMENTATION_STATUS.md) and [Sensa analysis](SENSA_PIPELINE_ANALYSIS.md). Native v2 is a lossy prototype; M3 open, M4 not implemented.
 
 ## Active paths

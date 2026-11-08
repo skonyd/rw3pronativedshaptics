@@ -24,7 +24,7 @@ public enum SensaOutputMethod
 ///   • uses spectral components only to SPLIT that strength across frequencies, and only when
 ///     the sound is steady (no hit in the frame, envelope not jumping, active ≥ half the FFT
 ///     window so the history is mostly the current sound) and really mixed (≥ 2 components,
-///     weakest ≥ <see cref="SecondComponentRatio"/> of the strongest);
+///     second strongest ≥ <see cref="SecondComponentRatio"/> of the strongest);
 ///   • enters Multiband after <see cref="EnterSteadyFrames"/> steady frames, leaves at once.
 /// </summary>
 public sealed class HybridOutputPolicy
@@ -63,9 +63,16 @@ public sealed class HybridOutputPolicy
     public static bool IsMixed(in HapticSpectrum s)
     {
         if (s.Count < 2) return false;
-        float strongest = 0, weakest = float.MaxValue;
-        for (int i = 0; i < s.Count; i++) { strongest = Math.Max(strongest, s[i].Amplitude); weakest = Math.Min(weakest, s[i].Amplitude); }
-        return strongest > 0 && weakest >= strongest * SecondComponentRatio;
+        float strongest = 0, second = 0;
+        for (int i = 0; i < s.Count; i++)
+        {
+            float a = s[i].Amplitude;
+            if (!float.IsFinite(a) || a < 0) return false;
+            if (a >= strongest) { second = strongest; strongest = a; }
+            else if (a > second) second = a;
+        }
+        // A small third peak must not veto two independently strong components.
+        return strongest > 0 && second >= strongest * SecondComponentRatio;
     }
 
     /// <summary>Strongest component (for standard frames of a mixed sound).</summary>

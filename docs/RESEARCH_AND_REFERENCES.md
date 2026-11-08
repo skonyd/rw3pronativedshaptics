@@ -1,5 +1,9 @@
 # Research and reference log (2026-11-05)
 
+## 2026-11-08 Native Xbox / Audio ownership correction
+
+[Routing audit, implementation and sources](XBOX_NATIVE_ROUTING_20261108.md): local Windows SDK v0 `GameInput.h` defines the pinned inbox DLL ABI, device enumeration/filter and same-device gamepad reads/output. Microsoft XInput documents only the two body vibration channels; Audio now uses those rather than explicitly writing a four-channel WGI state. Concurrent game-trigger preservation still requires hardware testing. Sony-authored Linux flags and primary community trigger encoders distinguish haptic-select validity, zone-mask enablement/strength and weapon endpoints. Unknown effects are not silently treated as feedback. No physical equivalence follows from protocol decoding.
+
 ## 2026-11-08 multiband correction
 
 [Official `.haps` melodies](https://doc.wyvrn.com/docs/interhaptics-sdk/haptic-composer/haps-file-format/) can express simultaneous patterns subject to device capability; [public AddHM/UpdateHM](https://doc.wyvrn.com/docs/interhaptics-sdk/haptics-sdk-for-game-engines/engine-control/) is a documented route distinct from the earlier parametric API experiment. Local separate-melody tests yield repeatable extra Wolverine provider payload regions and are implemented as an opt-in prototype. This corrects the blanket one-band claim, without claiming a decoded/physically measured multiband waveform. [Evidence](MULTIBAND_RESULTS_20261108.md).

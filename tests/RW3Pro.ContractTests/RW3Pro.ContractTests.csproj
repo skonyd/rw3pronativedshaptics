@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioStructureFixtures.cs" Link="AudioStructureFixtures.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioReferenceFixtures.cs" Link="AudioReferenceFixtures.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/BridgeMotorOutput.cs" Link="BridgeMotorOutput.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/GameInputPadMapping.cs" Link="GameInputPadMapping.cs" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticEvidence.cs" Link="HapticEvidence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticRouteCatalog.cs" Link="HapticRouteCatalog.cs" />

@@ -6,6 +6,23 @@ using NAudio.CoreAudioApi;
 using RW3ProNativeDSHaptics;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+if(args.FirstOrDefault()=="audio-structure-audit")
+{
+    if(args.Length!=2)throw new ArgumentException("audio-structure-audit <report-directory>");
+    AudioStructureAudit.Run(Path.GetFullPath(args[1]));return;
+}
+if (args.FirstOrDefault() == "usb-audio-study")
+{
+    if(args.Length is <3 or >5)throw new ArgumentException("usb-audio-study <report-directory> <pilot|full|complex> [synapse|pc-standard|pc-hybrid|pc-multiband] [--synapse-off-confirmed]");
+    string route=args.Length>=4?args[3]:"synapse";
+    if(route!="synapse" && (args.Length!=5 || args[4]!="--synapse-off-confirmed"))throw new ArgumentException("RW3 route requires observed Synapse Audio-to-Haptics OFF, then --synapse-off-confirmed.");
+    await UsbAudioStudyProbe.RunAsync(Path.GetFullPath(args[1]),args[2],route);return;
+}
+if (args.FirstOrDefault() == "audio-reference")
+{
+    if (args.Length != 5) throw new ArgumentException("audio-reference <synapse|disabled|pc|pc-hybrid|xbox> <report-directory> <microphone-id> <pilot|full>");
+    await AudioReferenceProbe.RunAsync(args[1], Path.GetFullPath(args[2]), args[3], args[4]); return;
+}
 if(args.FirstOrDefault()=="frame-learn")
 {
     if(args.Length!=3)throw new ArgumentException("frame-learn <sdk> <out.jsonl>");
@@ -65,6 +82,35 @@ if (args.FirstOrDefault() is "probe-haps" or "probe-haps-update" or "probe-haps-
     await HapsProviderProbe.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[0] == "probe-haps-update", args[0] == "probe-haps-generated");
     return;
 }
+if (args.FirstOrDefault() == "probe-bridge-input")
+{
+    if (args.Length != 2) throw new ArgumentException("Expected report filename.");
+    // Input-only: do not acquire output ownership, change HidHide, or create a virtual device.
+    using var input = new GameInputRumble(allowOutput: false);
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    int acquired = 0, reads = 0, misses = 0, maxL = 0, maxR = 0, releasedL = 0, releasedR = 0;
+    string error = "";
+    Console.WriteLine("READ-ONLY input probe: pull and release L2/R2 for 20 seconds.");
+    while (clock.Elapsed.TotalSeconds < 20)
+    {
+        if (input.TryAcquire())
+        {
+            acquired++;
+            if (input.TryReadPad(out var pad))
+            {
+                reads++; maxL = Math.Max(maxL, pad.LeftTrigger); maxR = Math.Max(maxR, pad.RightTrigger);
+                if (pad.LeftTrigger == 0) releasedL++; if (pad.RightTrigger == 0) releasedR++;
+            }
+            else { misses++; error = input.LastError; }
+        }
+        else { misses++; error = input.LastError; }
+        await Task.Delay(8);
+    }
+    var result = new { acquired, reads, misses, maxL, maxR, releasedL, releasedR, error,
+        ProductId = input.ProductId.ToString("X4"), input.LastEnumeration, MotorCommandsSent = input.Writes };
+    File.WriteAllText(args[1], JsonSerializer.Serialize(result, jsonOptions));
+    Console.WriteLine(JsonSerializer.Serialize(result)); return;
+}
 if (args.FirstOrDefault() == "audit-xbox-safety")
 {
     if (args.Length != 2) throw new ArgumentException("Expected report filename.");
@@ -75,6 +121,7 @@ if (args.FirstOrDefault() == "audit-xbox-safety")
     for (int i = 0; i < 4800; i++) { signal[2 * i] = .8f * MathF.Sin(2 * MathF.PI * 80 * i / 48000); signal[2 * i + 1] = signal[2 * i] * .7f; }
     delivery.Enqueue(signal, 0, 0); delivery.Pump(0);
     bool active = writes.Any(v => v.LeftMotor > 0 || v.RightMotor > 0 || v.LeftTrigger > 0 || v.RightTrigger > 0);
+    bool bodyOnly = writes.All(v => v.LeftTrigger == 0 && v.RightTrigger == 0);
     int before = writes.Count; delivery.Pump(249); bool held = writes.Count == before;
     delivery.Pump(250);
     bool Zero(Windows.Gaming.Input.GamepadVibration v) => v.LeftMotor == 0 && v.RightMotor == 0 && v.LeftTrigger == 0 && v.RightTrigger == 0;
@@ -90,11 +137,26 @@ if (args.FirstOrDefault() == "audit-xbox-safety")
     bool invalidSilent = malformedSink.NonFiniteSamples == 480 && malformedWrites.All(Zero);
     malformedSink.Accept(signal);
     bool recovered = malformedWrites.Any(v => v.LeftMotor > 0);
+    var levelWrites = new List<Windows.Gaming.Input.GamepadVibration>();
+    var levelSink = new XboxAudioSink(v => levelWrites.Add(v));
+    using var levelDelivery = new AudioSinkDelivery(levelSink);
+    levelDelivery.Enqueue(signal,0,0); levelDelivery.Pump(0);
+    bool initiallyActive = levelWrites.Any(v=>v.LeftMotor>0);
+    levelDelivery.Configure(s=>((XboxAudioSink)s).OutputLevelPercent=0);
+    levelDelivery.Enqueue(signal,10,0); levelDelivery.Pump(10);
+    bool liveZero = Zero(levelWrites[^1]);
+    levelDelivery.Configure(s=>((XboxAudioSink)s).OutputLevelPercent=50);
+    levelDelivery.Enqueue(signal,20,0); levelDelivery.Pump(20);
+    bool liveResume = levelWrites[^1].LeftMotor>0 && levelWrites[^1].LeftMotor<=.5;
+    levelDelivery.Dispose(); int levelStopped=levelWrites.Count;
+    levelDelivery.Configure(s=>((XboxAudioSink)s).OutputLevelPercent=100);
+    bool levelSafe=initiallyActive && liveZero && liveResume && levelWrites.Count==levelStopped && levelWrites.All(v=>v.LeftTrigger==0 && v.RightTrigger==0);
     var result = new { ActiveMappingObserved = active, NoEarlySilence = held, AllFourChannelsZeroAtWatchdog = zeroed,
         NoPostStopWrite = noLateWrites, FilterHistoryCleared = reset, PartialStereoRejected = partialRejected,
-        NonFiniteInputSilent = invalidSilent, ValidAudioRecoversAfterInvalidInput = recovered, PhysicalXboxHardwareTested = false };
+        NonFiniteInputSilent = invalidSilent, ValidAudioRecoversAfterInvalidInput = recovered,
+        AudioNeverMapsToTriggerChannels = bodyOnly, LiveLevelZeroResumeStopSafe = levelSafe, PhysicalXboxHardwareTested = false };
     File.WriteAllText(args[1], JsonSerializer.Serialize(result, jsonOptions)); Console.WriteLine(JsonSerializer.Serialize(result));
-    Environment.ExitCode = active && held && zeroed && noLateWrites && reset && partialRejected && invalidSilent && recovered ? 0 : 1;
+    Environment.ExitCode = active && held && zeroed && noLateWrites && reset && partialRejected && invalidSilent && recovered && bodyOnly && levelSafe ? 0 : 1;
     return;
 }
 if (args.FirstOrDefault() == "audit-software-scenarios")

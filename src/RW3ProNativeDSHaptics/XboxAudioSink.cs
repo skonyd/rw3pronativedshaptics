@@ -1,19 +1,16 @@
 using System;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Windows.Gaming.Input;
 
 namespace RW3ProNativeDSHaptics;
 
 /// <summary>
-/// Xbox-mode "Sesten titreşim": game audio → main motors + impulse-trigger motors through
-/// Windows.Gaming.Input (the only Windows API with trigger channels). Measured 2026-11-07:
-/// in Xbox mode (GIP, 1532:0A3F) LeftTrigger/RightTrigger reach the trigger motors; in PC
-/// mode (XUSB, 0A4C) WGI vibration does nothing.
+/// Xbox-mode audio → body motors ONLY, using the two-channel XInput command.
+/// Never writes WGI/GameInput's four-channel state: normal game impulse-trigger output is not ours.
 ///
 /// Mapping per 5 ms block:
 ///   heavy (left) motor  ← bass  (&lt; 120 Hz) envelope, both channels
 ///   light (right) motor ← low-mid (120–400 Hz) envelope
-///   left/right trigger  ← sharp bass hits on that side (decaying pulse) + a little sustained bass
 /// </summary>
 public sealed class XboxAudioSink : IAudioHapticSink
 {
@@ -22,10 +19,10 @@ public sealed class XboxAudioSink : IAudioHapticSink
     private static readonly float Release = MathF.Exp(-1f / (0.060f * 48000));
 
     private readonly BiquadLowPass _bassL = new(120), _bassR = new(120), _midL = new(400), _midR = new(400);
-    private float _envBassL, _envBassR, _envMid, _longL = 1e-5f, _longR = 1e-5f, _pulseL, _pulseR;
-    private float _blockEnergyL, _blockEnergyR;
+    private float _envBassL, _envBassR, _envMid;
     private int _inBlock;
-    private Gamepad? _pad;
+    private int _outputSlot = -1;
+    public int PreferredIndex { get; set; } = -1;
     private GamepadVibration _last;
     private long _lastWriteTick;
     private readonly Action<GamepadVibration>? _diagnosticWriter;
@@ -36,15 +33,23 @@ public sealed class XboxAudioSink : IAudioHapticSink
     public int OutputLevelPercent { get; set; } = 100;
     public float Gain { get; set; } = 2.5f;
     public long NonFiniteSamples { get; private set; }
-    public string Description => "Xbox ana motorlar + tetikler";
-    public bool HasGamepad => Pad() != null;
+    public string Description => "Xbox gövde motorları (tetiklere komut gönderilmez)";
+    public bool HasGamepad => FindSlot() >= 0;
 
-    private Gamepad? Pad()
+    private int FindSlot()
     {
-        if (_pad != null && Gamepad.Gamepads.Contains(_pad)) return _pad;
-        _pad = Gamepad.Gamepads.FirstOrDefault();
-        return _pad;
+        if (PreferredIndex is >= 0 and <= 3) return XInputGetState((uint)PreferredIndex, out _) == 0 ? PreferredIndex : -1;
+        int found = -1;
+        for (uint i = 0; i < 4; i++)
+            if (XInputGetState(i, out _) == 0) { if (found >= 0) return -1; found = (int)i; }
+        return found; // ambiguous selection fails closed
     }
+
+    [StructLayout(LayoutKind.Sequential)] private struct BodyVibration { public ushort Left, Right; }
+    [StructLayout(LayoutKind.Sequential)] private struct PadState
+    { public uint Packet; public ushort Buttons; public byte LT, RT; public short LX, LY, RX, RY; }
+    [DllImport("xinput1_4.dll")] private static extern uint XInputGetState(uint index, out PadState state);
+    [DllImport("xinput1_4.dll")] private static extern uint XInputSetState(uint index, ref BodyVibration vibration);
 
     public void Accept(ReadOnlySpan<float> stereo48k)
     {
@@ -59,7 +64,6 @@ public sealed class XboxAudioSink : IAudioHapticSink
             _envBassL = Follow(_envBassL, MathF.Abs(bl));
             _envBassR = Follow(_envBassR, MathF.Abs(br));
             _envMid = Follow(_envMid, 0.5f * (MathF.Abs(ml) + MathF.Abs(mr)));
-            _blockEnergyL += bl * bl; _blockEnergyR += br * br;
             if (++_inBlock == Block) EmitBlock();
         }
     }
@@ -68,22 +72,16 @@ public sealed class XboxAudioSink : IAudioHapticSink
 
     private void EmitBlock()
     {
-        float eL = _blockEnergyL / Block, eR = _blockEnergyR / Block;
-        // Onset of a bass hit on a side → trigger pulse on that side (max one per ~60 ms via decay).
-        if (eL > 2e-4f && eL > _longL * 5f && _pulseL < 0.3f) _pulseL = Math.Min(1f, MathF.Sqrt(eL) * 4f);
-        if (eR > 2e-4f && eR > _longR * 5f && _pulseR < 0.3f) _pulseR = Math.Min(1f, MathF.Sqrt(eR) * 4f);
-        _longL = _longL * 0.95f + eL * 0.05f; _longR = _longR * 0.95f + eR * 0.05f;
-        _pulseL *= 0.92f; _pulseR *= 0.92f;                        // ≈ 60 ms decay at 5 ms blocks
-        _blockEnergyL = _blockEnergyR = 0; _inBlock = 0;
+        _inBlock = 0;
 
         double level = HapticOutputLevel.Apply(1.0, OutputLevelPercent);
-        double g = Gain * level;
+        double g = float.IsFinite(Gain) ? Math.Max(0, Gain) : 0;
         var v = new GamepadVibration
         {
-            LeftMotor = Clamp(0.5 * (_envBassL + _envBassR) * g),
-            RightMotor = Clamp(_envMid * g * 0.8),
-            LeftTrigger = Clamp((_pulseL + 0.25 * _envBassL * Gain) * level),
-            RightTrigger = Clamp((_pulseR + 0.25 * _envBassR * Gain) * level)
+            LeftMotor = Clamp(0.5 * (_envBassL + _envBassR) * g) * level,
+            RightMotor = Clamp(_envMid * g * 0.8) * level,
+            LeftTrigger = 0,
+            RightTrigger = 0
         };
         Write(v);
     }
@@ -98,22 +96,23 @@ public sealed class XboxAudioSink : IAudioHapticSink
         {
             _diagnosticWriter(v); _last = v; _lastWriteTick = now; return;
         }
-        var pad = Pad();
-        if (pad == null) return;
-        try { pad.Vibration = v; _last = v; _lastWriteTick = now; }
-        catch (Exception ex) { DiagnosticsService.Error("WGI vibration", ex); _pad = null; }
+        int slot = FindSlot();
+        if (_outputSlot >= 0 && _outputSlot != slot) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); }
+        _outputSlot = slot;
+        if (slot < 0) return;
+        var body = new BodyVibration { Left = (ushort)(v.LeftMotor * 65535), Right = (ushort)(v.RightMotor * 65535) };
+        if (XInputSetState((uint)slot, ref body) == 0) { _last = v; _lastWriteTick = now; }
     }
 
     private static double Clamp(double x) => double.IsFinite(x) ? Math.Clamp(x, 0, 1) : 0;
 
     public void Silence()
     {
-        _envBassL = _envBassR = _envMid = _pulseL = _pulseR = 0;
+        _envBassL = _envBassR = _envMid = 0;
         _bassL.Reset(); _bassR.Reset(); _midL.Reset(); _midR.Reset();
-        _blockEnergyL = _blockEnergyR = 0; _inBlock = 0;
-        _longL = _longR = 1e-5f;
+        _inBlock = 0;
         if (_diagnosticWriter != null) _diagnosticWriter(default);
-        else { try { var pad = Pad(); if (pad != null) pad.Vibration = new GamepadVibration(); } catch { } }
+        else { try { if (_outputSlot >= 0) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); } } catch { } }
         _last = default;
     }
 }

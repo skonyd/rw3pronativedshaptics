@@ -1,5 +1,7 @@
 # Project brief / explicit requirements (2026-11-05)
 
+**2026-11-08 user clarification:** Native DualSense mode should also approximate actual game-authored trigger force/position with Wolverine Xbox impulse-trigger vibration, while rear haptic PCM drives body output concurrently. Physical adaptive resistance is not expected. The existing trigger option enables/disables the impulse route. Audio-to-Haptics must generate body feedback only, leaving normal Xbox-game impulse feedback to the game; Normal remains game-managed. This supersedes the earlier exclusion of all trigger work. See [routing and acceptance](XBOX_NATIVE_ROUTING_20261108.md).
+
 **Project:** RW3 Pro Native DS Haptics. **Repository:** skonyd/rw3pronativedshaptics.
 
 **Motivation:** User owns a DualSense and DSX+, but its shape causes hand fatigue. User already bought Razer Wolverine V3 Pro. Main use is story games on Windows 11 PC. Wants the authored DualSense vibration *texture* (rain, terrain, impacts, nuanced spatial L/R) on the ergonomic Wolverine without buying another gamepad. Adaptive trigger resistance is specifically excluded. Xbox compatibility is irrelevant to this project.

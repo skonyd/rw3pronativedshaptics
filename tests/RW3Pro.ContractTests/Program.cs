@@ -1030,6 +1030,7 @@ SpectralContracts.Run(Check);
     data[2] = 40; data[3] = 200;          // right (light), left (heavy) rumble
     data[10] = 0x26; data[11] = 0xF0; data[12] = 0x03;   // R2 vibration, zones 4..9
     data[13] = 0xFF; data[14] = 0xFF; data[15] = 0xFF; data[16] = 0xFF;
+    data[19] = 80;                       // vibration frequency, P8
     data[21] = 0x25; data[22] = 0x04; data[23] = 0x01; data[24] = 0x07;   // L2 weapon: zones 2..8, strength 8
     bool parsed = DualSenseOutputReport.TryParse(data, out var rep) && rep.RumbleValid && rep.RumbleLeft == 200 && rep.RumbleRight == 40
         && rep.RightTriggerValid && rep.RightTrigger.Mode == 0x26 && rep.LeftTriggerValid && rep.LeftTrigger.Mode == 0x25;
@@ -1042,7 +1043,7 @@ SpectralContracts.Run(Check);
     {
         double pull = i / 100.0, v = w.Update(pull, 0.004);
         if (pull >= .2 && pull < .24) maxStart = Math.Max(maxStart, v);
-        if (pull >= .9 && pull < .94) maxBreak = Math.Max(maxBreak, v);
+        if (pull >= .8 && pull < .84) maxBreak = Math.Max(maxBreak, v);
         if (pull >= .5 && pull < .6) mid = Math.Max(mid, v);
     }
     for (int i = 0; i < 30; i++) after = w.Update(1.0, 0.004);
@@ -1210,6 +1211,209 @@ SpectralContracts.Run(Check);
         $"Trigger motors: tension inside resistance zones (weapon, bow), none before/after; body default clicks only; clicks {clickMs} ms");
 }
 
+// Real-report routing contracts: independent PCM/trigger paths, force decoding and motor safety.
+{
+    var mapped = GameInputPadMapping.Map(1 | 4 | 64 | 1024 | 8192, .5f, 1, -1, 1, float.NaN, 0);
+    Check(mapped.Buttons == (XInputPad.Start | XInputPad.A | XInputPad.DpadUp | XInputPad.LeftShoulder | XInputPad.RightThumb)
+        && mapped.LeftTrigger == 128 && mapped.RightTrigger == 255 && mapped.LX == short.MinValue && mapped.LY == short.MaxValue && mapped.RX == 0,
+        "Device-bound GameInput conversion preserves buttons, independent analog pulls, stick endpoints and invalid-input silence");
+    Check(GameInputPadMapping.IsWolverine(0x1532, 0x0A3F) && !GameInputPadMapping.IsWolverine(0x1532, 0x1234)
+        && !GameInputPadMapping.IsWolverine(0x045e, 0x0A3F), "Xbox device policy rejects other Razer/gamepad identities");
+
+    // Hand-authored wire bytes: feedback zone 4 enabled with encoded strength zero means 1/8, NOT off.
+    var data = new byte[47]; data[0] = 0x0C;
+    data[10] = 0x21; data[11] = 0x10; // R2, zone 4, weakest enabled strength
+    data[21] = 0x25; data[22] = 0x04; data[23] = 0x01; data[24] = 7; // L2, endpoints 2/8, force 8
+    DualSenseOutputReport.TryParse(data, out var report);
+    var right = new TriggerEffectInterpreter { TensionScale = .45 }; right.SetEffect(report.RightTrigger);
+    right.Update(.45, .1); right.Update(.45, .1);
+    Check(Math.Abs(right.Update(.45, .004) - .45 / 8) < 1e-9 && right.Update(.65, .1) == 0,
+        "Raw feedback mask distinguishes weakest enabled force from inactive zones");
+    var left = new TriggerEffectInterpreter { TensionScale = .45 }; left.SetEffect(report.LeftTrigger);
+    left.Update(.5, .1); left.Update(.5, .1);
+    double tension = left.Update(.5, .004), broken = left.Update(.8, .004);
+    Check(Math.Abs(tension - .45) < 1e-9 && broken == 1,
+        "Raw weapon report uses actual force and break endpoint (zone 8, not zone 9)");
+    var simultaneous = BridgeMotorFrame.Route(0, 0, .2, .7, tension, .45 / 8, true);
+    Check(simultaneous == new BridgeMotorFrame(.2, .7, .45, .45 / 8), "Native haptic stereo and two real-report trigger effects coexist on all four motors");
+    var classic = BridgeMotorFrame.Route(0, 0, .2, .7, tension, .45 / 8, false);
+    Check(classic == new BridgeMotorFrame(.45, .7, 0, 0), "Existing trigger setting disables impulse channels while preserving body haptics");
+    right.SetEffect(GameSignalSimulator.Off);
+    Check(right.Update(.9, .004) == 0 && BridgeMotorFrame.Route(0, 0, .2, .7, 0, 0, true).BodyRight == .7,
+        "Game trigger-off silences triggers without interrupting haptic PCM");
+    left.Reset(); Check(left.Update(.5, .004) == 0, "Input-loss reset discards latched trigger effects and pending clicks");
+    data[0] = 2; data[2] = 255; data[3] = 255;
+    Check(DualSenseOutputReport.TryParse(data, out var select) && !select.RumbleValid, "HAPTICS_SELECT alone cannot latch invalid legacy-rumble bytes");
+    data[38] = 4;
+    Check(DualSenseOutputReport.TryParse(data, out var v2) && v2.RumbleValid, "Compatible-vibration v2 validity flag is recognized");
+    var unsupported = new TriggerEffectInterpreter(); unsupported.SetEffect(new TriggerEffect(0x7F, 255, 3, 63, 20, 10, 0, 0, 0, 0, 0));
+    Check(!unsupported.Supported && unsupported.Update(.6, .004) == 0, "Unknown effect is explicitly unsupported and never misdecoded as zone feedback");
+    var machine = new TriggerEffectInterpreter(); machine.SetEffect(new TriggerEffect(0x27, 4, 1, 7, 80, 2, 0, 0, 0, 0, 0));
+    var machineEnvelope = Enumerable.Range(0, 100).Select(_ => machine.Update(.5, .004)).ToArray();
+    Check(machine.Supported && machineEnvelope.Count(v => v == 1) is >= 48 and <= 52 && machineEnvelope.Any(v => v == 0)
+        && machine.Update(.95, .004) == 0, "Machine uses two encoded amplitudes and 200 ms period inside endpoint range, not feedback zones");
+    var gallop = new TriggerEffectInterpreter(); gallop.SetEffect(new TriggerEffect(0x23, 4, 1, 4, 2, 0, 0, 0, 0, 0, 0));
+    var beats = Enumerable.Range(0, 250).Select(_ => gallop.Update(.5, .004)).ToArray();
+    int onsets = beats.Select((v, i) => v > 0 && (i == 0 || beats[i - 1] == 0) ? 1 : 0).Sum();
+    Check(gallop.Supported && onsets is >= 4 and <= 5 && gallop.Update(.95, .004) == 0,
+        "Galloping converts two authored foot positions per 2 Hz cycle, with inactive-zone silence");
+    var vibration = new TriggerEffectInterpreter(); vibration.SetEffect(new TriggerEffect(0x26, 255, 3, 255, 255, 255, 63, 0, 0, 5, 0));
+    var envelope = Enumerable.Range(0, 250).Select(_ => vibration.Update(.6, .004)).ToArray();
+    Check(envelope.Any(v => v == 1) && envelope.Any(v => v == 0), "Game-authored low vibration frequency affects impulse-motor envelope");
+
+    bool allForces = true;
+    for (int zone = 0; zone < 10; zone++)
+    for (int force = 1; force <= 8; force++)
+    {
+        // Independent encoder of a SINGLE enabled zone; production simulator enables a suffix instead.
+        ulong bits = (ulong)(force - 1) << (zone * 3); int mask = 1 << zone;
+        var effect = new TriggerEffect(0x21, (byte)mask, (byte)(mask >> 8), (byte)bits, (byte)(bits >> 8),
+            (byte)(bits >> 16), (byte)(bits >> 24), 0, 0, 0, 0);
+        var engine = new TriggerEffectInterpreter { TensionScale = .45 }; engine.SetEffect(effect);
+        double pull = (zone + .5) / 10;
+        engine.Update(pull, .1); engine.Update(pull, .1);
+        double held = engine.Update(pull, .004);
+        allForces &= Math.Abs(held - .45 * force / 8) < 1e-9;
+        allForces &= engine.Update(zone == 9 ? .85 : .95, .1) == 0;
+    }
+    Check(allForces, "All 10 zones x 8 enabled force values retain independent strength and inactive-zone silence");
+
+    var writes = new List<BridgeMotorFrame>(); var output = new BridgeMotorOutput(writes.Add);
+    output.Submit(new(.8, .6, .4, 1), 100); output.Level = 25;
+    Check(writes[^1] == new BridgeMotorFrame(.2, .15, .1, .25), "Global output level scales all four channels immediately");
+    output.Level = 0; Check(writes[^1] == default, "Zero global output level immediately zeros body and trigger motors");
+    output.Level = 100; output.Clear();
+    Check(writes[^1] == default, "Explicit input-loss clear immediately zeros output");
+    output.Submit(simultaneous, 200);
+    Check(!output.CheckTimeout(449) && output.CheckTimeout(450) && writes[^1] == default,
+        "Independent input watchdog stops all four channels at 250 ms");
+    output.Level = 75; Check(writes[^1] == default, "Changing level cannot revive watchdog-cleared output");
+    output.Submit(simultaneous, 600); output.Stop(); int count = writes.Count;
+    output.Submit(simultaneous, 601); output.Level = 100; output.CheckTimeout(900); output.Clear();
+    Check(writes.Count == count && writes[^1] == default, "Stopped motor owner rejects callbacks, level changes and late watchdog writes");
+    var failedWrites = new List<BridgeMotorFrame>();
+    var failing = new BridgeMotorOutput(frame => { failedWrites.Add(frame); if (frame != default) throw new InvalidOperationException("injected backend failure"); });
+    bool failed = false;
+    try { failing.Submit(simultaneous, 0); } catch (InvalidOperationException) { failed = true; }
+    int failureCount = failedWrites.Count; failing.Submit(simultaneous, 1); failing.CheckTimeout(300);
+    Check(failed && failedWrites[^1] == default && failedWrites.Count == failureCount,
+        "Backend failure attempts zero, surfaces failure and rejects further output");
+}
+
+// External Synapse audio reference must use deterministic, un-equalized, isolated system-audio stimuli.
+{
+    var fixtures = AudioReferenceFixtures.Scenes();
+    Check(fixtures.Count == 102 && fixtures.Select(s => s.Id).Distinct().Count() == fixtures.Count,
+        "Audio reference catalogue covers 102 distinct tone/level/side, out-of-band, multitone, transient, silence and long-control scenes");
+    bool isolated = true, finite = true;
+    foreach (var scene in fixtures)
+    {
+        var pcm = AudioReferenceFixtures.Generate(scene);
+        finite &= pcm.Length == (scene.DriveMs + 1000) * 48 * 2 && pcm.All(v => float.IsFinite(v) && Math.Abs(v) <= .900001);
+        for (int frame = 0; frame < pcm.Length / 2; frame++)
+        {
+            if (frame < 200 * 48 || frame >= (200 + scene.DriveMs) * 48)
+                isolated &= pcm[2 * frame] == 0 && pcm[2 * frame + 1] == 0;
+            if (scene.Side == "left") isolated &= pcm[2 * frame + 1] == 0;
+            if (scene.Side == "right") isolated &= pcm[2 * frame] == 0;
+        }
+    }
+    Check(finite && isolated, "All reference audio has bounded finite unity source samples, exact source gaps and opposite-channel silence");
+    var silence = AudioReferenceFixtures.Generate(fixtures.Single(s => s.Id == "silence"));
+    var opposite = AudioReferenceFixtures.Generate(fixtures.Single(s => s.Id == "opposite"));
+    Check(silence.All(v => v == 0) && Enumerable.Range(0, opposite.Length / 2).All(i => opposite[2 * i] == -opposite[2 * i + 1]),
+        "Reference silence and opposite-phase stereo are genuine negative controls");
+    var noiseScene = fixtures.Single(s => s.Id == "noise");
+    Check(AudioReferenceFixtures.Generate(noiseScene).SequenceEqual(AudioReferenceFixtures.Generate(noiseScene)),
+        "Reference noise is deterministic across repetitions and backends");
+    var tone = AudioReferenceFixtures.Generate(new("oracle", "tone", 80, .5, "left"));
+    int sample = 200 * 48 + 675;
+    Check(Math.Abs(tone[2 * sample] - .5 * Math.Sin(2 * Math.PI * 80 * 675 / 48000)) < 1e-6,
+        "Reference tone uses requested source amplitude directly, without legacy gain inversion/equalization");
+}
+
+// Combined Native demo: assert the independent wire-level source channels and trigger sides per phase.
+{
+    var (l, r) = GameSignalSimulator.Haptics("combined");
+    var steps = GameSignalSimulator.Outputs("combined");
+    bool[] bodyL = [true, false, true, true, false, true, false];
+    bool[] bodyR = [false, true, true, false, true, true, false];
+    bool[] triggerL = [true, false, true, false, true, false, true];
+    bool[] triggerR = [false, true, true, true, false, false, true];
+    double Rms(float[] samples, int phase)
+    {
+        int start = phase * 5 * GameSignalSimulator.Rate, end = start + 5 * GameSignalSimulator.Rate;
+        double sum = 0; for (int i = start; i < end; i++) sum += samples[i] * samples[i];
+        return Math.Sqrt(sum / (end - start));
+    }
+    bool Active(TriggerEffect effect)
+    {
+        var interpreter = new TriggerEffectInterpreter { TensionScale = .45, ClickSeconds = .09 };
+        interpreter.SetEffect(effect);
+        return Enumerable.Range(0, 251).Any(i => interpreter.Update(i / 250.0, .004) > 0);
+    }
+    Check(l.Length == 35 * GameSignalSimulator.Rate && r.Length == l.Length && steps.Count == 8,
+        "Combined Native demo has seven 5-second phases and a final stop report");
+    for (int phase = 0; phase < 7; phase++)
+    {
+        var step = steps[phase];
+        bool parsed = DualSenseOutputReport.TryParse(step.Data, out var report);
+        double left = Rms(l, phase), right = Rms(r, phase);
+        bool phaseValid = parsed && step.At == phase * 5 && report.LeftTriggerValid && report.RightTriggerValid
+            && report.RumbleLeft == 0 && report.RumbleRight == 0
+            && (left > .02) == bodyL[phase] && (right > .02) == bodyR[phase]
+            && (bodyL[phase] || left == 0) && (bodyR[phase] || right == 0)
+            && Active(report.LeftTrigger) == triggerL[phase] && Active(report.RightTrigger) == triggerR[phase];
+        Check(phaseValid, $"Combined Native phase {phase + 1}: PCM L/R and HID L2/R2 independently match expected sides (no legacy rumble)");
+        Check(GameSignalSimulator.PhaseHint("combined", phase * 5).StartsWith($"{phase + 1}/7"),
+            $"Combined Native phase {phase + 1} displays its matching pull instruction at the boundary");
+    }
+    Check(DualSenseOutputReport.TryParse(steps[^1].Data, out var stop) && steps[^1].At == 35
+        && stop.LeftTrigger.IsOff && stop.RightTrigger.IsOff && stop.RumbleLeft == 0 && stop.RumbleRight == 0
+        && GameSignalSimulator.PhaseHint("combined", 35).StartsWith("Bitti"),
+        "Combined Native end disables both effects and both rumble channels and displays finished state");
+    byte[] pcm = GameSignalSimulator.Interleave(l, r, new NAudio.Wave.WaveFormat(48000, 16, 4));
+    bool speakersSilent = true;
+    for (int i = 0; i < pcm.Length; i += 8)
+        if (pcm[i] != 0 || pcm[i + 1] != 0 || pcm[i + 2] != 0 || pcm[i + 3] != 0) { speakersSilent = false; break; }
+    Check(speakersSilent, "Combined Native uses only rear haptic PCM channels; front speakers cannot disguise route errors");
+}
+
+// Trigger motor test scene: silent haptics (body motors stay still), strong trigger effects on both triggers.
+{
+    var scenes=AudioStructureFixtures.Scenes();
+    foreach(var scene in scenes)
+    {
+        var a=AudioStructureFixtures.Generate(scene);
+        var b=AudioStructureFixtures.Generate(scene);
+        Check(a.SequenceEqual(b) && a.All(x=>float.IsFinite(x) && Math.Abs(x)<=.900001f),
+            "Declared complex source is deterministic and unclipped: "+scene.Id);
+    }
+    float[] Get(string id)=>AudioStructureFixtures.Generate(scenes.Single(x=>x.Id==id));
+    double Projection(float[] pcm,double hz,int side)
+    {
+        double re=0,im=0;int start=600*48,n=48000;
+        for(int i=0;i<n;i++){double phase=2*Math.PI*hz*i/48000;float x=pcm[2*(start+i)+side];re+=x*Math.Cos(phase);im+=x*Math.Sin(phase);}
+        return 2*Math.Sqrt(re*re+im*im)/n;
+    }
+    var close=Get("structure-close-80-84");
+    Check(Math.Abs(Projection(close,80,0)-.3)<.00001 && Math.Abs(Projection(close,84,0)-.3)<.00001 && Projection(close,82,0)<.00001,
+        "Independent 1s source projections prove 80 and84Hz exist separately;82Hz is not a source component");
+    var one=Get("structure-mix-left-only");
+    Check(one.Where((_,i)=>(i&1)==1).All(x=>x==0) && Math.Abs(Projection(one,40,0)-.3)<.00001 && Math.Abs(Projection(one,90,0)-.3)<.00001,
+        "Complex unilateral source has exact silent opposite channel and unnormalized .3/.3 components");
+    Check(Get("structure-cancel-same-channel").All(x=>Math.Abs(x)<1e-11),
+        "Same-frequency opposite-phase source cancellation remains silent before any feature mapping");
+    var strongPair=new HapticSpectrum(new(40,.3f,0),new(120,.3f,0),new(300,.045f,0),3);
+    Check(HybridOutputPolicy.IsMixed(strongPair),
+        "Two strong source components remain mixed when a weak third component appears");
+    Check(HybridOutputPolicy.IsMixed(new(strongPair.C,strongPair.A,strongPair.B,3)) &&
+        HybridOutputPolicy.IsMixed(new(strongPair.B,strongPair.C,strongPair.A,3)) &&
+        !HybridOutputPolicy.IsMixed(new(new(40,.3f,0),new(120,.045f,0),new(300,.02f,0),3)) &&
+        !HybridOutputPolicy.IsMixed(new(new(40,.3f,0),new(120,.3f,0),new(300,float.NaN,0),3)),
+        "Strong-pair decision is order independent; truly weak second/invalid spectrum still stays standard");
+}
+
 // Trigger motor test scene: silent haptics (body motors stay still), strong trigger effects on both triggers.
 {
     var (tl, tr) = GameSignalSimulator.Haptics("triggers");
@@ -1219,4 +1423,16 @@ SpectralContracts.Run(Check);
     var it = new TriggerEffectInterpreter { TensionScale = 0.45, ClickSeconds = 0.09 }; it.SetEffect(r.RightTrigger);
     double held = 0; for (int i = 0; i < 100; i++) held = it.Update(0.5, 0.004);
     Check(silentBody && parsed && held >= 0.9, $"Trigger motor test scene: no haptic audio, R2 vibration {held:F2} while held, L2 feedback");
+}
+
+// Native legacy fallback: real report parsing to the production body/trigger router, no PCM.
+{
+    byte[] wire=new byte[48];wire[0]=1;wire[2]=51;wire[3]=204;
+    Check(DualSenseOutputReport.TryParse(wire,out var report) && report.RumbleValid,
+        "Legacy-only game report is accepted without any haptic PCM");
+    foreach(bool triggers in new[]{false,true}) {
+        var frame=BridgeMotorFrame.Route(report.RumbleLeft/255.0,report.RumbleRight/255.0,0,0,0,0,triggers);
+        Check(Math.Abs(frame.BodyLeft-.8)<1e-9 && Math.Abs(frame.BodyRight-.2)<1e-9 && frame.TriggerLeft==0 && frame.TriggerRight==0,
+            "Legacy fallback preserves heavy/light body strengths without synthesizing trigger feedback");
+    }
 }

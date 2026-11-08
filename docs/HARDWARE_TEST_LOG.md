@@ -1,5 +1,13 @@
 # Hardware test log
 
+## 2026-11-08 — User-felt combined-demo feedback after local app setup
+
+User reports the trigger motor test works and the combined haptic/trigger left/right/together demo feels apparently correct (“düzgün gibi”). This is subjective scene-specific physical feedback, not an instrumented measurement or original-game/phase/fidelity pass. Classic, cross/body-only/trigger-only phases, gain zero, stop/reconnection and Xbox-game audio coexistence remain separately unconfirmed. Preserve the four earlier unavailable-device probes as historical acquisition failures. [Current remaining plan](CURRENT_PLAN_20261108.md).
+
+## 2026-11-08 — Native Xbox routing correction: physical acceptance unavailable
+
+Four input-only 20s attempts around reconnection and user-exit of the old RW3 found no Wolverine in GameInput (`acquired=0`, `reads=0`, no motor writes). Read-only PnP queries likewise showed no present `1532:0A3F` or `0A4C`; Bluetooth Xbox entries were not substituted. This is not a valid zero-trigger reading or a physical failure/pass of the new converter. No driver/service/HidHide/privacy configuration changed. WPF build, real-wire trigger/routing/safety contracts and Windows audio command audit pass separately; Audio no longer creates trigger output. [Implementation, retained artifacts and remaining hardware procedure](XBOX_NATIVE_ROUTING_20261108.md). Firmware and physical motor response remain unmeasured for this increment.
+
 ## 2026-11-08 — Opt-in multiband and cadence review
 
 [Full multiband results](MULTIBAND_RESULTS_20261108.md): documented public `.haps` melodies change additional provider payload regions; three36-case static/update/generated controls repeat byte-identically per side (header excluded) and leave the opposite side unchanged. Existing one-band conclusions applied to the older parametric/multiple-event route, not the whole SDK. Live original-PCM→FFT→UpdateHM/provider tests complete, including16 microphone cases and eight real Windows loopback/source comparisons. No physical DualSense/game source or decoded/measured actuator spectrum/phase. Windows26320, Wolverine1532:0A4C, same licensed SDK, firmware unrecorded. Microphone enhancement/volume settings were left unchanged in this increment; no driver/service/firmware changed.
