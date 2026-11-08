@@ -40,6 +40,9 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticSpectrumAnalyzer.cs" Link="HapticSpectrumAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/MultibandHaps.cs" Link="MultibandHaps.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticLimiter.cs" Link="HapticLimiter.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/SensaFrameEncoder.cs" Link="SensaFrameEncoder.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/SensaHidTransport.cs" Link="SensaHidTransport.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/SynapseSensaCheck.cs" Link="SynapseSensaCheck.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HybridOutputPolicy.cs" Link="HybridOutputPolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AcousticToneBands.cs" Link="AcousticToneBands.cs" />
   </ItemGroup>

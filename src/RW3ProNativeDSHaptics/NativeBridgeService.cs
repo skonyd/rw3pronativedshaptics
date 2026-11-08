@@ -33,6 +33,15 @@ public sealed class NativeBridgeService : IDisposable
             _sensa.ExperimentalMultiband = value;
         }
     }
+    public SensaTransport Transport
+    {
+        get => _sensa.Transport;
+        set {
+            if (_sensa.IsRunning) throw new InvalidOperationException("Stop the engine before changing its transport.");
+            _sensa.Transport = value;
+        }
+    }
+    public long DirectFramesSent => _sensa.DirectFramesSent;
     public SensaOutputMethod OutputMethod
     {
         get => _sensa.OutputMethod;

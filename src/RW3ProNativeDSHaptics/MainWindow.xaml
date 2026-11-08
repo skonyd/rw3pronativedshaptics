@@ -434,17 +434,26 @@
           <!-- Gelişmiş -->
           <StackPanel x:Name="SettingsAdvancedPanel" Visibility="Collapsed">
             <TextBlock Text="Wolverine çıkış yöntemi" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="Standart: elde tek frekans, hızlı vuruşlar. Hibrit: vuruşlar standart, karışık sürekli sesler (ör. 80+190 Hz) çok bantlı. Çok bantlı: her zaman en fazla üç frekans; kısa vuruşlar kaybolur, 85 ms analiz gecikmesi. Hibrit ve Çok bantlı deneyseldir."
+            <TextBlock Text="Standart: hızlı, keskin vuruşlar. Hibrit (deneysel): karışık sürekli seslerde doğru frekanslar. Çok bantlı (deneysel): kısa vuruşlar zayıflar."
                        Style="{StaticResource Hint}" Margin="0,0,0,10"/>
             <WrapPanel Margin="0,0,0,8">
               <RadioButton x:Name="MethodStandard" Content="Standart" Tag="0" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
               <RadioButton x:Name="MethodHybrid" Content="Hibrit" Tag="2" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
               <RadioButton x:Name="MethodMultiband" Content="Çok bantlı" Tag="1" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
             </WrapPanel>
-            <TextBlock x:Name="OutputMethodStatus" Style="{StaticResource Hint}" Margin="0,0,0,18"/>
+            <TextBlock x:Name="OutputMethodStatus" Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+
+            <TextBlock Text="Bağlantı yolu" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Doğrudan USB: Synapse ve Razer DLL'leri gerekmez (kol USB kablosuyla, PC modunda). Hibrit/Çok bantlı şimdilik yalnızca Synapse yolunda."
+                       Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <WrapPanel Margin="0,0,0,6">
+              <RadioButton x:Name="TransportSynapse" Content="Synapse" Tag="0" GroupName="Transport" Style="{StaticResource PresetCard}" Width="118" Checked="Transport_Checked"/>
+              <RadioButton x:Name="TransportDirect" Content="Doğrudan USB" Tag="1" GroupName="Transport" Style="{StaticResource PresetCard}" Width="140" Checked="Transport_Checked"/>
+            </WrapPanel>
+            <TextBlock x:Name="TransportStatus" Style="{StaticResource Hint}" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
             <TextBlock Text="Ses senkronu (Sesten titreşim)" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="Bluetooth hoparlör ve kulaklıklar sesi geç çalar; titreşim sesten önce gelir. Oyunlarda titreşimi o kadar geciktirir (Test sekmesindeki ses testi her zaman gecikmesiz). Otomatik: Bluetooth ise 300 ms, kabloluysa 0." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <TextBlock Text="Bluetooth hoparlörde titreşimi sese göre geciktirir. Otomatik: Bluetooth 300 ms, kablolu 0." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
             <WrapPanel Margin="0,0,0,8">
               <RadioButton x:Name="SyncAuto" Content="Otomatik" Tag="-1" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="118" Checked="AudioSync_Checked"/>
               <RadioButton x:Name="Sync0" Content="0 ms" Tag="0" GroupName="AudioSync" Style="{StaticResource PresetCard}" Width="92" Checked="AudioSync_Checked"/>

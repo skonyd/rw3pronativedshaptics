@@ -6,6 +6,21 @@ using NAudio.CoreAudioApi;
 using RW3ProNativeDSHaptics;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+if(args.FirstOrDefault()=="frame-learn")
+{
+    if(args.Length!=3)throw new ArgumentException("frame-learn <sdk> <out.jsonl>");
+    await FrameLearnProbe.RunAsync(PhysicalComparisonProbe.Resolve,Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));return;
+}
+if(args.FirstOrDefault()=="frame-sweep")
+{
+    if(args.Length!=3)throw new ArgumentException("frame-sweep <sdk> <out.jsonl>");
+    FrameSweepProbe.Run(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));return;
+}
+if(args.FirstOrDefault()=="direct-write")
+{
+    if(args.Length!=3)throw new ArgumentException("direct-write <mic-id> <report.json>");
+    await DirectWriteProbe.RunAsync(args[1],Path.GetFullPath(args[2]));return;
+}
 if(args.FirstOrDefault()=="capture-pattern")
 {
     if(args.Length<3)throw new ArgumentException("capture-pattern <sdk> <timeline.json> [wait-for-file]");

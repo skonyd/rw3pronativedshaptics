@@ -79,6 +79,23 @@ public sealed class SensaStereoPrototype : IDisposable
 
     /// <summary>Feature source for the live bridge (DualSense rear channels).</summary>
     public HapticFeatureExtractor Features { get; } = new();
+    /// <summary>
+    /// How frames reach the controller. Synapse (default): licensed HAR + Razer provider → Synapse →
+    /// USB. DirectUsb: our own frame encoder (SensaFrameEncoder) written straight to the Wolverine's
+    /// HID control collection (SensaHidTransport) — no Synapse, no HAR, no admin. Set while stopped.
+    /// </summary>
+    public SensaTransport Transport
+    {
+        get => (SensaTransport)Volatile.Read(ref _transport);
+        set { lock (_lifecycle) {
+            if (_worker?.IsAlive == true) throw new InvalidOperationException("Stop the engine before changing its transport.");
+            Volatile.Write(ref _transport, (int)value);
+        } }
+    }
+    private int _transport;
+    public long DirectFramesSent { get; private set; }
+    public string? DirectDevicePath { get; private set; }
+
     /// <summary>Output method; set only while stopped. Multiband/Hybrid are experimental, no phase control.</summary>
     private int _outputMethod;
     public SensaOutputMethod OutputMethod
@@ -237,7 +254,7 @@ public sealed class SensaStereoPrototype : IDisposable
             }
             string har = Path.Combine(AppContext.BaseDirectory, "HAR.dll");
             string provider = Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll");
-            if (!File.Exists(har) || !File.Exists(provider))
+            if (Transport == SensaTransport.Synapse && (!File.Exists(har) || !File.Exists(provider)))
             {
                 Report("Official HAR.dll and Interhaptics.RazerProvider.dll not found beside app. " +
                     "Obtain them from the licensed WYVRN SDK, then restart.");
@@ -246,9 +263,10 @@ public sealed class SensaStereoPrototype : IDisposable
             Volatile.Write(ref _stop, 0);
             Volatile.Write(ref _providerActive, 0);
             Volatile.Write(ref _renderTicks, 0);
-            Features.EnableSpectralAnalysis(OutputMethod != SensaOutputMethod.Standard);
+            Features.EnableSpectralAnalysis(Transport == SensaTransport.Synapse && OutputMethod != SensaOutputMethod.Standard);
+            DirectFramesSent = 0;
             MultibandFrames = MultibandHeadroomReductions = HybridMultiFrames = HybridStandardFrames = 0;
-            _worker = new Thread(Run) { IsBackground = true, Name = "RW3-SensaStereo" };
+            _worker = new Thread(Transport == SensaTransport.DirectUsb ? RunDirect : Run) { IsBackground = true, Name = "RW3-SensaStereo" };
             _worker.Start();
             return true;
         }
@@ -267,6 +285,130 @@ public sealed class SensaStereoPrototype : IDisposable
         Volatile.Write(ref _leftAmplitudeBits, BitConverter.SingleToInt32Bits(left));
         Volatile.Write(ref _rightAmplitudeBits, BitConverter.SingleToInt32Bits(right));
         Interlocked.Exchange(ref _lastSignalTick, Environment.TickCount64);
+    }
+
+    /// <summary>
+    /// Direct USB loop: same feature path, gain, limiter, pitch hold and 33 ms cadence as the Synapse
+    /// path, but frames are encoded here and written to the controller. Transients are folded into the
+    /// nearest strength point (the transient record format is not decoded yet). After sound stops, two
+    /// silence frames are sent (the controller keeps playing the last frame otherwise), then nothing,
+    /// like Synapse. Input is polled every 5 ms while silent so the first frame of a sound goes out at once.
+    /// </summary>
+    private void RunDirect()
+    {
+        IntPtr timer = IntPtr.Zero, mmcss = IntPtr.Zero;
+        bool periodSet = false;
+        var clock = Stopwatch.StartNew();
+        using var tx = new SensaHidTransport();
+        try
+        {
+            Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            try { uint task = 0; mmcss = Timing.AvSetMmThreadCharacteristicsW("Games", ref task); } catch { }
+            timer = Timing.CreateWaitableTimerExW(IntPtr.Zero, null, Timing.HighResolution, Timing.AllAccess);
+            if (timer == IntPtr.Zero) periodSet = Timing.timeBeginPeriod(1) == 0;
+            Report("Direct USB: looking for Wolverine (USB cable, PC mode)");
+            double reopenAt = 0;
+            var frame = new byte[SensaFrameEncoder.FrameLength];
+            byte[] silence = SensaFrameEncoder.Silence();
+            var la = new double[4]; var ra = new double[4];
+            var lHold = new PitchHold(); var rHold = new PitchHold();
+            long cursor = Features.CompletedSlots;
+            SideFeatures lastL = default, lastR = default;
+            double lastSourceAt = -1, tickSec = TickMs / 1000.0, next = clock.Elapsed.TotalSeconds;
+            int silenceToSend = 0;
+            bool wasActive = false;
+            _lastRateStamp = Stopwatch.GetTimestamp(); _lastRateTicks = 0;
+            while (Volatile.Read(ref _stop) == 0)
+            {
+                double now = clock.Elapsed.TotalSeconds;
+                if (!tx.IsOpen && now >= reopenAt)
+                {
+                    if (tx.Open())
+                    {
+                        DirectDevicePath = tx.DevicePath;
+                        Volatile.Write(ref _providerActive, 1);
+                        Report("Direct USB active • own encoder, no Synapse/HAR • " + TickMs + " ms");
+                        silenceToSend = 2;
+                    }
+                    else { Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0; Report("Direct USB: Wolverine not found (USB cable, PC mode); retrying"); }
+                }
+                SideFeatures fl, fr;
+                double gain = SourceGainPercent / 100.0;
+                bool manual = Environment.TickCount64 - Interlocked.Read(ref _lastSignalTick) <= 140;
+                if (manual)
+                {
+                    fl = Constant(BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftAmplitudeBits)));
+                    fr = Constant(BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightAmplitudeBits)));
+                    gain = 1.0;
+                    cursor = Features.CompletedSlots;
+                }
+                else
+                {
+                    int n = Features.Take(ref cursor, out fl, out fr);
+                    if (n > 0) { lastL = fl; lastR = fr; lastSourceAt = now; }
+                    else if (lastSourceAt >= 0 && now - lastSourceAt <= SourceTimeoutSeconds) { fl = Hold(lastL); fr = Hold(lastR); }
+                    else { fl = default; fr = default; }
+                }
+                double level = HapticOutputLevel.Apply(gain, OutputLevelPercent);
+                bool leftOn = DirectSensaMapping.Points(fl, level, la), rightOn = DirectSensaMapping.Points(fr, level, ra);
+                bool active = leftOn || rightOn;
+                if (active && !wasActive) next = now;      // first frame of a sound: no wait
+                bool sendFrame = active || silenceToSend > 0;
+                if (sendFrame && tx.IsOpen)
+                {
+                    bool ok;
+                    if (active)
+                    {
+                        double lp = PitchFor(lHold.Resolve(fl.FrequencyHz, now)), rp = PitchFor(rHold.Resolve(fr.FrequencyHz, now));
+                        SensaFrameEncoder.Encode(la, lp, ra, rp, frame);
+                        ok = tx.Send(frame);
+                        silenceToSend = 2;
+                        LastSentHz = (lHold.Last, rHold.Last);
+                    }
+                    else { ok = tx.Send(silence); silenceToSend--; }
+                    if (ok) { DirectFramesSent = tx.FramesSent; Interlocked.Increment(ref _renderTicks); }
+                    else
+                    {
+                        Report("Direct USB write failed (error " + tx.LastError + "); reconnecting");
+                        tx.Close(); Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0;
+                    }
+                }
+                FrameProbe?.Invoke(fl, fr, level, !sendFrame);
+                wasActive = active;
+                UpdateRate();
+                next += sendFrame ? tickSec : IdlePollSeconds;
+                double wait = next - clock.Elapsed.TotalSeconds;
+                if (wait < -0.050) { next = clock.Elapsed.TotalSeconds; continue; }
+                if (wait > 0) WaitSeconds(timer, wait);
+            }
+            if (tx.IsOpen) for (int i = 0; i < 2; i++) { tx.Send(silence); Thread.Sleep(TickMs); }
+        }
+        catch (Exception ex)
+        {
+            Report("Direct USB error: " + ex.GetType().Name + " - " + ex.Message);
+            DiagnosticsService.Error("Sensa direct USB", ex);
+        }
+        finally
+        {
+            Volatile.Write(ref _providerActive, 0);
+            Volatile.Write(ref _leftAmplitudeBits, 0);
+            Volatile.Write(ref _rightAmplitudeBits, 0);
+            if (timer != IntPtr.Zero) Timing.CloseHandle(timer);
+            if (periodSet) Timing.timeEndPeriod(1);
+            if (mmcss != IntPtr.Zero) { try { Timing.AvRevertMmThreadCharacteristics(mmcss); } catch { } }
+        }
+    }
+
+    /// <summary>Per-hand pitch hold (same rule as the Synapse path: keep the last pitch for up to 1 s).</summary>
+    private sealed class PitchHold
+    {
+        private double _hz, _at = double.NaN;
+        public double Last => _hz;
+        public double Resolve(double hz, double now)
+        {
+            if (hz > 0) { _hz = hz; _at = now; return hz; }
+            return now - _at <= 1.0 ? _hz : 0;
+        }
     }
 
     private void Run()
@@ -423,18 +565,19 @@ public sealed class SensaStereoPrototype : IDisposable
                     nativeStage = "provider render";
                     // The vendor debug accessor indexes a material frame; .haps idle after StopAllEvents
                     // has no material frame and throws natively. Normal render still publishes silence.
-                    if (CaptureFrames && !((multiband || hybrid) && idle))
+                    if (CaptureFrames && !idle)   // debug accessor throws (SEH) when idle-gated events have no material frame
                     {
                         int len = Provider.RenderHapticsDebug(_frameScratch, 0, _frameScratch.Length);
                         if (len > 0 && len <= _frameScratch.Length)
                         {
                             lock (_lock) _lastFrame = _frameScratch.AsSpan(0, len).ToArray();
+                            CommandProbe?.Invoke(idle ? default : leftOut.LastCommand, idle ? default : rightOut.LastCommand, _frameScratch.AsSpan(0, len).ToArray());
                             if (len > 41) Interlocked.Increment(ref _transientFrames);
                         }
                     }
                     else {
                         Provider.ProviderRenderHaptics();
-                        if ((multiband || hybrid) && idle && CaptureFrames) lock (_lock) _lastFrame = Array.Empty<byte>();
+                        if (idle && CaptureFrames) lock (_lock) _lastFrame = Array.Empty<byte>();
                     }
                     Interlocked.Increment(ref _renderTicks);
                 }
@@ -589,6 +732,9 @@ public sealed class SensaStereoPrototype : IDisposable
     /// <summary>Diagnostics: called on the engine thread for every rendered frame (left, right, gain, idle).</summary>
     public Action<SideFeatures, SideFeatures, double, bool>? FrameProbe { get; set; }
 
+    /// <summary>Diagnostics (CaptureFrames only): values sent per hand and the frame the provider rendered.</summary>
+    public Action<SensaCommand, SensaCommand, byte[]>? CommandProbe { get; set; }
+
     /// <summary>Single-band diagnostics; 0 also means not applicable for experimental multiband output.</summary>
     public (double Left, double Right) LastSentHz { get; private set; }
 
@@ -649,7 +795,12 @@ public sealed class SensaStereoPrototype : IDisposable
             Engine.UpdateParametricEffect(_id, _amp, _amp.Length, _pitch, _pitch.Length,
                 FrequencyMinHz, FrequencyMaxHz, tr, trLen, false);
             if (restart) Engine.PlayEvent(_id, -now, 0, 0);
+            LastCommand = new SensaCommand(a0, a1, a2, a3, p, hz, trLen / 3,
+                trLen >= 3 ? f.T0Position : 0, trLen >= 3 ? tr![1] : 0, trLen >= 6 ? f.T1Position : 0, trLen >= 6 ? tr![4] : 0);
         }
+
+        /// <summary>Diagnostics: the values sent with the last Apply (frame-format study).</summary>
+        public SensaCommand LastCommand { get; private set; }
 
     }
 
@@ -742,4 +893,17 @@ public sealed class SensaStereoPrototype : IDisposable
     }
 
     public void Dispose() => Stop();
+}
+
+/// <summary>One hand's command for one frame: 4 amplitude points, pitch (0..1 over 30–400 Hz), Hz, transients.</summary>
+public readonly record struct SensaCommand(double A0, double A1, double A2, double A3, double Pitch, double Hz,
+    int Transients, double T0Position, double T0Amplitude, double T1Position, double T1Amplitude);
+
+/// <summary>Path from the engine to the controller.</summary>
+public enum SensaTransport
+{
+    /// <summary>Licensed HAR + Razer provider → Synapse → USB (needs Synapse running and the Sensa module loaded).</summary>
+    Synapse = 0,
+    /// <summary>Own encoder → HID feature report on the Wolverine (USB cable, PC mode). No Synapse, no HAR.</summary>
+    DirectUsb = 1,
 }

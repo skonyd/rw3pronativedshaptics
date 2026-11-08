@@ -29,7 +29,7 @@ internal static class PhysicalComparisonProbe
         }
         return pcm;
     }
-    private static void Resolve(string sdk)
+    internal static void Resolve(string sdk)
     {
         var usb=UsbGamepadMonitor.Read();
         if(!usb.ScanSucceeded||!usb.WolverineWiredPcNode)throw new InvalidOperationException("Wired PC Wolverine1532:0A4C required.");
@@ -94,11 +94,11 @@ internal static class PhysicalComparisonProbe
             for(int repeat=1;repeat<=5;repeat++)
             for(int sceneIndex=0;sceneIndex<Scenes.Length;sceneIndex++)
             if(Environment.GetEnvironmentVariable("RW3_SCENES") is not string only || only.Split(',').Contains(Scenes[sceneIndex]))
-            foreach(var method in Order(repeat,sceneIndex,threeMethods)) {
+            foreach(var (method,transport) in Variants(repeat,sceneIndex,threeMethods)) {
                 bool multi=method==SensaOutputMethod.Multiband;
                 string scene=Scenes[sceneIndex];byte[] pcm=Source(scene);string hash=Convert.ToHexString(SHA256.HashData(pcm));
                 mic.BeginWindow();await Task.Delay(400,stop.Token);var background=mic.ReadWindow();
-                using var engine=new SensaStereoPrototype{OutputMethod=method,SourceGainPercent=100,OutputLevelPercent=100};
+                using var engine=new SensaStereoPrototype{OutputMethod=method,Transport=transport,SourceGainPercent=100,OutputLevelPercent=100};
                 await Start(engine,stop.Token);await Task.Delay(1000,stop.Token); // Predeclared settling, never fitted to match.
                 mic.BeginWindow();await Task.Delay(400,stop.Token);var idle=mic.ReadWindow();
                 mic.BeginWindow();
@@ -111,7 +111,7 @@ internal static class PhysicalComparisonProbe
                     throw new InvalidOperationException("Measurement incomplete: "+engine.Status+" / "+mic.Failure);
                 bool unchanged=hash==Convert.ToHexString(SHA256.HashData(pcm));
                 if(!unchanged)throw new InvalidOperationException("Original source mutated.");
-                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,Method=method.ToString(),HybridMultiFrames=hybridMulti,HybridStandardFrames=hybridStandard,SourceHash=hash,SourceUnchanged=unchanged,
+                var report=new{Scene=scene,Repeat=repeat,Multiband=multi,Method=transport==SensaTransport.DirectUsb?"Direct":method.ToString(),Transport=transport.ToString(),HybridMultiFrames=hybridMulti,HybridStandardFrames=hybridStandard,SourceHash=hash,SourceUnchanged=unchanged,
                     Background=background,EngineIdle=idle,Driven=driven,EngineOff=off,Updates=updates,HeadroomReductions=reductions,
                     WorkerStopped=!engine.IsRunning,PhysicalFidelityVerified=false,
                     Limit="One processed/uncalibrated airborne mic. Nominal100ms tone bands are not calibrated motor spectrum. No absolute latency, phase or physical DualSense comparison. Same original source and100% gain/output; no loudness normalization."};
@@ -127,6 +127,14 @@ internal static class PhysicalComparisonProbe
     }
 
     /// <summary>Counterbalanced method order: two methods alternate (legacy run); three rotate (Latin square).</summary>
+    private static IEnumerable<(SensaOutputMethod,SensaTransport)> Variants(int repeat,int sceneIndex,bool three)
+    {
+        if(Environment.GetEnvironmentVariable("RW3_COMPARE")=="transport")
+            return (repeat+sceneIndex)%2==0
+                ?new[]{(SensaOutputMethod.Standard,SensaTransport.Synapse),(SensaOutputMethod.Standard,SensaTransport.DirectUsb)}
+                :new[]{(SensaOutputMethod.Standard,SensaTransport.DirectUsb),(SensaOutputMethod.Standard,SensaTransport.Synapse)};
+        return Order(repeat,sceneIndex,three).Select(m=>(m,SensaTransport.Synapse));
+    }
     private static SensaOutputMethod[] Order(int repeat,int sceneIndex,bool three)
     {
         if(!three)return (repeat+sceneIndex)%2==0?new[]{SensaOutputMethod.Standard,SensaOutputMethod.Multiband}:new[]{SensaOutputMethod.Multiband,SensaOutputMethod.Standard};

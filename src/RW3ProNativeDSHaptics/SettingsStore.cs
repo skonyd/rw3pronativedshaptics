@@ -20,6 +20,8 @@ public sealed class UserSettings
     public bool ExperimentalMultiband { get; set; }
     /// <summary>Wolverine output method: 0 Standard, 1 Multiband (experimental), 2 Hybrid (experimental).</summary>
     public int OutputMethod { get; set; }
+    /// <summary>Path to the controller: 0 Synapse (HAR + Razer runtime), 1 Direct USB (own encoder, no Synapse).</summary>
+    public int Transport { get; set; }
     /// <summary>Sesten titreşim sensitivity in percent (Normal 100 / Yüksek 160 / Çok yüksek 250).</summary>
     public int AudioSensitivityPercent { get; set; } = 100;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>

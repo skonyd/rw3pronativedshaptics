@@ -968,3 +968,42 @@ SpectralContracts.Run(Check);
     Check(mixedRun.switches <= 1 && mixedRun.multi >= mixedRun.std * 4 && hitsRun.multi == 0,
         $"Hybrid on real extractor: steady 80+190 stays multiband ({mixedRun.multi} multi / {mixedRun.std} std frames, {mixedRun.switches} switch), hit train stays standard");
 }
+{
+    // Own Sensa frame encoder + HID report builder vs bytes captured from Synapse on the USB bus (2026-11-08).
+    static string Hex(ReadOnlySpan<byte> b) => Convert.ToHexString(b).ToLowerInvariant();
+    var frame = new byte[SensaFrameEncoder.FrameLength];
+    double[] one = { 1, 1, 1, 1 }, zero = { 0, 0, 0, 0 }, quarter = { .25, .25, .25, .25 };
+    double p60 = SensaFrameEncoder.PitchOf(60), p50 = SensaFrameEncoder.PitchOf(50);
+    SensaFrameEncoder.Encode(one, p60, zero, p50, frame);
+    bool left = Hex(frame) == "79fc57e2bf15f8a800000000000040000000000001003001800c006800000000000040000000000000";
+    SensaFrameEncoder.Encode(zero, p50, one, p60, frame);
+    bool right = Hex(frame) == "79003001800c006800000000000040000000000001fc57e2bf15f8a800000000000040000000000000";
+    SensaFrameEncoder.Encode(quarter, p60, zero, p50, frame);
+    bool q = Hex(frame) == "793c51e28f1478a800000000000040000000000001003001800c006800000000000040000000000000";
+    bool silence = Hex(SensaFrameEncoder.Silence()) == "79003001800c006800000000000040000000000001003001800c006800000000000040000000000000";
+    var (amps, pitches) = SensaFrameEncoder.DecodeBlock(frame.AsSpan(1, 19));
+    bool roundTrip = amps.All(a => a == 15) && pitches.All(p => p == 10);
+    var report = new byte[SensaHidTransport.FeatureLength];
+    SensaFrameEncoder.Encode(one, p60, zero, p50, frame);
+    SensaHidTransport.BuildReport(frame, 3, report);
+    bool packet = Hex(report) == "0400030000002a160e0179fc57e2bf15f8a800000000000040000000000001003001800c00680000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002d00";
+    Check(left && right && q && silence && roundTrip && packet,
+        "Direct USB: own encoder reproduces captured Synapse frames (left 1.0, right 1.0, left 0.25, silence) and a full 91-byte report incl. sequence + XOR CRC");
+}
+{
+    // Direct path point folding: transients raise the nearest strength point; silence stays silent.
+    var a = new double[4];
+    var f = new SideFeatures { P0 = .2f, P1 = .2f, P2 = .2f, P3 = .2f, TransientCount = 1, T0Position = .7f, T0Amplitude = .9f };
+    bool on = DirectSensaMapping.Points(f, 1, a);
+    bool folded = on && a[2] > .89 && a[0] < .21 && a[3] < .21;
+    bool silent = !DirectSensaMapping.Points(default, 3, a);
+    Check(folded && silent, "Direct USB: transient folded into nearest point (pos .7 → point 2), silent features send nothing");
+}
+{
+    // Synapse attachment check from Razer's log lines (2026-11-08 states).
+    string S(string t) => "[2026-11-08 04:00:00.000][1] [RzInterHaptics.FFI] [info] " + t;
+    bool attached = SynapseSensaCheck.Evaluate(new[] { S("Starting the RPC server"), S("New sender registered, ID: 1"), S("SenderGetMetadata device \"2636-{x}\"") }, out _);
+    bool afterReboot = !SynapseSensaCheck.Evaluate(new[] { S("SenderGetMetadata device \"2636-{x}\""), S("Starting the RPC server"), S("New sender registered, ID: 2") }, out _);
+    bool senderNoDevice = !SynapseSensaCheck.Evaluate(new[] { S("Starting the RPC server"), S("New sender registered, ID: 1"), S("SenderGetMetadata device \"2636-{x}\""), S("New sender registered, ID: 2") }, out _);
+    Check(attached && afterReboot && senderNoDevice, "Synapse check: device line after last sender = attached; restart or newer sender without it = not attached");
+}

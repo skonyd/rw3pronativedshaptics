@@ -77,6 +77,9 @@ public partial class MainWindow : Window
         _settings.ExperimentalMultiband = false;
         _settings.OutputMethod = Math.Clamp(_settings.OutputMethod, 0, 2);
         _bridge.OutputMethod = (SensaOutputMethod)_settings.OutputMethod;
+        _settings.Transport = Math.Clamp(_settings.Transport, 0, 1);
+        _bridge.Transport = (SensaTransport)_settings.Transport;
+        (_settings.Transport == 1 ? TransportDirect : TransportSynapse).IsChecked = true;
         _bridge.AudioSensitivityPercent = _settings.AudioSensitivityPercent;
         ((SensaOutputMethod)_settings.OutputMethod switch
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
@@ -1196,8 +1199,42 @@ public partial class MainWindow : Window
         _ = EnsureModeRunningAsync();
     }
 
+    private void Transport_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int transport = int.Parse(tag);
+        if (transport == _settings.Transport) return;
+        if (_busy || _starting) { (_settings.Transport == 1 ? TransportDirect : TransportSynapse).IsChecked = true; return; }
+        StopAll();
+        _bridge.Transport = (SensaTransport)transport;
+        _settings.Transport = transport;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Transport", ex); }
+        DiagnosticsService.Info("Sensa transport: " + (SensaTransport)transport + ".");
+        UpdateOutputMethodStatus();
+        _ = EnsureModeRunningAsync();
+    }
+
+    private void UpdateTransportStatus()
+    {
+        if (TransportStatus == null) return;
+        if (_settings.Transport == 1)
+        {
+            var paths = SensaHidTransport.Candidates();
+            TransportStatus.Text = paths.Count > 0
+                ? "Doğrudan USB: Wolverine bulundu" + (_bridge.DirectFramesSent > 0 ? $" • {_bridge.DirectFramesSent} kare gönderildi" : "") + "."
+                : "Doğrudan USB: Wolverine bulunamadı. Kolu USB kablosuyla bağla ve PC modunda olduğundan emin ol.";
+        }
+        else
+        {
+            bool attached = SynapseSensaCheck.LooksAttached(out string detail);
+            TransportStatus.Text = attached ? "Synapse yolu: " + detail
+                : "Synapse kolu titreşim servisine bağlamamış görünüyor (" + detail + "). Synapse'te Wolverine'in Sensa sayfasını aç ya da Doğrudan USB'yi seç.";
+        }
+    }
+
     private void UpdateOutputMethodStatus()
     {
+        UpdateTransportStatus();
         var (multi, standard) = _bridge.HybridFrames;
         OutputMethodStatus.Text = (SensaOutputMethod)_settings.OutputMethod switch
         {
@@ -1225,7 +1262,7 @@ public partial class MainWindow : Window
             var dev = en.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Multimedia);
             bool bt = AudioHapticsBridge.IsBluetooth(dev);
             int ms = AudioSyncDelay.Resolve(_settings.AudioSyncDelayMs, bt);
-            AudioSyncStatus.Text = "Şu anki çıkış: " + dev.FriendlyName + (bt ? " (Bluetooth)" : "") + " → titreşim " + ms + " ms geciktiriliyor.";
+            AudioSyncStatus.Text = "Çıkış: " + dev.FriendlyName + (bt ? " (Bluetooth)" : "") + " → +" + ms + " ms";
         }
         catch { AudioSyncStatus.Text = ""; }
     }
