@@ -1133,7 +1133,7 @@ SpectralContracts.Run(Check);
         double sum = 0; for (int i = s; i < e; i++) sum += b[i] * b[i];
         return e > s ? Math.Sqrt(sum / (e - s)) : 0;
     }
-    bool audible = GameSignalSimulator.Scenes.Where(s => s.Id != "all").All(s =>
+    bool audible = GameSignalSimulator.Scenes.Where(s => s.Id is not ("all" or "triggers")).All(s =>
     {
         var (l, r) = GameSignalSimulator.Haptics(s.Id);
         return Math.Max(Rms(l, 0, s.Seconds), Rms(r, 0, s.Seconds)) > 0.02 && l.All(float.IsFinite) && r.All(float.IsFinite)
@@ -1208,4 +1208,15 @@ SpectralContracts.Run(Check);
     double clickMs = 0; for (int i = 0; i <= 250; i++) if (longClick.Update(i / 250.0, 0.004) > 0) clickMs += 4;
     Check(motorTension && bodyClicksOnly && bow && clickMs >= 150,
         $"Trigger motors: tension inside resistance zones (weapon, bow), none before/after; body default clicks only; clicks {clickMs} ms");
+}
+
+// Trigger motor test scene: silent haptics (body motors stay still), strong trigger effects on both triggers.
+{
+    var (tl, tr) = GameSignalSimulator.Haptics("triggers");
+    var st = GameSignalSimulator.Outputs("triggers");
+    bool silentBody = tl.All(v => v == 0) && tr.All(v => v == 0) && tl.Length == 8 * GameSignalSimulator.Rate;
+    bool parsed = DualSenseOutputReport.TryParse(st[0].Data, out var r) && r.RightTrigger.Mode == 0x26 && r.LeftTrigger.Mode == 0x21;
+    var it = new TriggerEffectInterpreter { TensionScale = 0.45, ClickSeconds = 0.09 }; it.SetEffect(r.RightTrigger);
+    double held = 0; for (int i = 0; i < 100; i++) held = it.Update(0.5, 0.004);
+    Check(silentBody && parsed && held >= 0.9, $"Trigger motor test scene: no haptic audio, R2 vibration {held:F2} while held, L2 feedback");
 }

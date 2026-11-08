@@ -40,6 +40,7 @@ public static class GameSignalSimulator
         new("engine", "Araç motoru (80 + 190 Hz)", "İki elde karışık motor sesi; R2'yi çekince gaz titreşimi.", 3.6),
         new("rain", "Yağmur: rastgele tıkırtılar", "İki avuçta dağınık, hafif tıkırtılar.", 4.0),
         new("pan", "Sol → sağ → sol kayma", "120 Hz titreşim sol avuçtan sağa, sonra geri kayar.", 4.0),
+        new("triggers", "Tetik motoru testi (ses yok)", "Yalnız tetik komutları, gövdede titreşim yok: L2 ve R2'yi yarıya kadar çekip tut, sonra sonuna kadar. Ne hissedersen tetiklerdedir.", 8.0),
         new("all", "Tam tur (hepsi art arda)", "Bütün sahneler sırayla, aralarında kısa sessizlik (~32 sn).", 0),
     ];
 
@@ -190,6 +191,7 @@ public static class GameSignalSimulator
             case "weapon": steps.Add(new(0, OutputData(Weapon(3, 7, 6), Off))); break;
             case "bow": steps.Add(new(0, OutputData(Zones(0x26, 4, 6, 30), Zones(0x21, 2, 5)))); break;
             case "engine": steps.Add(new(0, OutputData(Zones(0x26, 1, 4, 40), Off))); break;
+            case "triggers": steps.Add(new(0, OutputData(Zones(0x26, 1, 8, 40), Zones(0x21, 1, 8)))); break;
             case "explosion":
                 steps.Add(new(0, OutputData(Off, Off, 0, 0)));
                 steps.Add(new(0.4, OutputData(Off, Off, 255, 200)));

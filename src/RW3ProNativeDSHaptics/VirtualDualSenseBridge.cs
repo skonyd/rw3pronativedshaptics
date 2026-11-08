@@ -51,6 +51,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
     /// <summary>Xbox mode: trigger effects on the impulse-trigger motors (true) or, classic, on the body motors.</summary>
     public bool TriggerMotors { get; set; } = true;
     private bool _interpreterForMotors;
+    // Window maxima for the periodic log: physical trigger pull and what each motor was given.
+    private double _wPullL, _wPullR, _wBodyL, _wBodyR, _wTrigL, _wTrigR;
     public WolverineControllerMode ControllerMode => _mode;
     public long XboxMotorWrites => _xbox?.Writes ?? 0;
     public string XboxStatus => _mode != WolverineControllerMode.Xbox ? "" :
@@ -265,6 +267,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             {
                 var g = s.Gamepad;
                 var pad = new XInputPad(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
+                _wPullL = Math.Max(_wPullL, g.bLeftTrigger / 255.0); _wPullR = Math.Max(_wPullR, g.bRightTrigger / 255.0);
                 state.Buttons = MapButtons(g.wButtons);
                 state.Hat = HatOf(DualSenseInputMapping.Hat(g.wButtons));
                 // HIDMaestro axes are [0..1], 0.5 = centre (DualSenseInputMapping; a -1..1 range pinned the
@@ -308,8 +311,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
                     double body = XboxHapticGain;
-                    if (motors) _xbox.Set(Math.Max(rl / 255.0, el * body), Math.Max(rr / 255.0, er * body), lt, rt);
-                    else _xbox.Set(Math.Max(Math.Max(rl / 255.0, el * body), lt), Math.Max(Math.Max(rr / 255.0, er * body), rt), 0, 0);   // classic
+                    double bl = Math.Max(rl / 255.0, el * body), br = Math.Max(rr / 255.0, er * body), tl = lt, tr = rt;
+                    if (!motors) { bl = Math.Max(bl, lt); br = Math.Max(br, rt); tl = tr = 0; }   // classic
+                    _xbox.Set(bl, br, tl, tr);
+                    _wBodyL = Math.Max(_wBodyL, Math.Min(1, bl)); _wBodyR = Math.Max(_wBodyR, Math.Min(1, br));
+                    _wTrigL = Math.Max(_wTrigL, tl); _wTrigR = Math.Max(_wTrigR, tr);
                     if (lastL != 0 || lastR != 0) { var z = new XInput.Vibration(); XInput.XInputSetState((uint)_slot, ref z); lastL = lastR = 0; }
                 }
                 else
@@ -343,7 +349,10 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks} (peak L {wl:F2} R {wr:F2}), output reports {OutputReports}, trigger reports {TriggerReports} " +
                     $"(L2 modes {l2}; R2 modes {r2}), rumble {_rumbleLeft}/{_rumbleRight}, " +
                     $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; mode {_mode}" +
-                    (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites})" : "") + $"; {engine}" + (healed != null ? "; " + healed : ""));
+                    (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites}, " +
+                        $"{(TriggerMotors ? "trigger motors" : "classic")}; max body {_wBodyL:F2}/{_wBodyR:F2} trig {_wTrigL:F2}/{_wTrigR:F2})" : "") +
+                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {engine}" + (healed != null ? "; " + healed : ""));
+                _wPullL = _wPullR = _wBodyL = _wBodyR = _wTrigL = _wTrigR = 0;
             }
             Thread.Sleep(4);
         }
