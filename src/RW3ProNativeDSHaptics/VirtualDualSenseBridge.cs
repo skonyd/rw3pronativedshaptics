@@ -48,10 +48,13 @@ public sealed class VirtualDualSenseBridge : IDisposable
     // ── Xbox mode (no Sensa): haptic audio → body motors, trigger effects → impulse-trigger motors ──
     /// <summary>Haptic envelope → body motor scale in Xbox mode.</summary>
     public static double XboxHapticGain = 1.6;
+    /// <summary>Xbox mode: trigger effects on the impulse-trigger motors (true) or, classic, on the body motors.</summary>
+    public bool TriggerMotors { get; set; } = true;
+    private bool _interpreterForMotors;
     public WolverineControllerMode ControllerMode => _mode;
     public long XboxMotorWrites => _xbox?.Writes ?? 0;
     public string XboxStatus => _mode != WolverineControllerMode.Xbox ? "" :
-        _xbox?.HasDevice == true ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu: GameInput kolu bulamadı (" + (_xbox?.LastError ?? "") + ")";
+        _xbox?.HasDevice == true ? (TriggerMotors ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu, klasik: hepsi gövde motorlarında") : "Xbox modu: GameInput kolu bulamadı (" + (_xbox?.LastError ?? "") + ")";
     private volatile WolverineControllerMode _mode = WolverineControllerMode.NotFound;
     private GameInputRumble? _xbox;
     private float _envStateL, _envStateR;           // OnFrames thread only
@@ -275,6 +278,15 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 try { _ctrl.SubmitState(in state); } catch (Exception ex) { Status = "Giriş gönderilemedi: " + ex.Message; }
                 double lt, rt; byte rl, rr;
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }
+                bool motors = _mode == WolverineControllerMode.Xbox && TriggerMotors;
+                if (motors != _interpreterForMotors)
+                {
+                    // Trigger motors: longer clicks and felt resistance; body motors: short clicks only.
+                    lock (_gate)
+                        foreach (var it in new[] { _left, _right })
+                        { it.ClickSeconds = motors ? 0.09 : TriggerEffectInterpreter.DefaultClickSeconds; it.TensionScale = motors ? 0.45 : 0; }
+                    _interpreterForMotors = motors;
+                }
                 if (_mode == WolverineControllerMode.Xbox)
                 {
                     // Xbox mode: trigger effects on the real impulse-trigger motors (GameInput works in the
@@ -296,7 +308,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
                     double body = XboxHapticGain;
-                    _xbox.Set(Math.Max(rl / 255.0, el * body), Math.Max(rr / 255.0, er * body), lt, rt);
+                    if (motors) _xbox.Set(Math.Max(rl / 255.0, el * body), Math.Max(rr / 255.0, er * body), lt, rt);
+                    else _xbox.Set(Math.Max(Math.Max(rl / 255.0, el * body), lt), Math.Max(Math.Max(rr / 255.0, er * body), rt), 0, 0);   // classic
                     if (lastL != 0 || lastR != 0) { var z = new XInput.Vibration(); XInput.XInputSetState((uint)_slot, ref z); lastL = lastR = 0; }
                 }
                 else

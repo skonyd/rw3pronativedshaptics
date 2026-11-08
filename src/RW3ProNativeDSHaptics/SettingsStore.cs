@@ -27,6 +27,9 @@ public sealed class UserSettings
     public int AudioSensitivityPercent { get; set; } = 100;
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>
     public bool HidePadInGames { get; set; } = true;
+    /// <summary>DualSense trigger effects in Xbox mode: 1 = impulse-trigger motors (+ haptics on the body
+    /// motors), 0 = classic (everything on the body motors, as in PC mode).</summary>
+    public int TriggerFeel { get; set; } = 1;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
 }

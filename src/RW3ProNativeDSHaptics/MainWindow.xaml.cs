@@ -91,6 +91,9 @@ public partial class MainWindow : Window
         (_settings.Transport == 1 ? TransportDirect : TransportSynapse).IsChecked = true;
         _bridge.AudioSensitivityPercent = _settings.AudioSensitivityPercent;
         _bridge.HidePadInGames = _settings.HidePadInGames;
+        _settings.TriggerFeel = Math.Clamp(_settings.TriggerFeel, 0, 1);
+        _bridge.TriggerMotors = _settings.TriggerFeel == 1;
+        (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         HhHideCheckbox.IsChecked = _settings.HidePadInGames;
         ((SensaOutputMethod)_settings.OutputMethod switch
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
@@ -273,6 +276,15 @@ public partial class MainWindow : Window
     }
 
     private async void PadModeRefresh_Click(object sender, RoutedEventArgs e) => await RefreshPadModeAsync();
+
+    private void TriggerFeel_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        _settings.TriggerFeel = int.Parse(tag);
+        _bridge.TriggerMotors = _settings.TriggerFeel == 1;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Trigger feel", ex); }
+        DiagnosticsService.Info("Trigger effects in Xbox mode: " + (_settings.TriggerFeel == 1 ? "trigger motors + haptics" : "classic (body motors)") + ".");
+    }
 
     private async void PadModeXbox_Click(object sender, RoutedEventArgs e)
     {

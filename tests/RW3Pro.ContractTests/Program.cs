@@ -1189,3 +1189,23 @@ SpectralContracts.Run(Check);
     Check(xOk.Contains("✓ Xbox modu") && !xOk.Contains("Sensa") && xBad.Contains("✗ Xbox modu") && xBad.Contains("GameInput"),
         "Simulator verdict in Xbox mode reports the trigger/body motor commands instead of Sensa");
 }
+
+// Trigger motors: resistance becomes felt tension inside the zone; body-motor default stays clicks-only.
+{
+    var weapon = GameSignalSimulator.Weapon(3, 7, 6);                 // resistance zones 3..7, break after 7
+    double Hold(TriggerEffect e, double pull, double tension, double click)
+    {
+        var it = new TriggerEffectInterpreter { TensionScale = tension, ClickSeconds = click }; it.SetEffect(e);
+        for (int i = 0; i <= 50; i++) it.Update(pull * i / 50.0, 0.004);   // pull in, then hold
+        double v = 0; for (int i = 0; i < 40; i++) v = it.Update(pull, 0.004);   // 160 ms later: clicks are over
+        return v;
+    }
+    bool motorTension = Hold(weapon, 0.5, 0.45, 0.09) > 0.2 && Hold(weapon, 0.1, 0.45, 0.09) == 0 && Hold(weapon, 0.95, 0.45, 0.09) == 0;
+    bool bodyClicksOnly = Hold(weapon, 0.5, 0, TriggerEffectInterpreter.DefaultClickSeconds) == 0;
+    var feedback = GameSignalSimulator.Zones(0x21, 2, 5);
+    bool bow = Hold(feedback, 0.6, 0.45, 0.09) > 0.2 && Hold(feedback, 0.1, 0.45, 0.09) == 0;
+    var longClick = new TriggerEffectInterpreter { ClickSeconds = 0.09 }; longClick.SetEffect(weapon);
+    double clickMs = 0; for (int i = 0; i <= 250; i++) if (longClick.Update(i / 250.0, 0.004) > 0) clickMs += 4;
+    Check(motorTension && bodyClicksOnly && bow && clickMs >= 150,
+        $"Trigger motors: tension inside resistance zones (weapon, bow), none before/after; body default clicks only; clicks {clickMs} ms");
+}

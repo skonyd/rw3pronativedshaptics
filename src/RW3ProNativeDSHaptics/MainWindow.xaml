@@ -442,6 +442,13 @@
               <Button x:Name="PadModeXboxBtn" Content="Xbox moduna geç (tetik motorları)" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeXbox_Click"/>
               <Button Content="↻ Algıla" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeRefresh_Click"/>
             </WrapPanel>
+            <TextBlock Text="DualSense tetik efektleri (Xbox modunda)" Foreground="#EEF3FF" Margin="0,0,0,4"/>
+            <WrapPanel Margin="0,0,0,8">
+              <RadioButton x:Name="TriggerFeelMotors" Content="Haptik + tetik motorları" Tag="1" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="190" Checked="TriggerFeel_Checked"
+                           ToolTip="Tetik direnci ve tıkı tetiklerin içindeki motorlarda; oyunun titreşim sesi gövde motorlarında."/>
+              <RadioButton x:Name="TriggerFeelClassic" Content="Klasik (yalnız haptik)" Tag="0" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="170" Checked="TriggerFeel_Checked"
+                           ToolTip="Tetik motorları kullanılmaz; tetik hissi de gövde titreşimiyle verilir (PC modundaki gibi)."/>
+            </WrapPanel>
             <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
                       Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
           </StackPanel>

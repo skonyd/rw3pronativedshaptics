@@ -246,6 +246,13 @@ public sealed class NativeBridgeService : IDisposable
     public string VirtualDualSenseInputCheck => _virtual?.InputCheck ?? "";
     public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
     public bool HidePadInGames { get; set; } = true;
+    private bool _triggerMotors = true;
+    /// <summary>Xbox mode: trigger effects on the trigger motors (true) or classic body rumble. Applies live.</summary>
+    public bool TriggerMotors
+    {
+        get => _triggerMotors;
+        set { _triggerMotors = value; if (_virtual != null) _virtual.TriggerMotors = value; }
+    }
     public string? VirtualDualSenseHidPath => _virtual?.VirtualHidPath;
     public WolverineControllerMode VirtualDualSenseMode => _virtual?.ControllerMode ?? WolverineControllerMode.NotFound;
     public long VirtualXboxMotorWrites => _virtual?.XboxMotorWrites ?? 0;
@@ -281,6 +288,7 @@ public sealed class NativeBridgeService : IDisposable
             _sensa.Features.Reset();
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
+            _virtual.TriggerMotors = _triggerMotors;
             _virtual.EngineProbe = () => SensaEngineSummary;
             // The bridge feeds the engine's feature extractor; if the engine thread is gone, nothing
             // reaches the palms although the game's haptic audio keeps arriving. Restart it.

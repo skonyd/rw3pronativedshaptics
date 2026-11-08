@@ -43,7 +43,13 @@ public readonly record struct DualSenseOutputReport(bool RumbleValid, byte Rumbl
 /// </summary>
 public sealed class TriggerEffectInterpreter
 {
-    public const double ClickSeconds = 0.045;
+    public const double DefaultClickSeconds = 0.045;
+    /// <summary>Click length. 45 ms suits the body motors; the impulse-trigger motors need longer to be felt.</summary>
+    public double ClickSeconds { get; set; } = DefaultClickSeconds;
+    /// <summary>Continuous "tension" while the trigger is inside a resistance zone (0 = clicks only, the
+    /// body-motor default). For the impulse-trigger motors the resistance itself becomes a light vibration,
+    /// so holding a drawn bow or a half-pulled weapon trigger is felt in the trigger, not only its edges.</summary>
+    public double TensionScale { get; set; }
     private TriggerEffect _effect;
     private double _lastPull, _clickLeft, _clickStrength;
 
@@ -57,17 +63,19 @@ public sealed class TriggerEffectInterpreter
     {
         pull = Math.Clamp(double.IsFinite(pull) ? pull : 0, 0, 1);
         var e = _effect;
-        double steady = 0;
+        double steady = 0, tension = 0;
         void Click(double strength) { if (strength > 0) { _clickStrength = Math.Max(_clickStrength * (_clickLeft > 0 ? 1 : 0), strength); _clickLeft = ClickSeconds; } }
         bool Crossed(double at) => _lastPull < at && pull >= at;
         switch (e.Mode)
         {
             case 0x01: // continuous resistance: start position, force
                 if (Crossed(e.P0 / 255.0)) Click(Math.Max(0.25, e.P1 / 255.0));
+                if (pull >= e.P0 / 255.0) tension = Math.Max(0.25, e.P1 / 255.0);
                 break;
             case 0x02: // section resistance: start, end, force
                 if (Crossed(e.P0 / 255.0)) Click(Math.Max(0.25, e.P2 / 255.0));
                 if (Crossed(e.P1 / 255.0)) Click(Math.Max(0.2, e.P2 / 255.0) * 0.6);
+                if (pull >= e.P0 / 255.0 && pull <= e.P1 / 255.0) tension = Math.Max(0.25, e.P2 / 255.0);
                 break;
             case 0x06: // simple vibration: frequency, amplitude, start position
                 if (pull >= e.P2 / 255.0) steady = e.P1 / 255.0;
@@ -78,6 +86,7 @@ public sealed class TriggerEffectInterpreter
                 int zone = Math.Min(9, (int)(pull * 10)), prev = Math.Min(9, (int)(_lastPull * 10));
                 int mask = e.P0 | (e.P1 << 8);
                 if (zone > prev && (mask & (1 << zone)) != 0) Click(ZoneStrength(e, zone) / 8.0);
+                if ((mask & (1 << zone)) != 0 && pull > 0.02) tension = ZoneStrength(e, zone) / 8.0;
                 break;
             }
             case 0x25: // weapon: start zone mask (P0,P1 low/high), end zone, strength
@@ -87,6 +96,7 @@ public sealed class TriggerEffectInterpreter
                 double strength = Math.Clamp((e.P2 & 0x07) + 1, 1, 8) / 8.0;
                 if (start >= 0 && Crossed(start / 10.0)) Click(0.3);
                 if (end >= 0 && Crossed(Math.Min(1, (end + 1) / 10.0))) Click(strength);   // the "break"
+                if (start >= 0 && pull >= start / 10.0 && pull < Math.Min(1, (end + 1) / 10.0)) tension = strength;
                 break;
             }
             case 0x26: // vibration: 10-zone mask + 3-bit amplitudes, frequency
@@ -98,6 +108,7 @@ public sealed class TriggerEffectInterpreter
             }
         }
         _lastPull = pull;
+        steady = Math.Max(steady, tension * TensionScale);
         double click = 0;
         if (_clickLeft > 0) { click = _clickStrength; _clickLeft -= dt; }
         return Math.Clamp(Math.Max(steady, click), 0, 1);
