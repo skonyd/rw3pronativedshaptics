@@ -1,82 +1,47 @@
-# Implementation status & acceptance gates
+# Implementation status — 2026-11-07
 
-**Snapshot:** 2026-11-06 (Europe/Istanbul) · **main** `ad2aed3b7437dba4c01e7ab712f9be6cbf1b9cc9` · **main Windows CI:** [run 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530), **success**.
+**M3 open; M4 blocked / not implemented.** Native v2 is a lossy prototype, not a validated authentic-game high-fidelity bridge.
 
-## Executive answer: where are we?
+Newest increment: [opt-in multiband `.haps` prototype](MULTIBAND_RESULTS_20261108.md) now exists alongside the default single-band path. Public AddHM/UpdateHM with separate melodies changes additional provider payload regions repeatably; earlier one-band observations were specific to parametric/multiple-event tests, not the entire SDK.240 source-spectrum cases pass;42.7ms diagnostic profile fails55/240 low-tone cases. Live PCM and Windows audio routes completed; phase, nearby-tone/short-hit fidelity and physical latency remain unverified. This does not close M4 waveform-fidelity acceptance.
 
-**Current stage: M3 — physical source/output integration and validation (OPEN / BLOCKED).** The preceding Windows application, offline PCM pipeline, and hardware-free test infrastructure are implemented. The primary product objective—live **authentic, game-authored DualSense stereo HD-haptic PCM** reproduced on the two **physical Wolverine V3 Pro Sensa actuators** with convincing fidelity—is **not complete**. Do not assign an overall completion percentage based on code/test counts: the unproven hardware and vendor-output contract is the critical dependency.
+Latest local increment (2026-11-08): [scenario audit](SCENARIO_AUDIT_20261108.md) adds 68 physical one-mic cases, comparator partial-tail regression, independent phase/multitone oracles, Xbox safety command-writer tests and unity audio input. WPF Release build has zero warnings/errors and required contracts pass. 4,452 finite tones match feature tolerances; **nine of 240 stress cases fail**. Later repeats are steadier, but final cold controls also improve, so reuse is not a proven cure. 140% output still saturates strong signals. This does not close M3/M4 or establish production readiness.
 
-This project has two separate kinds of progress:
+## Evidence and implemented behavior
 
-1. **Engineering/software readiness (well advanced):** the Windows WPF application, explicit modes, nine route profiles, offline and passive 4ch/48kHz PCM processing, synthetic A/B lab, status/evidence rules, installation packages and automated contract tests work at the code/Windows CI level.
-2. **End-to-end product validation (not established):** actual supported game source, gamepad binding to a virtual DualSense, correct physical Razer left/right outputs, **continuous high-resolution waveform output** and measured latency/spectral/perceptual fidelity require vendor-supported hardware access and physical tests.
+| Area | Current evidence | Limits |
+| --- | --- | --- |
+| Main baseline | `2d59f2d`, [successful CI 42232498582](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42232498582) | Does not cover uncommitted v2/UX changes or hardware |
+| Desktop | Single Genel/Test/Ayarlar window, tray, auto-run/retry, foreground controller navigation | Real installation/update/game performance acceptance remains |
+| Normal / Audio | Game-managed rumble; local PC audio→Sensa and Xbox WGI body/trigger prototypes, generic XInput route | Lossy Sensa output; current PC-mode hardware cannot validate Xbox-mode output |
+| Native source | Strict 4ch/48k rear PCM; compatible name-based endpoint discovery; 10ms buffer request | No real-game provenance or input-to-virtual-DualSense mapping proof |
+| Native v2 output | 1ms feature slots; current 33ms output pacing after provider-backlog findings; amplitude/frequency/transients, Hand L/R, 30–400Hz | Lossy one-band parametric mapping; bands 2–3 encoder undocumented; physical latency/fidelity unproven |
+| Hardware | User felt Hand Left/Right body pulses; provider frame separation and acoustic observations recorded | Subjective isolation varied; acoustic desk/mic timing is not calibrated actuator measurement |
+| Test | 23 synthetic demos on Wolverine or DualSense; side tests and physical-feel answers | Synthetic signal is not game-authored evidence |
+| DualSense reference | Unmodified quad PCM16 Exclusive only; unsupported endpoints fail without Shared fallback | Physical response and bit-perfect hardware output unverified |
+| Settings | RW3 0–100% output and 140/200/300% Native gain | Only Wolverine/RW3 outputs; never scale DualSense reference |
+| Retained libraries | Deterministic behavioral fixtures, ratings rules, WAV/10s opt-in RAM capture, original 48k transport | Separate A/B, expert and source-only diagnostic windows removed; no current UI entry points |
 
-## Stage-gated plan (not a fabricated percent-complete estimate)
+## Hardware conditions and next acceptance
 
-| Stage | Deliverable | Evidence | Status |
-| --- | --- | --- | --- |
-| **M0: Scope and research** | Separate original DualSense PCM from conventional rumble/system audio; document source options, licensing and blockers | Docs / ADR-002 | **Complete as baseline** (research continues) |
-| **M1: Windows shell and safe conventional paths** | WPF/tray/settings, ordinary XInput and opt-in sound-to-rumble, package/update infrastructure | Code + successful Windows CI/installer smoke | **Implemented / CI-passing**; physical Windows performance still unmeasured |
-| **M2: Controlled native-source and A/B test infrastructure** | Strict 4ch/48k UAC source-only capture, rear L/R telemetry, PCM16/Float32 parsing, synthetic DualSense/Wolverine scenes, explicit motor confirmation, 10-scene WAV export, opt-in 10s RAM capture/save/discard | Code + hardware-free contracts + Windows CI | **Implemented / CI-passing**; real controllers still unverified |
-| **M3: Authentic game and physical actuator gates** | Confirm actual game's stereo DualSense PCM and Wolverine input mapping; verify genuinely independent, safe L/R Razer Sensa physical output on hardware; capture baseline latency and frame times | Reproducible recorded test protocol and real hardware observations | **Current stage: open / blocked by hardware and licensed runtime access** |
-| **M4: High-fidelity live bridge and release acceptance** | Obtain and implement legal/supported real-time stereo Sensa waveform sink (not 50Hz envelopes); source-to-actuator A/B and performance acceptance; reliable supported release | Live game waveform provenance + hardware measurements + licensing | **NOT IMPLEMENTED / CRITICAL BLOCKER** |
+Prior tests: Windows 11 build 26320, Synapse 4.0.896, Interhaptics v1.8.0, Wolverine wired PC `1532:0A4C`; exact controller firmware version was not recorded. [Hardware log](HARDWARE_TEST_LOG.md), [pipeline analysis](SENSA_PIPELINE_ANALYSIS.md).
 
-M2 "complete" means the tooling is implemented and software-tested, **not that Wolverine HD haptics already matches DualSense**. M3 and M4 cannot be marked complete by a green CI, a rendered event, a WAV file or user-perceived vibration alone.
+1. Repeat side isolation, silence/STOP/unplug/reconnect and idle-output checks on actual hardware ([#1](https://github.com/skonyd/rw3pronativedshaptics/issues/1)).
+2. Prove real-game rear PCM and physical/virtual input/audio binding, without double input ([#2](https://github.com/skonyd/rw3pronativedshaptics/issues/2), [#5](https://github.com/skonyd/rw3pronativedshaptics/issues/5)).
+3. Compare unchanged DualSense reference to lossy Wolverine with repeatable subjective and sensor measurements, and real game frame times ([#3](https://github.com/skonyd/rw3pronativedshaptics/issues/3)).
+4. Establish a documented, licensed live high-fidelity destination before claiming M4 ([#4](https://github.com/skonyd/rw3pronativedshaptics/issues/4)). Wwise offline WAV support does not prove live PCM support.
 
-## Current implementation inventory
+Audio-to-Sensa and Xbox WGI backends now exist locally as prototypes; game-rumble-to-Sensa remains unimplemented. Explicit virtual-controller setup is separate from proven input mapping. No driver/SDK was installed in this audit. No overall completion percentage is defined. See [ROADMAP](ROADMAP.md) and [VALIDATION_PLAN](VALIDATION_PLAN.md).
 
-| Workstream | What exists today | Still missing / caveat | Main reference |
-| --- | --- | --- | --- |
-| Windows desktop | .NET 10 WPF, system tray, persistent mode, start-up option, release updater | Fresh user Windows 11 and in-game performance checks | [WINDOWS_APP](WINDOWS_APP.md) |
-| Nine user-selectable methods | Normal XInput, RW3 audio-to-XInput; native UAC physical/PadForge/DSX+/manual; external official Synapse/Sensa; research-only Wwise | External methods are **not** internally implemented; PadForge is only a promising source candidate | [ROUTE_SELECTION](ROUTE_SELECTION.md) |
-| Native capture diagnostics | Loopback from user-confirmed 4ch/48k PCM16 or Float32 render endpoint; energy, peaks, stale/no-signal states; Razer-free source-only mode | Endpoint name and nonzero rear PCM **do not prove game-authored provenance** | [Issue #2](https://github.com/skonyd/rw3pronativedshaptics/issues/2) |
-| Existing native Razer sink | Two Interhaptics parametric Palm Left/Right effects refreshed at **20ms / 50Hz** via licensed user-supplied HAR and Razer provider | **LOSSY** envelope, no physical side mapping or original 48k waveform replay proven | [Issue #1](https://github.com/skonyd/rw3pronativedshaptics/issues/1), [Issue #4](https://github.com/skonyd/rw3pronativedshaptics/issues/4) |
-| Behavioral lab | Ten original scenarios (rain, sand/gravel/grass footsteps, pistol/rifle, idle/acceleration, explosion, thunder), each separately or both controllers; physical response ratings | Synthetic scenarios **are not** first-party Sony game-authored data; Razer path remains lossy; physical comparison awaits hardware | [A/B lab](AB_BEHAVIORAL_TEST_LAB.md) |
-| Original USB DualSense reference | Sends original *generated fixture bytes* to physical USB DualSense 4ch/48k WASAPI path with **no RW3 DSP/gain**; Exclusive preflight or explicitly selected Shared | Windows hardware/driver transformations and physical response unmeasured; no proof of genuine authored game effect | [A/B lab](AB_BEHAVIORAL_TEST_LAB.md) |
-| Presence/confirmation | Windows present USB PnP ✓/✕/unknown for Sony and Razer; Wolverine wired checkbox; controller feel/no feel/unsure; local rated report | USB Razer receiver can mimic direct connection, so green ✓ is **not proof of wired controller or working actuators** | [A/B lab](AB_BEHAVIORAL_TEST_LAB.md) |
-| Stereo reference/capture | Bit-preserving 4ch rear 3/4 to stereo WAV PCM16/Float32, ten fixture exports; optional consented **10-second** source-only RAM capture and local save/discard | Offline WAV is **not** a real-time Razer HD haptic backend; capture is not origin-authenticated | [WAV/Wwise](STEREO_WAV_CAPTURE_AND_WWISE.md) |
-| Output intensity | Persisted 0–100% RW3 output gain plus per-Wolverine A/B test level | Does **not** change the physical DualSense reference, game's native XInput or Synapse effects | [A/B lab](AB_BEHAVIORAL_TEST_LAB.md) |
-| Build/package/security | Contract suite, self-test, WPF build, portable ZIP, per-user Inno Setup install/uninstall and SHA256 manifests | CI does not contain either physical controller or licensed Wwise/Razer runtime; no certificate-backed code signing claim | [Windows CI](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530) |
+## Channel conversion lab increment — 2026-11-07
 
-## Top-priority remaining work, in dependency order
+Test card **DualSense → W3 Pro** adds seven channel/negative-control scenes plus the 23 demos, one canonical unmodified 4ch PCM source, the shared production decoder boundary, strict separate DualSense Exclusive reference and optional microphone level metering. Original-source SHA256 and software saturation/channel statistics are separate from acoustic observations. This is synthetic replay, not USB/WASAPI source capture or game-authored evidence; M3/M4 remain open. See [channel lab contract and procedure](CHANNEL_LAB.md).
 
-**P0 — physical Razer output and original-source feasibility (M3).**
+## Physical USB endpoint / full loopback increment — 2026-11-07
 
-1. **[Issue #1](https://github.com/skonyd/rw3pronativedshaptics/issues/1)**: with Wolverine V3 Pro plugged into Windows 11 and legally obtained licensed HAR/Razer provider binaries + Synapse/Chroma, test separate Left/Right Sensa pulses, physical localization, safe STOP/unplug, pulse duration and channel separation. Log firmware, app/runtime versions and video/sensor observations; API init/ticks are not sufficient.
-2. **[Issue #2](https://github.com/skonyd/rw3pronativedshaptics/issues/2)** + **[Issue #5](https://github.com/skonyd/rw3pronativedshaptics/issues/5)**: run a DualSense-haptics-capable real PC game; confirm actual 4ch rear-channel PCM comes from the game and that buttons/sticks can bind a **user-installed** virtual DualSense + UAC endpoint (PadForge Full, DSX+ only if compatible). Avoid dual-input and do not automatically install any drivers.
-3. **[Issue #3](https://github.com/skonyd/rw3pronativedshaptics/issues/3)**: perform physical dual-controller 10-scene A/B and error/unplug safety, plus average FPS/1% low/p95–p99 frame-time baseline during actual game sessions; normal audio rumble is not HD parity.
+After the user connected DualSense, Windows exposed a physical **4ch/48k Float32 quad** render endpoint. The lab now has a separate independent-process Shared source → real WASAPI → v2 → Wolverine route, with an 8-second bounded source-only sample-comparison pass before live Sensa. Controls verified exact active source samples at unity Windows level, rear-channel isolation and no rear activity for speaker-only/silence. The user confirmed vibration on Wolverine. This proves a **synthetic full Windows route**, not actual game authorship or DualSense-equivalent physical fidelity. The Exclusive reference is unchanged; no new driver was installed. Optional temporary source unmute/unity level is explicit and restored after the test. See [route details](CHANNEL_LAB.md) and the hardware log. M3/M4 remain open.
 
-**P0 — high-fidelity waveform destination (M4, critical path).**
+## 2026-11-08 audit outcome
 
-4. **[Issue #4](https://github.com/skonyd/rw3pronativedshaptics/issues/4)**: evaluate official Razer/WYVRN Sensa streaming contracts. Licensed Wwise Motion/Sensa plugin can import 2ch haptic WAV for an **offline** comparison, but WAV-to-Motion is not demonstrated live audio-stream compatibility. Wwise Audio Input Source → Motion → Razer Sensa is an **unproven hypothesis**; establish both software compatibility and physical stereo actuator output *before* implementing a live adapter.
-5. If—and only if—the documented legal hardware contract exists and passes physical proof, implement a bounded low-latency stereo PCM pipeline, independent L/R safety limiter where appropriate on Wolverine only, measurable buffers/latency and robust source/endpoint recovery. **Do not replace a lossy method with an equally lossy route and call it native HD.**
+Microphone access now works through the explicitly selected installed .NET Host. Apphost permission remains a separate release check. The aggregate-only A4tech/Wolverine audit completed 130 controlled cases, including 82 frequency/level paths, 24 repeats, stereo/bursts/alternating/5s sustain/source cancellation. Previous mic processing restored; no vendor service or driver changed. This is **physical acoustic observation**, not a calibrated DualSense reference or authentic-game validation. Repeat variation and unresolved weak pairs keep M3/M4 open. [Results](ACOUSTIC_RESULTS_20261108.md).
 
-**P1 — production hardening after the P0 feasibility gates:** real Win11 device/reconnect/cleanup, licensed runtime compatibility matrix, game profiles, installer/release confidence, performance and code-signing decision.
-
-## What would count as finished?
-
-All of the following must be evidenced, **not simply planned**:
-
-- [ ] A supported, reproducible PC game emits authentic authored DualSense rear L/R PCM through a known endpoint, with suitable source proof and without double input.
-- [ ] Independently identifiable **real Wolverine V3 Pro left and right body actuators** render the requested output and stop safely.
-- [ ] A vendor-supported/legal **live high-fidelity stereo waveform** route preserves materially more of the original frequency/transient/detail than today's lossy 50Hz envelope; measured output, latency and failure behavior meet documented acceptance thresholds.
-- [ ] Side-by-side physical original DualSense/Wolverine tests (including blind/repeated texture/impact/stereo scenes) demonstrate useful fidelity; any limitations are disclosed rather than silently masked.
-- [ ] Real Windows 11 and game-performance/driver/reconnect tests pass; packaging and licensing remain compliant.
-
-## Source of truth and update rules
-
-- Source `main`: `ad2aed3b` as of snapshot; PRs [#6](https://github.com/skonyd/rw3pronativedshaptics/pull/6)–[#12](https://github.com/skonyd/rw3pronativedshaptics/pull/12) covered the engineering increments. **Do not assume a subsequent PR is merged or CI-green until checked.**
-- Latest snapshot CI: [run 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530) succeeded for `ad2aed3b`. The portable/installer and contract results are **hardware-free**.
-- For active work, use [ROADMAP](ROADMAP.md) for work order and [VALIDATION_PLAN](VALIDATION_PLAN.md) for explicit acceptance. The five numbered [issues](https://github.com/skonyd/rw3pronativedshaptics/issues) track remaining M3/M4 dependencies.
-- Do not report an overall completion percentage without documented milestone weights and independent physical evidence. Keep "software test passing" distinct from "hardware verified" and "shipped product".
-
-## M4 preparation increment: source-only bit-exact 48k stereo transport
-
-A software-only `RealtimeStereoPcmTransport` and optional Native Bridge **discard-output probe** were added without making any claim that a real-time physical Wolverine PCM output is implemented. A bounded 120ms stereo ring preserves each sample of rear haptic channels 3/4 and accounts separately for overflow/dropped frames and underrun zero padding. Source-only mode must be explicit; recording and transport are mutually exclusive. **No vendor Sensa output/physical haptic is attached.** Contract tests exercise sample identity, wrap, bounds, malformed input and concurrency. This is preparation for M4, and **does not change the current stage M3**. [Technical detail](REALTIME_PCM_TRANSPORT.md).
-
-The canonical snapshot above records a confirmed earlier `main` commit/CI; later feature commits require their own CI validation before being labeled passed.
-
-## Source delay minimization (M4 preparation, still no physical HD output)
-After the bounded PCM queue increment, the source-only diagnostics path was redesigned for event-driven delivery (240 original PCM frames per block rather than 960 frames every 20ms) and high-resolution software callback→reader residence measurements. Legacy NAudio 100ms loopback capture-buffer requests became selectable 10/20/50/100ms (20ms default). This reduces *requested* source buffering and avoidable internal scheduling delay without transforming the original DualSense PCM. The driver may not grant the requested time, and no device/actuator total latency is measured. See [LATENCY_BUDGET](LATENCY_BUDGET.md).
-
-**M3 and M4 status is unchanged:** actual authored-game capture, physical Wolverine independent Sensa L/R, vendor-supported live waveform playback and end-to-end latency/fidelity tests have not been demonstrated.
+The user-supplied earlier conversation plan was reviewed. Mode-aware audio prototypes exist; game-rumble→Sensa and virtual-DualSense trigger conversion remain open. True standalone Sensa remains research; the current route depends on the vendor runtime. [Concrete staged plan](SYNAPSE_INDEPENDENCE.md).

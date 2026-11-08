@@ -180,6 +180,260 @@ Check(!UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"HID\VID_1532&PID_0A3F\B") 
     "Virtual/HID-only nodes cannot certify a present USB root device");
 Check(!UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"USB\VID_1532&PID_0A3FF\B"),
     "PID prefix collision rejected");
+Check(UsbGamepadClassifier.IsWolverineWiredPcModeNode(@"USB\VID_1532&PID_0A4C\8&EF6451E&0&6") &&
+      UsbGamepadClassifier.IsWolverineV3ProUsbNode(@"USB\VID_1532&PID_0A4C&MI_02\9&X"),
+    "Wired PC-mode Wolverine 1532:0A4C recognized");
+Check(!UsbGamepadClassifier.IsWolverineWiredPcModeNode(@"USB\VID_1532&PID_0A3F\B"),
+    "Dongle/Xbox-mode 0A3F is not reported as a wired PC-mode connection");
+// ── v2 HapticFeatureExtractor: envelope / frequency / transients / isolation ──
+static byte[] FourCh16(int frames, Func<int, float> left, Func<int, float> right)
+{
+    var b = new byte[frames * 8];
+    for (int i = 0; i < frames; i++)
+    {
+        short l = (short)Math.Round(Math.Clamp(left(i), -1f, 1f) * 32767);
+        short r = (short)Math.Round(Math.Clamp(right(i), -1f, 1f) * 32767);
+        b[i * 8 + 4] = (byte)l; b[i * 8 + 5] = (byte)(l >> 8);
+        b[i * 8 + 6] = (byte)r; b[i * 8 + 7] = (byte)(r >> 8);
+    }
+    return b;
+}
+static byte[] FourChF32(int frames, Func<int, float> left, Func<int, float> right)
+{
+    var b = new byte[frames * 16];
+    for (int i = 0; i < frames; i++)
+    {
+        BitConverter.TryWriteBytes(b.AsSpan(i * 16 + 8, 4), left(i));
+        BitConverter.TryWriteBytes(b.AsSpan(i * 16 + 12, 4), right(i));
+    }
+    return b;
+}
+Func<int, float> Sine(double hz, double amp) => i => (float)(amp * Math.Sin(2 * Math.PI * hz * i / 48000.0));
+Func<int, float> Zero = _ => 0f;
+{
+    var fx = new HapticFeatureExtractor();
+    long cur = 0;
+    fx.Push(FourCh16(4800, Zero, Zero), FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+    int n0 = fx.Take(ref cur, out var sl, out var sr);
+    Check(n0 == 100 && sl.Peak == 0 && sr.Peak == 0 && sl.FrequencyHz == 0 && sl.TransientCount == 0,
+        "v2 extractor: 100 ms silence -> 100 slots, zero envelope, no frequency, no transient");
+    Check(fx.Take(ref cur, out _, out _) == 0, "v2 extractor: no new data -> 0 slots (engine holds/fades)");
+
+    fx.Push(FourCh16(9600, Sine(60, 0.5), Zero), FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+    fx.Take(ref cur, out var l60, out var r60);
+    Check(Math.Abs(l60.P3 - 0.5f) < 0.06f && Math.Abs(l60.FrequencyHz - 60) <= 5,
+        $"v2 extractor: 60 Hz sine 0.5 on left -> envelope {l60.P3:F2}, frequency {l60.FrequencyHz:F0} Hz");
+    Check(r60.Peak == 0 && r60.FrequencyHz == 0 && r60.TransientCount == 0,
+        "v2 extractor: left-only source leaves right completely silent (no cross-talk in software)");
+
+    fx.Push(FourCh16(9600, Zero, Sine(200, 0.8)), FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+    fx.Take(ref cur, out _, out var r200);
+    Check(Math.Abs(r200.FrequencyHz - 200) <= 10 && r200.P3 > 0.7f,
+        $"v2 extractor: 200 Hz sine on right -> {r200.FrequencyHz:F0} Hz, envelope {r200.P3:F2}");
+}
+{
+    var fx = new HapticFeatureExtractor();
+    long cur = 0;
+    fx.Push(FourCh16(4800, Zero, Zero), FourChannelHapticAnalyzer.PcmEncoding.Pcm16);   // 100 ms quiet
+    fx.Take(ref cur, out _, out _);
+    fx.Push(FourCh16(240, Sine(150, 0.9), Zero), FourChannelHapticAnalyzer.PcmEncoding.Pcm16); // 5 ms hit
+    int nHit = fx.Take(ref cur, out var hit, out var hitR);
+    Check(nHit == 5 && hit.TransientCount == 1 && hit.T0Amplitude > 0.3f && hitR.TransientCount == 0,
+        $"v2 extractor: sudden 5 ms hit -> exactly one left transient (amp {hit.T0Amplitude:F2}), none on right");
+    fx.Push(FourCh16(4800, Sine(150, 0.9), Zero), FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+    fx.Take(ref cur, out var steady, out _);
+    Check(steady.TransientCount == 0, "v2 extractor: steady vibration after the hit is not re-reported as transients");
+}
+{
+    var fx = new HapticFeatureExtractor();
+    long cur = 0;
+    fx.Push(FourChF32(9600, Sine(80, 0.4), Sine(120, 0.6)), FourChannelHapticAnalyzer.PcmEncoding.Float32);
+    fx.Take(ref cur, out var fl, out var fr);
+    Check(Math.Abs(fl.FrequencyHz - 80) <= 5 && Math.Abs(fr.FrequencyHz - 120) <= 6 &&
+          Math.Abs(fl.P3 - 0.4f) < 0.06f && Math.Abs(fr.P3 - 0.6f) < 0.06f,
+        $"v2 extractor: Float32 stereo -> L {fl.FrequencyHz:F0} Hz/{fl.P3:F2}, R {fr.FrequencyHz:F0} Hz/{fr.P3:F2}");
+    var nan = FourChF32(480, _ => float.NaN, _ => float.PositiveInfinity);
+    fx.Push(nan, FourChannelHapticAnalyzer.PcmEncoding.Float32);
+    fx.Take(ref cur, out var nl, out var nr);
+    Check(float.IsFinite(nl.P3) && float.IsFinite(nr.P3) && float.IsFinite(nl.FrequencyHz),
+        "v2 extractor: NaN/Infinity samples never reach the engine");
+}
+{
+    var fx = new HapticFeatureExtractor();
+    long cur = 0;
+    fx.Push(FourCh16(480, i => (float)(i / 480.0 * Math.Sin(2 * Math.PI * 100 * i / 48000.0)), Zero),
+        FourChannelHapticAnalyzer.PcmEncoding.Pcm16);   // 10 ms rising ramp
+    fx.Take(ref cur, out var ramp, out _);
+    Check(ramp.P0 < ramp.P1 && ramp.P1 < ramp.P2 && ramp.P2 < ramp.P3,
+        $"v2 extractor: 4 points follow a rising envelope inside one window ({ramp.P0:F2} {ramp.P1:F2} {ramp.P2:F2} {ramp.P3:F2})");
+}
+// ── v2 demo signals: bounds, energy, 8-direction encoding ──
+foreach (var demo in NativeDemoSignals.All)
+{
+    int n = NativeDemoSignals.DurationMs(demo) * 48;
+    double el = 0, er = 0, peak = 0; bool finite = true;
+    for (int i = 0; i < n; i += 3)
+    {
+        var (l, r) = NativeDemoSignals.Sample(demo, i / 48000.0);
+        if (!double.IsFinite(l) || !double.IsFinite(r)) finite = false;
+        peak = Math.Max(peak, Math.Max(Math.Abs(l), Math.Abs(r)));
+        el += l * l; er += r * r;
+    }
+    Check(finite && peak <= 1.0 + 1e-9 && el + er > 1 && NativeDemoSignals.Title(demo).Length > 0,
+        $"v2 demo {demo}: finite, peak {peak:F2} <= 1, has energy (L {el:F0} / R {er:F0})");
+}
+{
+    // Run each 8-direction step through the real extractor and compare left/right and frequency.
+    (float L, float R, float Hz) Step(int step)
+    {
+        var fx = new HapticFeatureExtractor(); long cur = 0;
+        int start = step * NativeDemoSignals.DirectionStepMs * 48 + 60 * 48, frames = 300 * 48;
+        var b = new byte[frames * 8];
+        for (int i = 0; i < frames; i++)
+        {
+            var (l, r) = NativeDemoSignals.Sample(NativeDemo.Directions8, (start + i) / 48000.0);
+            short ls = (short)(l * 32767), rs = (short)(r * 32767);
+            b[i * 8 + 4] = (byte)ls; b[i * 8 + 5] = (byte)(ls >> 8); b[i * 8 + 6] = (byte)rs; b[i * 8 + 7] = (byte)(rs >> 8);
+        }
+        fx.Push(b, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+        fx.Take(ref cur, out var fl, out var fr);
+        return (fl.P3 + fl.P2, fr.P3 + fr.P2, Math.Max(fl.FrequencyHz, fr.FrequencyHz));
+    }
+    var front = Step(0); var right = Step(2); var back = Step(4); var left = Step(6);
+    Check(right.L < right.R * 0.05f && left.R < left.L * 0.05f,
+        $"v2 demo 8 yön: 'Sağ' only right (L {right.L:F2} / R {right.R:F2}), 'Sol' only left (L {left.L:F2} / R {left.R:F2})");
+    Check(Math.Abs(front.L - front.R) < 0.05f * Math.Max(front.L, front.R) && Math.Abs(back.L - back.R) < 0.05f * Math.Max(back.L, back.R),
+        "v2 demo 8 yön: 'Ön' and 'Arka' are centred (equal left/right)");
+    Check(front.Hz > 150 && back.Hz < 60,
+        $"v2 demo 8 yön: front/back separated by frequency (Ön {front.Hz:F0} Hz, Arka {back.Hz:F0} Hz)");
+    Check(NativeDemoSignals.Caption(NativeDemo.Directions8, 1300).Contains("Sağ") &&
+          NativeDemoSignals.Caption(NativeDemo.Directions8, 3700).Contains("Sol"),
+        "v2 demo 8 yön: on-screen caption follows the playing direction");
+}
+// Strict reference preflight and byte identity, without opening a hardware endpoint.
+var referenceBytes = NativePcmTestPlayer.BuildFourChannelTone(HapticTestChannel.Left, 48000, 520);
+var referenceCopy = (byte[])referenceBytes.Clone();
+bool rejectedShared = false;
+try { using var rejected = DualSenseAudioFormat.OpenReferenceStream(referenceBytes, false); }
+catch (InvalidOperationException ex) { rejectedShared = ex.Message.Contains("Shared"); }
+Check(rejectedShared && referenceBytes.SequenceEqual(referenceCopy),
+    "Unsupported Exclusive reference fails without Shared fallback or PCM mutation");
+using (var referenceStream = DualSenseAudioFormat.OpenReferenceStream(referenceBytes, true))
+{
+    var playedBytes = new byte[referenceBytes.Length];
+    Check(referenceStream.Read(playedBytes, 0, playedBytes.Length) == playedBytes.Length &&
+        playedBytes.SequenceEqual(referenceCopy), "Exclusive reference stream preserves every original PCM byte");
+}
+foreach (var malformedReference in new[] { Array.Empty<byte>(), new byte[9] })
+{
+    bool rejected = false;
+    try { using var stream = DualSenseAudioFormat.OpenReferenceStream(malformedReference, true); }
+    catch (ArgumentException) { rejected = true; }
+    Check(rejected, "Reference playback rejects empty or incomplete quad PCM frames");
+}
+
+// ── A: audio → Sensa haptic band ──
+{
+    double Pass(double hz)
+    {
+        var fx = new HapticFeatureExtractor(); long cur = 0;
+        var sink = new SensaAudioSink(fx);
+        var buf = new float[48000 * 2];
+        for (int i = 0; i < 48000; i++) { float v = (float)(0.3 * Math.Sin(2 * Math.PI * hz * i / 48000)); buf[2 * i] = v; buf[2 * i + 1] = 0; }
+        sink.Accept(buf);
+        fx.Take(ref cur, out var l, out var r);
+        return l.P3 + r.P3 * 1000;   // right must stay 0
+    }
+    double bass = Pass(60), mid = Pass(1000);
+    Check(bass > 0.27 && bass < 0.31 && mid < 0.005,
+        $"A audio→Sensa: 60 Hz passes ({bass:F2}), 1 kHz is cut ({mid:F3}), left-only input stays left");
+}
+{
+    // Audio pan test: left at start, centred at 1.5 s, right at 3 s, back to left at the end.
+    var a0 = AudioPanTest.Sample(0.4); var mid = AudioPanTest.Sample(1.5); var right = AudioPanTest.Sample(2.95);
+    double E(double t, bool left) { double e = 0; for (int i = 0; i < 480; i++) { var s = AudioPanTest.Sample(t + i / 48000.0); e += left ? s.L * s.L : s.R * s.R; } return e; }
+    Check(E(0.3, true) > 20 * E(0.3, false) && E(2.9, false) > 20 * E(2.9, true) && E(5.6, true) > 20 * E(5.6, false) &&
+          Math.Abs(E(1.5, true) - E(1.5, false)) < 0.1 * E(1.5, true) &&
+          AudioPanTest.Caption(200).Contains("SOL") && AudioPanTest.Caption(2900).Contains("SAĞ"),
+        "A audio pan test: left -> centre -> right -> left, captions follow");
+}
+{
+    // Extra sound tests: hard left/right hops, front/back texture, 8 directions.
+    double En(AudioTestKind k, double t, bool left) { double e = 0; for (int i = 0; i < 480; i++) { var s = AudioPanTest.Sample(k, t + i / 48000.0); e += left ? s.L * s.L : s.R * s.R; } return e; }
+    bool sameAsDemo = true;
+    for (int i = 0; i < 48000 * 3; i += 7)
+    {
+        var d = NativeDemoSignals.Sample(NativeDemo.PingPong, i / 48000.0); var a = AudioPanTest.Sample(AudioTestKind.PingPong, i / 48000.0);
+        if (Math.Abs(a.L * SensaAudioSink.PreGain - d.L) > 1e-5 || Math.Abs(a.R * SensaAudioSink.PreGain - d.R) > 1e-5) { sameAsDemo = false; break; }
+    }
+    bool pingPong = sameAsDemo && AudioPanTest.DurationOf(AudioTestKind.PingPong) == NativeDemoSignals.DurationMs(NativeDemo.PingPong) &&
+                    En(AudioTestKind.PingPong, 0.1, true) > 0.01 && En(AudioTestKind.PingPong, 0.1, false) == 0 &&
+                    En(AudioTestKind.PingPong, 0.35, false) > 0.01 && En(AudioTestKind.PingPong, 0.35, true) == 0 &&
+                    AudioPanTest.Caption(AudioTestKind.PingPong, 100).Contains("SOL") && AudioPanTest.Caption(AudioTestKind.PingPong, 350).Contains("SAĞ");
+    double Tone(double t, double hz) { double re = 0, im = 0; for (int i = 0; i < 24000; i++) { double v = AudioPanTest.Sample(AudioTestKind.FrontBack, t + i / 48000.0).L; re += v * Math.Cos(2 * Math.PI * hz * i / 48000.0); im += v * Math.Sin(2 * Math.PI * hz * i / 48000.0); } return Math.Sqrt(re * re + im * im); }
+    double front = Tone(0.05, AudioPanTest.FrontHz) / Math.Max(1e-9, Tone(0.05, AudioPanTest.BackHz)),
+           back = Tone(0.80, AudioPanTest.BackHz) / Math.Max(1e-9, Tone(0.80, AudioPanTest.FrontHz));
+    bool frontBack = front > 5 && back > 5 &&
+                     Math.Abs(En(AudioTestKind.FrontBack, 0.9, true) - En(AudioTestKind.FrontBack, 0.9, false)) < 1e-9 &&
+                     AudioPanTest.Caption(AudioTestKind.FrontBack, 100).Contains("ÖN") && AudioPanTest.Caption(AudioTestKind.FrontBack, 800).Contains("ARKA");
+    bool dir8 = AudioPanTest.DurationOf(AudioTestKind.Directions8) == NativeDemoSignals.DurationMs(NativeDemo.Directions8) &&
+                En(AudioTestKind.Directions8, 1.3, false) > 20 * En(AudioTestKind.Directions8, 1.3, true) &&
+                AudioPanTest.Caption(AudioTestKind.Directions8, 1300).Contains("Sağ");
+    // Through the real audio path (2x 220 Hz low-pass + extractor): front and back both strong, distinct pitch.
+    (float amp, float hz) Through(double fromS)
+    {
+        var fx = new HapticFeatureExtractor(); long cur = 0;
+        var sink = new SensaAudioSink(fx);
+        var buf = new float[21120 * 2];   // 0.44 s: ends inside a 12 Hz front tap
+        for (int i = 0; i < buf.Length / 2; i++) { var sm = AudioPanTest.Sample(AudioTestKind.FrontBack, fromS + i / 48000.0); buf[2 * i] = sm.L; buf[2 * i + 1] = sm.R; }
+        sink.Accept(buf);
+        fx.Take(ref cur, out var l, out _);
+        return (Math.Max(Math.Max(l.P0, l.P1), Math.Max(l.P2, l.P3)), l.FrequencyHz);
+    }
+    var (fa, fh) = Through(0.0); var (ba, bh) = Through(0.75);
+    // Unity input should track the authored .4-ish front and .308 back levels, not require the old 2.2 boost.
+    frontBack &= fa > .35 && fa < .45 && ba > .27 && ba < .33 && fh > 120 && bh < 70;
+    Console.WriteLine($"  front through audio path: amp {fa:F2} {fh:F0} Hz | back: amp {ba:F2} {bh:F0} Hz");
+    Check(pingPong && frontBack && dir8,
+        $"A sound tests: ping-pong = Native v2 Sol↔Sağ demo (x PreGain), hard L/R, front/back texture (front {front:F0}x at 190 Hz, back {back:F0}x at 45 Hz), 8 directions follow the demo");
+}
+{
+    // Audio path ≡ Native path, frame by frame, for every value in the catalogue.
+    var reps = AudioPathEquivalence.Catalogue().Select(s => AudioPathEquivalence.Compare(s)).ToList();
+    var worst = reps.OrderByDescending(r => r.MaxAmpError + r.MaxHzError / 100 + r.TransientAmpError).First();
+    bool same = reps.All(r => r.WithinTolerance());
+    Check(same && reps.Count >= 90,
+        $"A audio→haptics ≡ Native: {reps.Count} signals (tones 20–400 Hz × 4 levels, hits, demos, sound tests) — worst: {worst}");
+    foreach (int rate in new[] { 44100, 96000 })
+    {
+        var rr = AudioPathEquivalence.Catalogue().Select(sg => AudioPathEquivalence.Compare(sg, 0, rate)).ToList();
+        bool ok = rr.All(r => r.WithinTolerance(.01, 1, .02));
+        Check(ok, $"A audio→haptics ≡ Native from a {rate} Hz device (sinc resampled): {rr.Count(r => r.WithinTolerance(.01, 1, .02))}/{rr.Count}, worst amp {rr.Max(r => r.MaxAmpError):F4}, worst Hz {rr.Max(r => r.MaxHzError):F2}");
+    }
+    double flat = Enumerable.Range(3, 38).Select(i => ButterworthLowPass.Magnitude(i * 10, HapticFeatureExtractor.BandLimitHz, HapticFeatureExtractor.BandLimitOrder)).Min();
+    double cut = ButterworthLowPass.Magnitude(1000, HapticFeatureExtractor.BandLimitHz, HapticFeatureExtractor.BandLimitOrder);
+    var bp = new ButterworthLowPass(HapticFeatureExtractor.BandLimitHz, HapticFeatureExtractor.BandLimitOrder);
+    double peak400 = 0; for (int i = 0; i < 48000; i++) { double y = bp.Process((float)Math.Sin(2 * Math.PI * 400 * i / 48000.0)); if (i > 24000) peak400 = Math.Max(peak400, Math.Abs(y)); }
+    Check(flat >= 0.99 && cut <= 0.01 && peak400 >= 0.98,
+        $"A haptic band limit flat 30–400 Hz (min {flat:F3}, measured 400 Hz {peak400:F3}), 1 kHz cut ({cut:F4})");
+}
+Check(AudioSyncDelay.Resolve(-1, true) == AudioSyncDelay.BluetoothAutoMs &&
+      AudioSyncDelay.Resolve(-1, false) == 0 && AudioSyncDelay.Resolve(150, true) == 150 &&
+      AudioSyncDelay.Resolve(0, true) == 0 && AudioSyncDelay.Resolve(5000, false) == AudioSyncDelay.MaxMs &&
+      new UserSettings().AudioSyncDelayMs == -1,
+    "A audio sync delay: auto = Bluetooth 300 ms / wired 0, manual values honoured and clamped");
+var quad = DualSenseAudioFormat.QuadPcm16();
+Check(quad.Encoding == NAudio.Wave.WaveFormatEncoding.Extensible && quad.Channels == 4 &&
+      quad.SampleRate == 48000 && quad.BitsPerSample == 16 &&
+      DualSenseAudioFormat.ChannelMask(quad) == 0x33,
+    "DualSense format is extensible PCM16 4ch/48k with quad mask 0x33 (rear pair = haptics), not NAudio's default 0xF");
+var wake = DualSenseHidControl.BuildWakeHapticsReport(64);
+bool wakeOk = wake.Length == 64 && wake[0] == 0x02 && wake[1] == 0x00 && wake[2] == 0x02 && wake[10] == 0x00;
+for (int i = 3; i < wake.Length; i++) if (i != 10 && wake[i] != 0) wakeOk = false;
+Check(wakeOk, "DualSense wake report: ID 0x02, no rumble emulation, only AllowAudioMute, MuteControl cleared, nothing else touched");
+var dongleOnly = UsbGamepadClassifier.Classify(new[] { @"USB\VID_1532&PID_0A3F\d" });
+Check(dongleOnly.WolverineUsbNode && !dongleOnly.WolverineWiredPcNode,
+    "Dongle-only scan is present but not wired");
 var absent = UsbGamepadClassifier.Classify(Array.Empty<string>());
 Check(absent.ScanSucceeded && !absent.DualSenseUsbNode && !absent.WolverineUsbNode,
     "Empty scan means neither known USB device found, not automatically connected");
@@ -484,3 +738,170 @@ concurrencyRing.Reset();
 Console.WriteLine("Event-driven low-latency 48k PCM transport, residence metering, identity and concurrency passed.");
 
 Console.WriteLine("USB PnP, subjective A/B and high-fidelity stereo WAV contract suite passed.");
+
+// Game-free channel source and the shared production ingress: originals are never scaled.
+foreach (var scene in DualSenseChannelFixtures.Scenes)
+{
+    var pcm = DualSenseChannelFixtures.Build(scene);
+    string hash = DualSenseChannelFixtures.Sha256(pcm);
+    Check(pcm.SequenceEqual(DualSenseChannelFixtures.Build(scene)), "Channel lab deterministic source: " + scene.Id);
+    var feature = new HapticFeatureExtractor();
+    long cursor = 0;
+    float maxLeft = 0, maxRight = 0;
+    double leftHz = 0, rightHz = 0;
+    for (int offset = 0; offset < pcm.Length; offset += 240 * 8)
+    {
+        NativePcmIngress.Push(pcm.AsSpan(offset, Math.Min(240 * 8, pcm.Length - offset)),
+            FourChannelHapticAnalyzer.PcmEncoding.Pcm16, feature);
+        feature.Take(ref cursor, out var left, out var right);
+        maxLeft = Math.Max(maxLeft, left.Peak); maxRight = Math.Max(maxRight, right.Peak);
+        if (offset / 8 is > 48000 and < 96000) { leftHz = Math.Max(leftHz, left.FrequencyHz); rightHz = Math.Max(rightHz, right.FrequencyHz); }
+    }
+    Check(hash == DualSenseChannelFixtures.Sha256(pcm) && feature.CompletedSlots == pcm.Length / 8 / 48,
+        "Shared ingress preserves original bytes and accounts for all source slots: " + scene.Id);
+    if (scene.Id is "speaker" or "silence")
+        Check(maxLeft == 0 && maxRight == 0, "Negative control cannot reach either haptic channel: " + scene.Id);
+    if (scene.Id == "left") Check(maxLeft > .1f && maxRight == 0, "Channel 3 drives only left features");
+    if (scene.Id == "right") Check(maxRight > .1f && maxLeft == 0, "Channel 4 drives only right features");
+    if (scene.Id == "stereo") Check(Math.Abs(leftHz - 80) < 5 && Math.Abs(rightHz - 190) < 5,
+        "Simultaneous stereo source retains different left/right frequencies");
+}
+bool rejectedPartialIngress = false;
+try { NativePcmIngress.Push(new byte[9], FourChannelHapticAnalyzer.PcmEncoding.Pcm16, new HapticFeatureExtractor()); }
+catch (ArgumentException) { rejectedPartialIngress = true; }
+Check(rejectedPartialIngress, "Shared production ingress rejects partial quad frames");
+Console.WriteLine("DualSense channel lab source identity, isolation, negative controls and production ingress passed.");
+
+var labStereoPcm = DualSenseChannelFixtures.Build(DualSenseChannelFixtures.Scenes.Single(s => s.Id == "stereo"));
+var levelZeroAnalysis = DualSenseChannelFixtures.Analyze(labStereoPcm, 0, 140);
+var levelFullAnalysis = DualSenseChannelFixtures.Analyze(labStereoPcm, 100, 140);
+Check(levelZeroAnalysis.Frames == 144000 && levelZeroAnalysis.SpeakerRms == 0 &&
+    levelZeroAnalysis.LeftRms > .1f && levelZeroAnalysis.RightRms > .1f &&
+    levelZeroAnalysis.LeftRms == levelFullAnalysis.LeftRms && levelZeroAnalysis.RightRms == levelFullAnalysis.RightRms,
+    "Lab analysis counts all PCM frames and never scales source measurements with Wolverine gain");
+var labStrongPcm = DualSenseChannelFixtures.Build(DualSenseChannelFixtures.Scenes.Single(s => s.Id == "demo:Purr"));
+Check(DualSenseChannelFixtures.Analyze(labStrongPcm, 100, 300).SaturatedFeaturePoints > 0 &&
+    DualSenseChannelFixtures.Analyze(labStrongPcm, 0, 300).SaturatedFeaturePoints == 0,
+    "Lab separately discloses predicted Wolverine amplitude saturation and respects zero output");
+
+var endpointFixture = DualSenseChannelFixtures.Build(DualSenseChannelFixtures.Scenes.Single(s => s.Id == "stereo"));
+var endpointOriginal = (byte[])endpointFixture.Clone();
+var floatEndpointFormat = NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(48000, 4);
+var renderedFloat = EndpointFixturePlayer.EncodeSource(endpointFixture, floatEndpointFormat);
+Check(endpointFixture.SequenceEqual(endpointOriginal) && Enumerable.Range(0, endpointFixture.Length / 2).All(i =>
+    BitConverter.ToSingle(renderedFloat, i * 4) == BitConverter.ToInt16(endpointFixture, i * 2) / 32768f),
+    "Explicit Shared source represents every original PCM16 value exactly in Float32 without changing the original");
+foreach (var wrongFormat in new NAudio.Wave.WaveFormat[] { new(48000, 16, 2), new(44100, 16, 4), new NAudio.Wave.WaveFormatExtensible(48000, 16, 4) })
+{
+    bool rejected = false;
+    try { EndpointFixturePlayer.EncodeSource(endpointFixture, wrongFormat); }
+    catch (NotSupportedException) { rejected = true; }
+    Check(rejected, "Endpoint source rejects stereo, wrong sample rate or centre/LFE mask");
+}
+var expectedRearFloat = HapticStereoWave.ExtractRear(renderedFloat, HapticPcmFormat.Float32);
+var laggedRear = new byte[expectedRearFloat.Length + 123 * 8 + 480 * 8];
+expectedRearFloat.CopyTo(laggedRear, 123 * 8);
+var exactEndpointComparison = EndpointSignalVerification.Compare(endpointFixture,
+    HapticStereoWave.BuildWav(laggedRear, HapticPcmFormat.Float32), HapticPcmFormat.Float32);
+Check(exactEndpointComparison.ExactActiveSamples && exactEndpointComparison.CompleteActiveRegion &&
+    exactEndpointComparison.AlignmentFrames == 123 && exactEndpointComparison.RawRmsError == 0,
+    "Endpoint verification finds real sample offset and checks exact original active samples");
+for (int i = 0; i < laggedRear.Length; i += 4)
+    BitConverter.TryWriteBytes(laggedRear.AsSpan(i, 4), BitConverter.ToSingle(laggedRear, i) * .5f);
+var scaledEndpointComparison = EndpointSignalVerification.Compare(endpointFixture,
+    HapticStereoWave.BuildWav(laggedRear, HapticPcmFormat.Float32), HapticPcmFormat.Float32);
+Check(!scaledEndpointComparison.ExactActiveSamples && scaledEndpointComparison.Correlation > .99999 &&
+    Math.Abs(scaledEndpointComparison.ObservedGain - .5) < 1e-6 && scaledEndpointComparison.RawRmsError > 0,
+    "Endpoint comparison reports Windows gain instead of normalizing it away");
+var droppedRight = (byte[])expectedRearFloat.Clone();
+for (int i = 4; i < droppedRight.Length; i += 8) Array.Clear(droppedRight, i, 4);
+Check(!EndpointSignalVerification.Compare(endpointFixture, HapticStereoWave.BuildWav(droppedRight, HapticPcmFormat.Float32),
+    HapticPcmFormat.Float32).ExactActiveSamples, "Endpoint verification detects missing opposite channel rather than declaring stereo success");
+var finalizedRecorder = new HapticStereoRecorder(HapticPcmFormat.Signed16, 1);
+finalizedRecorder.Accept(endpointFixture.AsSpan(0, 240 * 8));
+var finalizedWave = finalizedRecorder.End();
+Check(finalizedRecorder.CapturedFrames == 0 && finalizedWave.Length == 44 + 240 * 4,
+    "Finalizing source-only comparison clears private capture RAM while returning unchanged WAV data");
+Console.WriteLine("Independent endpoint sender encoding and measured capture-comparison contracts passed.");
+AudioScenarioContracts.Run(Check);
+SpectralContracts.Run(Check);
+
+{
+    SideFeatures F(float hz) => new() { P0 = .2f, P1 = .2f, P2 = .2f, P3 = .2f, FrequencyHz = hz };
+    var a = F(120); var b = F(0);
+    var lostHz = AudioPathEquivalence.CompareFrames("lost pitch", new[] { (a, default(SideFeatures)) }, new[] { (b, default(SideFeatures)) });
+    Check(!lostHz.WithinTolerance() && lostHz.FrequencyAvailabilityMismatches == 1, "Equivalence rejects a missing frequency instead of skipping its error");
+    var lostFrame = AudioPathEquivalence.CompareFrames("lost frame", new[] { (a, a), (a, a) }, new[] { (a, a) });
+    Check(!lostFrame.WithinTolerance() && lostFrame.MissingFrames == 1, "Equivalence rejects truncation rather than comparing only the shared prefix");
+    a.TransientCount = 2; a.T0Position = .1f; a.T0Amplitude = .3f; a.T1Position = .8f; a.T1Amplitude = .2f;
+    b = a; b.T0Position = .9f; b.T1Position = .1f; b.T1Amplitude = 1;
+    var wrongHits = AudioPathEquivalence.CompareFrames("wrong hits", new[] { (a, a) }, new[] { (b, b) });
+    Check(!wrongHits.WithinTolerance() && wrongHits.MaxTransientPositionError > .7 && wrongHits.TransientAmpError > .7,
+        "Equivalence checks both transient timings and the second transient amplitude");
+    b = a; b.P0 = float.NaN;
+    Check(!AudioPathEquivalence.CompareFrames("invalid", new[] { (a, a) }, new[] { (b, b) }).WithinTolerance(), "Nonfinite features cannot pass equivalence");
+    Check(!AudioPathEquivalence.CompareFrames("empty", Array.Empty<(SideFeatures, SideFeatures)>(),
+        Array.Empty<(SideFeatures, SideFeatures)>()).WithinTolerance(), "No source frames cannot pass equivalence");
+    var invalidSilent = new SideFeatures { FrequencyHz = float.NaN };
+    Check(!AudioPathEquivalence.CompareFrames("invalid silent pitch", new[] { (invalidSilent, invalidSilent) },
+        new[] { (default(SideFeatures), default(SideFeatures)) }).WithinTolerance(), "Silent frames cannot conceal nonfinite frequency fields");
+    var ending = new AudioPathEquivalence.Signal("late ending", .05, t => t >= .04 ? (.4, 0) : (0, 0));
+    var quietEnding = new AudioPathEquivalence.Signal("quiet ending", .05, _ => (0, 0));
+    var tailReport = AudioPathEquivalence.CompareFrames("partial ending", AudioPathEquivalence.Frames(ending, false),
+        AudioPathEquivalence.Frames(quietEnding, false));
+    Check(tailReport.Frames == 2 && !tailReport.WithinTolerance(), "A partial final 33ms frame is compared rather than silently discarded");
+    var polarity = HapticScenarioAudit.PhaseLoss();
+    Check(polarity.RawRmsDifference > .7 && polarity.Steady.WithinTolerance(),
+        "Independent PCM oracle exposes phase loss even when steady parametric features match");
+}
+{
+    var sink = new SensaAudioSink(new HapticFeatureExtractor(), SensaAudioSink.LegacyPreGain);
+    sink.Accept(new float[] { .9f, -.9f, .2f, -.2f });
+    Check(sink.InputSamples == 4 && sink.ClippedSamples == 2,
+        "Audio pre-gain clipping is counted rather than concealed by equalized fixtures");
+    var unity = new SensaAudioSink(new HapticFeatureExtractor());
+    unity.Accept(new float[] { 1, -1, .9f, -.9f });
+    Check(unity.InputGain == 1 && unity.ClippedSamples == 0, "Default unity audio input accepts full scale without pre-gain clipping");
+    bool partial = false; try { unity.Accept(new float[1]); } catch (ArgumentException) { partial = true; }
+    Check(partial, "Audio input rejects a partial stereo frame explicitly");
+    var invalidFx = new HapticFeatureExtractor(); var invalidSink = new SensaAudioSink(invalidFx);
+    invalidSink.Accept(Enumerable.Repeat(new[] { float.PositiveInfinity, float.NaN }, 96).SelectMany(x => x).ToArray());
+    long invalidCursor = 0; invalidFx.Take(ref invalidCursor, out var invalidL, out var invalidR);
+    Check(invalidSink.NonFiniteSamples == 192 && invalidL.Peak == 0 && invalidR.Peak == 0,
+        "NaN/Infinity audio becomes counted silence instead of Infinity becoming full-scale vibration");
+}
+{
+    var sink = new TestAudioSink();
+    using var delivery = new AudioSinkDelivery(sink);
+    delivery.Enqueue(new float[] { .1f, 0 }, 0, 300);
+    delivery.Pump(250);
+    Check(sink.AcceptCalls == 0 && sink.SilenceCalls == 0, "Watchdog preserves an intentionally delayed audio tail");
+    delivery.Pump(300); delivery.Pump(549);
+    Check(sink.AcceptCalls == 1 && sink.SilenceCalls == 0, "Fresh output is not prematurely stopped");
+    delivery.Pump(550); delivery.Pump(1000);
+    Check(sink.SilenceCalls == 1, "Independent 250ms watchdog zeros a stale sink exactly once");
+    delivery.Dispose(); int writes = sink.AcceptCalls;
+    delivery.Enqueue(new float[] { .5f, .5f }, 1000, 0); delivery.Pump(2000);
+    Check(sink.AcceptCalls == writes && delivery.QueuedSamples == 0, "Stopped delivery cannot issue a late vibration command");
+}
+{
+    var sink = new TestAudioSink(); using var delivery = new AudioSinkDelivery(sink);
+    delivery.Enqueue(new float[AudioSinkDelivery.MaximumQueuedSamples], 0, 1000);
+    bool overflow = false;
+    try { delivery.Enqueue(new float[2], 1, 1000); } catch (InvalidOperationException) { overflow = true; }
+    Check(overflow && sink.SilenceCalls == 1 && delivery.QueuedSamples == 0 && delivery.DroppedSamples > 0,
+        "Audio backlog is bounded and fails explicitly with output stopped and pooled PCM released");
+}
+{
+    var sink = new TestAudioSink { ThrowOnAccept = true }; using var delivery = new AudioSinkDelivery(sink);
+    delivery.Enqueue(new float[] { .5f, .5f }, 0, 0);
+    bool failed = false; try { delivery.Pump(0); } catch (InvalidOperationException) { failed = true; }
+    Check(failed && sink.SilenceCalls > 0 && delivery.QueuedSamples == 0, "Sink failure clears retained data and silences the output");
+}
+{
+    var fx = new HapticFeatureExtractor(); var sink = new SensaAudioSink(fx); long cur = 0;
+    sink.Accept(Enumerable.Repeat(.2f, 960).ToArray()); fx.Take(ref cur, out _, out _);
+    sink.Silence(); fx.Take(ref cur, out var left, out var right);
+    Check(left.Peak == 0 && right.Peak == 0 && left.TransientCount == 0 && right.TransientCount == 0,
+        "Audio source stop publishes silence without replaying old feature history");
+}

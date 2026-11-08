@@ -1,5 +1,7 @@
 # User-selectable haptic methods — 2026-11-06
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 The route selected in the RW3 desktop application is a **user preference**. It never proves that external drivers, source PCM, the Razer provider or physical playback are present. All methods are selectable; only locally implemented methods can be activated inside the app.
 
 | UI method | Original DualSense game-authored haptics | Who provides the output | State |

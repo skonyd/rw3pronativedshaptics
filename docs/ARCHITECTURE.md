@@ -1,82 +1,40 @@
-# Architecture and verified data paths (2026-11-06)
+# Architecture — 2026-11-07
 
-For milestone readiness see [implementation status](IMPLEMENTATION_STATUS.md). The application has **several explicitly different paths**; none of the existing software's `HAR` parametric 50Hz path should be described as lossless original HD streaming.
+Read [implementation status](IMPLEMENTATION_STATUS.md) and [Sensa analysis](SENSA_PIPELINE_ANALYSIS.md). Native v2 is a lossy prototype; M3 open, M4 not implemented.
 
-```text
-                           Windows 11 • .NET 10 WPF / tray / settings
-                                                |
-              +---------------------------------+-------------------------------+
-              |                                 |                               |
-       Normal XInput game                Opt-in system audio               Experimental native UAC
-       leaves game rumble                 WASAPI loopback                  4ch / 48k PCM16/Float32
-       alone; voluntary pulse             (ordinary PC sound)             ch1/2 speaker; ch3/4 haptic
-              |                                 |                               |
-         XInput game/OS               20Hz bounded audio envelope         +-----+----------------+
-              |                                 |                        |                      |
-       Conventional motors            Standard XInput rumble          Source-only           20ms L/R RMS
-       (not Sensa HD)                  (not Sensa HD)                  monitor/recorder      → HAR parametric
-                                                                       |                     Palm L/R events
-                                           rear bytes unchanged         |                      |
-                                           2ch PCM16/Float32 WAV         |                 Razer provider
-                                           for offline studies           |                 (LOSSY, unverified)
-                                                                       |                      |
-                                            Authored provenance          |                 Wolverine VCM
-                                            NOT established             |                 NOT physically proven
-```
+## Active paths
 
-**Independent behavioral comparison path:**
-- Ten deterministic `BehavioralHapticFixtures` produce signed PCM16 48k 4ch frames, front speaker channels silent and distinct rear stereo haptic channels.
-- **Physical USB DualSense reference**: identical generated PCM bytes via `RawSourceWaveStream` → WASAPI (strict user-selected Exclusive/Shared). There is **no RW3 gain, EQ, speaker mixing or normalization**. Shared Windows/driver/actual actuator processing remains externally unverified.
-- **Wolverine**: the same source passes through bounded 20ms stereo RMS estimates and two user-supplied vendor Interhaptics parametric effects, with independently configurable RW3/Wolverine output gains. This is **not** the original 48k waveform, and is not equivalent to physically verified stereo separation.
-- A/B software attempts near-simultaneous starts but lacks common hardware clocks, and user ratings are subjective.
-- PnP ✓ indicates present known USB VID/PID, not that a Razer wireless receiver is a cabled controller or that the actuator moved.
+- Normal: game → ordinary controller rumble; RW3 does not observe game output.
+- Audio PC: WASAPI front L/R (mono duplicated; no surround downmix) → sinc to 48k → software-volume compensation where applicable → bounded AudioSinkDelivery → SensaAudioSink (unity input, explicit clipping/nonfinite counters) → shared extractor/engine. Legacy 2.2 gain is diagnostic only; Wolverine output gain remains separate and can saturate envelope commands. Xbox mode selects XboxAudioSink (WGI body/trigger rumble); generic XInput remains separate. See SCENARIO_AUDIT_20261108.md.
+- Native: compatible named 4ch/48k PCM16/Float32 render endpoint → WASAPI loopback (10ms requested) → rear channels 3/4 → `HapticFeatureExtractor` (1ms slots) → `SensaStereoPrototype` (current 33ms output pacing) → licensed HAR/Razer provider → Synapse → Wolverine PC-mode actuators.
+- Synthetic demo: `NativeDemoSignals` → same Wolverine extractor/engine, or unchanged quad PCM16 → Exclusive WASAPI DualSense reference.
 
-**Stereo WAV research path:** `HapticStereoWave` removes original speaker channels 1/2 and copies rear haptic 3/4 sample bits byte-for-byte into a stereo PCM16 or IEEE Float32 WAV. `HapticStereoRecorder` is an explicit opt-in source-only, at-most-10s RAM buffer; Save writes locally, Discard/Stop drops any unsaved content. These are **offline exports**, not a live Razer Sensa Motion sink. External Wwise Motion can research stereo WAV authoring when independently installed/licensed; Wwise Audio Input → Sensa Motion real-time compatibility is not proven.
+`NativeBridgeService` owns capture/engine. `MainWindow` owns mutually exclusive mode/test operation and auto-run/retry. There are three tabs; separate expert, Test Lab and A/B windows are removed. The old route catalog remains library code without a current UI selector.
 
-## Components and boundaries
+## Output and evidence invariants
 
-| Component | Responsibility | Limitation |
-| --- | --- | --- |
-| `MainWindow`, `SettingsStore`, `HapticRouteCatalog` | UI, persistent route/mode/level and readiness | Route selection is not evidence of driver/hardware setup |
-| `XInputHaptics`, `AudioChannelTest` | Conventional motor / opt-in ordinary audio-to-XInput | Not native DualSense HD |
-| `NativeDualSenseCapture`, `NativeCaptureHealth`, `FourChannelHapticAnalyzer` | Selected UAC rear-channel capture, telemetry and format validation | Cannot authenticate authoring game from endpoint |
-| `SensaStereoPrototype` | Current two logical HAR/Interhaptics parametric effect targets | 50Hz envelope, native physical stereo unproven |
-| `BehavioralComparisonPlayer`, `BehavioralHapticFixtures` | Synthetic DualSense/Wolverine A/B test | Not Sony game recordings; independent device latency |
-| `UsbGamepadMonitor`, `UsbGamepadClassifier`, `BehavioralEvidenceRules` | USB identity, user-confirmed feel, physical evidence ratings | USB dongle ambiguity; no hardware sensor |
-| `HapticStereoWave`, `HapticStereoRecorder` | Unchanged rear-PCM WAV export; RAM-only source capture | Not real-time Sensa PCM routing |
-| GitHub Actions / installer | Build/test/smoke, ZIP/Setup/SHA256 | No physical controller/SDK and no driver-signing evidence |
+Experimental option (default off): original samples also enter a bounded4096-frame history. Consumer-thread FFT resolves up to three separated peaks; public AddHM/UpdateHM sends independent `.haps` melodies per side, with shared command headroom scaling and amplitude zero after66ms without renewal. This route has no carrier-phase command, separate transient replay or proof of motor spectra. It requires85.33ms history and stays at33ms provider cadence. Normal idle rendering avoids indexing a nonexistent `.haps` debug frame. Retained channel/endpoint lab routes remain single-band. See [multiband implementation and evidence](MULTIBAND_RESULTS_20261108.md).
 
-## Not yet implemented / still hypothetical
+v2 uses amplitude points, one dominant frequency and at most two transients per side. It targets Hand 302 Left/Right, 30–400Hz. It is not original 48k waveform replay. Higher bands require the vendor encoder; do not hand-pack frames. High-resolution waitable timer is the primary clock; the existing timer failure path remains a timing limitation requiring hardware validation.
 
-- **Authentic game route and virtual pad:** user-installed, legally supported virtual DualSense composite that maps Wolverine input AND target game's 4ch UAC; PadForge/DSX+ alternatives not accepted merely from a device name.
-- **Supported stereo hardware waveform sink:** no documented/validated arbitrary realtime DualSense PCM-to-Wolverine VCM streaming implementation. The present 50Hz HAR envelope is a *degraded* prototype.
-- **Wwise real-time Audio Input → Motion → Razer Sensa:** research hypothesis requiring licenses, plugin compatibility and actual hardware proof; offline WAV Motion plugin does not imply that dynamic streaming works.
-- **Physical reproduction / production readiness:** device L/R identity, frequency response, onset latency, frame-time effects and robust disconnect handling require actual hardware.
+Original DualSense reference PCM is never scaled, converted or mixed by RW3. `DualSenseAudioFormat.OpenReferenceStream` rejects unsupported Exclusive or malformed/empty quad PCM before playback. A busy/init failure propagates; no automatic Shared fallback. Physical bit-perfect output is not established by WASAPI success.
 
-## Safety/UX contracts
+Rear PCM activity proves channel activity only. UI uses `NativeCaptureHealth.Describe` for the provenance limitation. Provider/render ticks and USB identities are separate from actual motor response. Subjective Hand L/R findings are in [hardware log](HARDWARE_TEST_LOG.md).
 
-- No background driver installation, firmware modification, unlicensed DLL distribution or hidden game injection.
-- Normal Rumble should not seize game controls; source-only does not energize Wolverine.
-- Physical DualSense reference PCM remains untouched by user-defined RW3/Wolverine gains.
-- Explicit audio consent; only the user-requested WAV path can store a bounded source clip locally.
-- Stop/exit, source/provider loss and unplug must zero current generated effects and avoid overlapping haptic sources; code has guards, physical behavior awaits test.
-- Windows build checks require no controller: a passing CI result cannot promote the M3/M4 stages.
+## Retained source-only libraries
 
-## Additional source-only 48k PCM transport branch (M4 preparation; not real output)
+`RealtimeStereoPcmTransport` copies original rear stereo PCM bits to a bounded ring (120ms default). The discard probe is event-woken, consumes 240-frame/5ms blocks and measures callback→reader residence and losses. It is not a physical sink. `AttachTransport` is restricted to source-only capture, no Sensa and no recording; detach/stop clears retained samples.
 
-```text
-Selected UAC 4ch/48k PCM16 / IEEE Float32 (source-only)
-      | speaker ch1/2 discarded; rear haptic 3/4 unchanged
-      v
-Bounded RealtimeStereoPcmTransport 2ch ring (120ms default)
-      | loss accounted: dropped oldest / missing zero-padded
-      v
-StereoPcmDiscardProbe reader (960 48k frames / ~20ms tick)
-      |
-    RAM cleared (NO Razer provider, NO motor output, NO WAV upload)
-```
+`HapticStereoRecorder` remains explicit opt-in, bounded to 10 seconds in RAM/wall time, separate save/discard. WAV copies rear sample bits without gain/resampling. Those APIs and evidence/fixture rules remain tested, but are not exposed in the current simplified UI. See [transport](REALTIME_PCM_TRANSPORT.md) and [latency](LATENCY_BUDGET.md) for library contracts.
 
-The source transport is intentionally distinct from `SensaStereoPrototype` 50Hz RMS→Interhaptics, which remains the only experimental live Razer backend and remains lossy. The ring does not convert full PCM into a supported Razer voice-coil signal. See [REALTIME_PCM_TRANSPORT](REALTIME_PCM_TRANSPORT.md) and M3/M4 gates.
+## Channel conversion lab increment — 2026-11-07
 
-## Delay-sensitive source transport (preliminary)
-Native source-only `ConfigurableWasapiLoopbackCapture` requests a 10–100ms NAudio2 polling buffer (20ms default), preserving 4ch/48k source identity. `NativeDualSenseCapture.OnAudio` timestamps/copies original rear ch3/4 sample bits and notifies a coalesced background null-sink reader that drains at most 240 original frames per chunk, with **no 20ms PeriodicTimer wait**. This removes deliberate null-sink polling latency but does not bypass Windows' earlier WASAPI loopback buffering or implement output to a real Razer device. `RealtimeStereoPcmTransport` reports both loss/age metrics and does not silently trade waveform fidelity for a small buffer. [Latency tuning](LATENCY_BUDGET.md).
+Test card **DualSense → W3 Pro** adds seven channel/negative-control scenes plus the 23 demos, one canonical unmodified 4ch PCM source, the shared production decoder boundary, strict separate DualSense Exclusive reference and optional microphone level metering. Original-source SHA256 and software saturation/channel statistics are separate from acoustic observations. This is synthetic replay, not USB/WASAPI source capture or game-authored evidence; M3/M4 remain open. See [channel lab contract and procedure](CHANNEL_LAB.md).
+
+## Physical USB endpoint / full loopback increment — 2026-11-07
+
+After the user connected DualSense, Windows exposed a physical **4ch/48k Float32 quad** render endpoint. The lab now has a separate independent-process Shared source → real WASAPI → v2 → Wolverine route, with an 8-second bounded source-only sample-comparison pass before live Sensa. Controls verified exact active source samples at unity Windows level, rear-channel isolation and no rear activity for speaker-only/silence. The user confirmed vibration on Wolverine. This proves a **synthetic full Windows route**, not actual game authorship or DualSense-equivalent physical fidelity. The Exclusive reference is unchanged; no new driver was installed. Optional temporary source unmute/unity level is explicit and restored after the test. See [route details](CHANNEL_LAB.md) and the hardware log. M3/M4 remain open.
+
+## Audio delivery safeguard — 2026-11-08
+
+AudioSinkDelivery serializes sink writes, bounds retained stereo samples to 2s and stops explicitly on overflow/failure. An independent 250ms watchdog silences after the queue drains while preserving intentional sync delay. RecordingStopped clears capture health. Stop releases pooled PCM, endpoint notifications and the delivery worker, preventing later Accept calls. Sensa silence clears old features; Xbox silence resets filters/partial energy. This is software safety, not a measured physical stop deadline. [Audit](AUDIO_AUDIT_20261108.md).

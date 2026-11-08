@@ -10,8 +10,23 @@ public partial class App : System.Windows.Application
 {
     private Mutex? _singleInstance;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
+        // A separate synthetic source process never owns HAR or a mode window.
+        // It must run alongside the receiver's single-instance mutex.
+        // Elevated HIDMaestro setup step (install / self-test / uninstall): no window, no mutex.
+        if (VirtualControllerSetup.IsElevatedCommand(e.Args.FirstOrDefault()))
+        {
+            base.OnStartup(e);
+            Shutdown(VirtualControllerSetup.RunElevatedCommand(e.Args[0]));
+            return;
+        }
+        if (e.Args.FirstOrDefault() == "--emit-channel-fixture")
+        {
+            base.OnStartup(e);
+            Shutdown(await EndpointFixturePlayer.RunCommandAsync(e.Args));
+            return;
+        }
         const string mutexName = "Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd";
         _singleInstance = new Mutex(true, mutexName, out bool created);
         if (!created)

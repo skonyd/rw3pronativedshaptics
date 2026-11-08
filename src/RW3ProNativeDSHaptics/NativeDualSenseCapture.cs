@@ -24,6 +24,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     private long _frames, _lastFrameTick, _leftEnergyFrames, _rightEnergyFrames;
     private long _lastLeftEnergyTick, _lastRightEnergyTick;
     private int _leftRmsBits, _rightRmsBits, _speakerRmsBits, _leftPeakBits, _rightPeakBits;
+    private int _maxSpeakerRmsBits;
     private int _capturing;
     private string _status = "Not started";
     public bool IsCapturing => Volatile.Read(ref _capturing) == 1;
@@ -36,6 +37,7 @@ public sealed class NativeDualSenseCapture : IDisposable
     public float LeftRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftRmsBits));
     public float RightRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightRmsBits));
     public float SpeakerRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _speakerRmsBits));
+    public float MaxSpeakerRms => BitConverter.Int32BitsToSingle(Volatile.Read(ref _maxSpeakerRmsBits));
     public float LeftPeak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _leftPeakBits));
     public float RightPeak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _rightPeakBits));
     public long InvalidSamples => Interlocked.Read(ref _invalidSamples);
@@ -228,12 +230,14 @@ public sealed class NativeDualSenseCapture : IDisposable
         {
             _sink = sink;
             _encoding = encoding.Value;
+            sink?.Features.Reset();
         }
         EndpointId = endpointId;
         Volatile.Write(ref _requestedCaptureBufferMs, captureBufferMs);
         Volatile.Write(ref _leftRmsBits, 0);
         Volatile.Write(ref _rightRmsBits, 0);
         Volatile.Write(ref _speakerRmsBits, 0);
+        Volatile.Write(ref _maxSpeakerRmsBits, 0);
         Volatile.Write(ref _leftPeakBits, 0);
         Volatile.Write(ref _rightPeakBits, 0);
         Interlocked.Exchange(ref _invalidSamples, 0);
@@ -302,6 +306,7 @@ public sealed class NativeDualSenseCapture : IDisposable
             Volatile.Write(ref _leftRmsBits, BitConverter.SingleToInt32Bits(metrics.LeftRms));
             Volatile.Write(ref _rightRmsBits, BitConverter.SingleToInt32Bits(metrics.RightRms));
             Volatile.Write(ref _speakerRmsBits, BitConverter.SingleToInt32Bits(metrics.SpeakerRms));
+            Volatile.Write(ref _maxSpeakerRmsBits, BitConverter.SingleToInt32Bits(Math.Max(MaxSpeakerRms, metrics.SpeakerRms)));
             Volatile.Write(ref _leftPeakBits, BitConverter.SingleToInt32Bits(metrics.LeftPeak));
             Volatile.Write(ref _rightPeakBits, BitConverter.SingleToInt32Bits(metrics.RightPeak));
             float la = metrics.LeftRms, ra = metrics.RightRms;
@@ -315,9 +320,13 @@ public sealed class NativeDualSenseCapture : IDisposable
                 Interlocked.Increment(ref _rightEnergyFrames);
                 Interlocked.Exchange(ref _lastRightEnergyTick, Environment.TickCount64);
             }
-            // Any sink is independent of capture. Null means analysis-only,
-            // not a fallback to system sound or conventional XInput.
-            _sink?.Submit(Math.Min(0.33f, la * 2.5f), Math.Min(0.33f, ra * 2.5f));
+            // v2: the sink analyses the original rear PCM itself (1 ms envelope, frequency,
+            // transients). Null means analysis-only, never a fallback to system sound/XInput.
+            if (_sink != null)
+            {
+                int sinkFrameBytes = _encoding == FourChannelHapticAnalyzer.PcmEncoding.Pcm16 ? 8 : 16;
+                NativePcmIngress.Push(args.Buffer.AsSpan(0, metrics.ReceivedFrames * sinkFrameBytes), _encoding, _sink.Features);
+            }
         }
     }
 

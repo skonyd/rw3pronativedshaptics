@@ -25,8 +25,21 @@ public static class NativePcmTestPlayer
         const int sampleRate = 48000;
         const int durationMs = 520;
         byte[] pcm = BuildFourChannelTone(side, sampleRate, durationMs);
+        // Shared mode needs the endpoint's own mix format (DualSense: 4ch Float32 extensible);
+        // a plain 4ch PCM16 WAVEFORMATEX fails with E_INVALIDARG.
+        bool isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat ||
+            (format is WaveFormatExtensible ext && ext.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71"));
+        if (isFloat && format.BitsPerSample == 32)
+        {
+            byte[] f32 = new byte[pcm.Length * 2];
+            for (int i = 0, o = 0; i < pcm.Length; i += 2, o += 4)
+                BitConverter.TryWriteBytes(new Span<byte>(f32, o, 4), (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768f);
+            pcm = f32;
+        }
+        else if (format.BitsPerSample != 16 || isFloat)
+            throw new InvalidOperationException("Unsupported endpoint mix format: " + format);
         using var memory = new MemoryStream(pcm, writable: false);
-        using var source = new RawSourceWaveStream(memory, new WaveFormat(sampleRate, 16, 4));
+        using var source = new RawSourceWaveStream(memory, format);
         using var output = new WasapiOut(device, AudioClientShareMode.Shared, true, 50);
         output.Init(source);
         try

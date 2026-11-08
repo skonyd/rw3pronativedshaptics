@@ -1,5 +1,7 @@
 # Acceptance and validation plan (2026-11-06)
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 Reference: [current implementation stage and evidence](IMPLEMENTATION_STATUS.md). Distinguish (A) software test/build success, (B) manual physical test, (C) authenticated original-game haptic streaming, and (D) a proven high-fidelity Wolverine waveform sink. **Only (A) has CI confirmation**; M3/M4 are not finished.
 
 ## A — executed hardware-free software gates
@@ -34,7 +36,7 @@ Reference: [current implementation stage and evidence](IMPLEMENTATION_STATUS.md)
 ## D — critical and unimplemented: live high-fidelity Sensa destination
 
 - [ ] Obtain a documented, legally usable realtime stereo 48kHz native Sensa output contract on Wolverine, or experimentally establish Wwise Audio Input Source → Motion Factory Bus → Razer Sensa compatibility with required licensed plugins/binaries. A documented *offline stereo WAV Motion import alone* is insufficient.
-- [ ] On hardware, verify distinct body voice-coil left/right driver output and safe stop/underrun/reconnect with known test waveform; do not confuse with trigger motors or generic XInput rumble.
+- [~] On hardware, verify distinct body voice-coil left/right driver output and safe stop/underrun/reconnect with known test waveform; do not confuse with trigger motors or generic XInput rumble. **Partial 2026-11-07:** left and right body actuators each felt by the user via Interhaptics Hand L/R parametric pulses ([log](HARDWARE_TEST_LOG.md)); cross-leak rating, stop/underrun/reconnect and sensor measurement still open.
 - [ ] Implement only the vendor-allowed supported dynamic streaming backend. No proprietary DLL bundling, silent driver installation, undocumented firmware packets, game injection or claimed bit-perfect output without external measurements.
 - [ ] Collect independent side-specific actuator output with physical sensing/audio accelerometers if available; compare spectra, impulse shape, timbre, attack and timing to an unchanged original USB DualSense playing a genuine authored game.
 - [ ] Define defensible acceptance tolerances based on actual baselines; disclose limitations, any lossy fallback, unsupported games and device revisions. Only then make a "Native HD supported" claim.
@@ -74,3 +76,19 @@ Reference: [current implementation stage and evidence](IMPLEMENTATION_STATUS.md)
 - [ ] Performance test: 10-minute actual game run and baseline capture of CPU, frame times and source callback gaps; choose smallest **stable** buffer and capacity without dropped samples.
 - [ ] External sensor test: original game-to-physical DualSense and Wolverine onset p50/p95/p99 and physical L/R isolation. The current app has no supported HD sink and cannot provide this evidence.
 See [LATENCY_BUDGET](LATENCY_BUDGET.md).
+
+## 2026-11-07 reference/provenance correction — software verification
+
+Windows x64 .NET 10.0.403 Release WPF build with warnings-as-errors passed (zero warnings/errors). Contract suite passed, including unsupported Exclusive rejection without fallback or PCM mutation, complete reference stream byte identity and empty/incomplete quad frame rejection. Existing provenance contracts remain passing; Native UI now uses their source-only wording. No physical controller test was performed for this correction, and local results do not replace CI on the uncommitted changes.
+
+## Channel conversion lab increment — 2026-11-07
+
+Test card **DualSense → W3 Pro** adds seven channel/negative-control scenes plus the 23 demos, one canonical unmodified 4ch PCM source, the shared production decoder boundary, strict separate DualSense Exclusive reference and optional microphone level metering. Original-source SHA256 and software saturation/channel statistics are separate from acoustic observations. This is synthetic replay, not USB/WASAPI source capture or game-authored evidence; M3/M4 remain open. See [channel lab contract and procedure](CHANNEL_LAB.md).
+
+## Current audio audit gate — 2026-11-08
+
+The historical A/B window checks above describe retained library coverage, not current UI availability. The physical DualSense reference is Exclusive-only with no Shared fallback. Current Sensa output pacing is 33ms, not the earlier 5ms target.
+
+Software gates now reject frame truncation/empty data, missing frequency, invalid values and both transient timing/amplitude differences. Delayed-tail preservation, bounded overflow, sink failure, no late writes after stop, 250ms watchdog, stale-feature clearing and clipping diagnostics pass on Windows. The additional finite 4,452-case frequency grid also passes; it is not physical validation.
+
+Next run the controlled single-mic sequence in [AUDIO_AUDIT_20261108.md](AUDIO_AUDIT_20261108.md): two interleaved idle/engine-off/reference/audio controls, 13 frequencies × 3 levels × 2 paths, right-side scenes and repeats. Current physical run is blocked on microphone capture access and Wolverine wired-PC availability. Keep calibrated fidelity, absolute latency, stereo isolation, real-game source and Xbox-mode acceptance open.

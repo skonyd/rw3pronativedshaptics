@@ -23,5 +23,22 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/WasapiLoopbackBufferPolicy.cs" Link="WasapiLoopbackBufferPolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/FourChannelHapticAnalyzer.cs" Link="FourChannelHapticAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmTestPlayer.cs" Link="NativePcmTestPlayer.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseAudioFormat.cs" Link="DualSenseAudioFormat.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseHidControl.cs" Link="DualSenseHidControl.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticFeatureExtractor.cs" Link="HapticFeatureExtractor.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioHapticFilters.cs" Link="AudioHapticFilters.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPanTest.cs" Link="AudioPanTest.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPathEquivalence.cs" Link="AudioPathEquivalence.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/SincResampler.cs" Link="SincResampler.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/NativeDemoSignals.cs" Link="NativeDemoSignals.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseChannelFixtures.cs" Link="DualSenseChannelFixtures.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/NativePcmIngress.cs" Link="NativePcmIngress.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/EndpointFixturePlayer.cs" Link="EndpointFixturePlayer.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/EndpointSignalVerification.cs" Link="EndpointSignalVerification.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioSinkDelivery.cs" Link="AudioSinkDelivery.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticScenarioAudit.cs" Link="HapticScenarioAudit.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticSpectrumAnalyzer.cs" Link="HapticSpectrumAnalyzer.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/MultibandHaps.cs" Link="MultibandHaps.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/AcousticToneBands.cs" Link="AcousticToneBands.cs" />
   </ItemGroup>
 </Project>

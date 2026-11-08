@@ -13,6 +13,12 @@ public sealed class UserSettings
     public int PreferredXInputSlot { get; set; } = -1;
     // Changes RW3-sent motor commands, not any real DualSense PCM reference.
     public int OutputLevelPercent { get; set; } = HapticOutputLevel.DefaultPercent; // -1 auto, 0..3 explicit; do not infer device identity
+    // Native v2: source envelope -> Sensa amplitude gain (140 normal, 200 strong, 300 max).
+    public int NativeGainPercent { get; set; } = 140;
+    // Opt-in: richer .haps output; still lossy, phase/short-transient acceptance unproven.
+    public bool ExperimentalMultiband { get; set; }
+    /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
+    public int AudioSyncDelayMs { get; set; } = -1;
 }
 
 public sealed class SettingsStore

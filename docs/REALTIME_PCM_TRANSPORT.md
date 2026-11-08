@@ -1,5 +1,7 @@
 # Realtime DualSense PCM transport: source-only diagnostic prototype
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 **Stage:** M4 *preparation infrastructure*; source-side PCM queue and diagnostic discard consumer implemented. **NOT a live Razer Sensa HD output.** The product remains in **M3 hardware/source validation** as defined in [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md).
 
 ## Why this exists

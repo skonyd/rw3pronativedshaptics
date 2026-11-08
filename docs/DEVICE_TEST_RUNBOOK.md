@@ -1,5 +1,7 @@
 # Windows 11 hardware acceptance runbook
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 The CI pipeline verifies build, portable startup, synthetic stereo channel isolation and safety predicates. **It cannot prove real Wolverine haptic playback or native DualSense fidelity.**
 
 ## Preparation
@@ -23,7 +25,7 @@ The CI pipeline verifies build, portable startup, synthetic stereo channel isola
 - [ ] No native DLLs: explicit error; never silently falls back to XInput.
 - [ ] Wrong sample rate or 2ch audio source: rejected.
 - [ ] 4ch/48k DualSense UAC endpoint: selected intentionally; verify physical device ID and speaker/haptic mapping.
-- [ ] Left parametric Sensa pulse physically felt on left only; right on right only. Log negative as well as positive results.
+- [~] Left parametric Sensa pulse physically felt on left; right on right — **felt by user 2026-11-07** with Hand(302) targets (see HARDWARE_TEST_LOG.md). "Only" (no cross-leak) still to be rated explicitly. Log negative as well as positive results.
 - [ ] Full-path synthetic 4ch left and right fixtures independently observed by WASAPI with opposite channel quiet.
 - [ ] Provider render counter advanced; manually confirm physical response; do not label this a fidelity pass.
 - [ ] Disconnect/hide/change device midstream: Sensa output stops and no stale success remains.

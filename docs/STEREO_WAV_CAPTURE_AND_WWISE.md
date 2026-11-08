@@ -1,5 +1,7 @@
 # Bit-preserving stereo PCM / Wwise Motion research path
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 **Status (2026-11-06):** In-app WAV export and opt-in 10-second source-only capture **implemented and passed deterministic PCM/WAV contracts in [main Windows CI 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530)**. The app does **not** provide a live Wwise Motion bridge, ship proprietary Razer/Wwise banks or binaries, authenticate original game provenance or verify physical haptics. See [implementation status](IMPLEMENTATION_STATUS.md).
 
 ## What changed

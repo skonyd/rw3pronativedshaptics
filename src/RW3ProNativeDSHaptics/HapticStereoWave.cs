@@ -152,7 +152,8 @@ public sealed class HapticStereoRecorder
             _ended = true;
             if (_written == 0)
                 throw new InvalidOperationException("No USB haptic PCM frames were received.");
-            return HapticStereoWave.BuildWav(_buffer.AsSpan(0, _written), _format);
+            try { return HapticStereoWave.BuildWav(_buffer.AsSpan(0, _written), _format); }
+            finally { Array.Clear(_buffer); _written = 0; }
         }
     }
 

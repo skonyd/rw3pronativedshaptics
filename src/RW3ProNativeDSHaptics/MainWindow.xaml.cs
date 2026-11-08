@@ -1,208 +1,151 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+using RadioButton = System.Windows.Controls.RadioButton;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace RW3ProNativeDSHaptics;
 
+/// <summary>
+/// Main window: three top tabs (Genel kullanım / Test / Ayarlar), no scrolling.
+/// Evidence rules are unchanged: an API call or a started engine is never shown as
+/// physical success; only the user's "Hissettim" answer records a felt pulse.
+/// </summary>
 public partial class MainWindow : Window
 {
     private readonly SettingsStore _store = new();
     private readonly UserSettings _settings;
     private readonly XInputHaptics _rumble = new();
     private readonly UpdateService _updates = new();
+    private readonly NativeBridgeService _bridge = new();
+    private readonly PerformanceMonitor _performance = new();
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     private Forms.NotifyIcon? _tray;
-    private TestLabWindow? _testLab;
-    private NativeBridgeWindow? _nativeBridge;
-    private BehavioralComparisonWindow? _comparisonLab;
-    private Forms.ToolStripMenuItem? _normalMenu;
-    private Forms.ToolStripMenuItem? _audioMenu;
-    private Forms.ToolStripMenuItem? _nativeMenu;
+    private Forms.ToolStripMenuItem? _normalMenu, _audioMenu, _nativeMenu;
 
-    private UpdateInfo? _availableUpdate;
-    private bool _realExit;
-    private bool _initialized;
-    private bool _manualPulseConfirmed;
+    private enum RunState { Off, Audio, Native }
+    private RunState _run = RunState.Off;
+    private bool _busy, _initialized, _realExit;
     private string? _lastErrorNoted;
-    private readonly PerformanceMonitor _performance = new();
-    private readonly DispatcherTimer _diagnosticsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private UpdateInfo? _availableUpdate;
     private ProcessPriorityClass? _originalPriority;
+    private int _tickCount;
+    private CancellationTokenSource? _testCancel;
+
+    // Test tab state
+    private HapticTestChannel? _askingSide;
+    private ushort _prevPadButtons;
+    private readonly DispatcherTimer _padTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
+
+    private static readonly Brush GoodBrush = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C));
+    private static readonly Brush BadBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+    private static readonly Brush WarnBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xB5, 0x47));
+    private static readonly Brush MutedBrush = new SolidColorBrush(Color.FromRgb(0x93, 0xA2, 0xBF));
 
     public MainWindow()
     {
         InitializeComponent();
+        var demoChoices = new List<ChannelLabScene>();
+        foreach (var demo in NativeDemoSignals.All)
+            demoChoices.Add(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
+        DemoSceneCombo.ItemsSource = demoChoices;
+        DemoSceneCombo.SelectedIndex = 0;
+        ChannelSceneCombo.ItemsSource = DualSenseChannelFixtures.Scenes;
+        ChannelSceneCombo.SelectedIndex = 0;
         _settings = _store.Load();
-        _rumble.PreferredIndex = _settings.PreferredXInputSlot;
         _settings.OutputLevelPercent = HapticOutputLevel.Limit(_settings.OutputLevelPercent);
+        _rumble.PreferredIndex = _settings.PreferredXInputSlot;
         _rumble.OutputLevelPercent = _settings.OutputLevelPercent;
-        OutputLevelSlider.Value = _settings.OutputLevelPercent;
-        OutputLevelLabel.Text = _settings.OutputLevelPercent + "% • yalnızca RW3 çıkışları";
-        RouteCombo.ItemsSource = HapticRouteCatalog.All;
-        // Older settings only saved Mode; preserve their route without auto-starting capture.
-        if (_settings.Route == HapticRoute.NormalXInput && _settings.Mode != HapticMode.Normal)
-            _settings.Route = HapticRouteCatalog.DefaultForMode(_settings.Mode);
-        RouteCombo.SelectedItem = HapticRouteCatalog.Get(_settings.Route);
-        DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
-            ? _settings.PreferredXInputSlot + 1 : 0;
+        _bridge.OutputLevelPercent = _settings.OutputLevelPercent;
+        _bridge.SourceGainPercent = _settings.NativeGainPercent;
+        _bridge.ExperimentalMultiband = _settings.ExperimentalMultiband;
+        ExperimentalMultibandBox.IsChecked = _settings.ExperimentalMultiband;
+        AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
+
         try { using var self = Process.GetCurrentProcess(); _originalPriority = self.PriorityClass; }
         catch (Exception ex) { DiagnosticsService.Error("Priority lookup", ex); }
-        InitializeTray();
-        VersionText.Text = "v" + UpdateService.InstalledVersion;
+
+        SelectLevelPreset(_settings.OutputLevelPercent);
+        (_settings.NativeGainPercent >= 300 ? GainMax : _settings.NativeGainPercent >= 200 ? GainStrong : GainNormal).IsChecked = true;
+        (_settings.AudioSyncDelayMs switch { < 0 => SyncAuto, 0 => Sync0, <= 150 => Sync150, <= 300 => Sync300, _ => Sync450 }).IsChecked = true;
+        UpdateAudioSyncStatus();
+        DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
+            ? _settings.PreferredXInputSlot + 1 : 0;
         AutostartCheckbox.IsChecked = StartupService.IsEnabled;
+        VersionText.Text = "v" + UpdateService.InstalledVersion;
+        InitializeTray();
+
+        (_settings.Mode switch
+        {
+            HapticMode.Audio => ModeAudio,
+            HapticMode.Native => ModeNative,
+            _ => ModeNormal
+        }).IsChecked = true;
         _initialized = true;
-        SetMode(_settings.Mode, fromUser: false, routeOverride: _settings.Route);
-        _diagnosticsTimer.Tick += DiagnosticsTick;
-        _diagnosticsTimer.Start();
-        UpdateDiagnostics();
-        DiagnosticsService.Info("Application opened; audio capture requires manual consent.");
+
+        ShowFeelResults();
+        _timer.Tick += Timer_Tick;
+        _padTimer.Tick += PadTimer_Tick;
+        _padTimer.Start();
+        _timer.Start();
+        RefreshStatus();
+        DiagnosticsService.Info("Application opened; selected mode " + _settings.Mode + " runs automatically.");
     }
+
+    // ───────────────────────── tray ─────────────────────────
 
     private void InitializeTray()
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("RW3 Pro Haptics • Aç", null, (_, _) => Dispatcher.Invoke(RestoreWindow));
         menu.Items.Add(new Forms.ToolStripSeparator());
-        _normalMenu = new Forms.ToolStripMenuItem("◉ Normal Rumble", null,
-            (_, _) => Dispatcher.Invoke(() => SetMode(HapticMode.Normal)));
-        _audioMenu = new Forms.ToolStripMenuItem("≋ Audio-to-Haptics", null,
-            (_, _) => Dispatcher.Invoke(() => SetMode(HapticMode.Audio)));
-        _nativeMenu = new Forms.ToolStripMenuItem("⌁ Native DualSense • araştırma", null,
-            (_, _) => Dispatcher.Invoke(() => SetMode(HapticMode.Native)));
+        _normalMenu = new Forms.ToolStripMenuItem("Normal", null, (_, _) => Dispatcher.Invoke(() => ModeNormal.IsChecked = true));
+        _audioMenu = new Forms.ToolStripMenuItem("Sesten titreşim", null, (_, _) => Dispatcher.Invoke(() => ModeAudio.IsChecked = true));
+        _nativeMenu = new Forms.ToolStripMenuItem("Native DualSense (deneysel)", null, (_, _) => Dispatcher.Invoke(() => ModeNative.IsChecked = true));
         menu.Items.Add(_normalMenu);
         menu.Items.Add(_audioMenu);
         menu.Items.Add(_nativeMenu);
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Güncellemeleri kontrol et", null,
-            (_, _) => Dispatcher.BeginInvoke(new Action(async () => await CheckForUpdatesAsync())));
-        menu.Items.Add("Çıkış • motorları durdur", null,
-            (_, _) => Dispatcher.Invoke(ExitCompletely));
+        menu.Items.Add("Çıkış", null, (_, _) => Dispatcher.Invoke(ExitCompletely));
         _tray = new Forms.NotifyIcon
         {
             Icon = System.Drawing.SystemIcons.Application,
-            Text = "RW3 Pro Native DS Haptics",
+            Text = "RW3 Pro Haptics",
             Visible = true,
             ContextMenuStrip = menu
         };
         _tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(new Action(RestoreWindow));
     }
 
-    private void SetMode(HapticMode requested, bool fromUser = true, HapticRoute? routeOverride = null)
+    // ───────────────────────── window lifecycle ─────────────────────────
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_comparisonLab?.IsPlaying == true)
+        await RefreshChecksAsync();
+        try
         {
-            _comparisonLab.RequestStop();
-            if (fromUser)
-                System.Windows.MessageBox.Show(
-                    "Aktif fiziksel A/B testi önce durduruluyor. İşlem bittikten sonra modu yeniden seçebilirsin.",
-                    "Titreşim testi durduruluyor", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            await RefreshChannelEndpointsAsync();
+            ChannelMicCombo.ItemsSource = await Task.Run(ChannelLabRunner.Microphones);
+            ChannelMicCombo.SelectedIndex = -1; // Require an explicit microphone choice, never guess a streaming device.
         }
-        if (requested != _settings.Mode ||
-            (routeOverride.HasValue && routeOverride.Value != _settings.Route))
-        {
-            _testLab?.Close();
-            _nativeBridge?.Close();
-            _comparisonLab?.Close();
-        }
-        _rumble.StopAudio();
-        SetAudioPriority(false);
-        var selected = requested == HapticMode.Audio && !fromUser ? HapticMode.Normal : requested;
-        if (selected == HapticMode.Audio)
-        {
-            if (fromUser && System.Windows.MessageBox.Show(
-                "Audio modu Windows ses çıkışını yakalar ve NORMAL XInput rumble oluşturur.\n" +
-                "Bu DualSense'in özgün HD efektleri değildir. Devam edilsin mi?",
-                "Ses yakalama izni", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-            {
-                selected = HapticMode.Normal;
-            }
-            else
-            {
-                try { _rumble.StartAudio(); SetAudioPriority(true); }
-                catch (Exception e)
-                {
-                    selected = HapticMode.Normal;
-                    NoteError("Audio capture startup", e);
-                    if (fromUser) System.Windows.MessageBox.Show(e.Message, "Audio modu başlatılamadı",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            }
-        }
-
-        _settings.Mode = selected;
-        var chosenRoute = routeOverride ?? HapticRouteCatalog.DefaultForMode(selected);
-        if (HapticRouteCatalog.Get(chosenRoute).Mode != selected ||
-            HapticRouteCatalog.Get(chosenRoute).Route != chosenRoute)
-            chosenRoute = HapticRouteCatalog.DefaultForMode(selected);
-        _settings.Route = chosenRoute;
-        RouteCombo.SelectedItem = HapticRouteCatalog.Get(_settings.Route);
-        RefreshRoutePreview();
-        try { _store.Save(_settings); }
-        catch (Exception ex) { NoteError("Settings save", ex); }
-
-        NormalIndicator.Visibility = selected == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
-        AudioIndicator.Visibility = selected == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
-        NativeIndicator.Visibility = selected == HapticMode.Native ? Visibility.Visible : Visibility.Collapsed;
-        if (_normalMenu != null) _normalMenu.Checked = selected == HapticMode.Normal;
-        if (_audioMenu != null) _audioMenu.Checked = selected == HapticMode.Audio;
-        if (_nativeMenu != null) _nativeMenu.Checked = selected == HapticMode.Native;
-
-        TestButton.IsEnabled = true;
-        NativeBridgeButton.IsEnabled = HapticRouteCatalog.IsNative(_settings.Route);
-        if (_settings.Route is HapticRoute.OfficialRazerSensaGames or
-            HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab)
-        {
-            var routeInfo = HapticRouteCatalog.Get(_settings.Route);
-            StatusHeading.Text = routeInfo.DisplayName;
-            StatusDescription.Text = routeInfo.Guidance +
-                " RW3 bu haricî yöntemi kendi başına başlatmaz veya gerçekleşmiş saymaz.";
-        }
-        else if (selected == HapticMode.Normal)
-        {
-            StatusHeading.Text = "Normal Rumble · hazır";
-            StatusDescription.Text = "Oyunun kendi Xbox/XInput titreşimi korunur. İsteğe bağlı kısa motor testi yapılabilir. " +
-                "Bu mod Sensa HD veya stereo DualSense PCM aktarımı sağlamaz.";
-        }
-        else if (selected == HapticMode.Audio)
-        {
-            StatusHeading.Text = "Audio-to-Haptics · çalışıyor";
-            StatusDescription.Text = "Windows'un varsayılan ses çıkışı WASAPI ile dinleniyor ve basit bir DSP üzerinden " +
-                "standart XInput rumble üretiliyor. Razer Sensa'nın resmî Audio-to-Haptics motoru değildir. " +
-                "Oyun da kendi titreşimini gönderiyorsa iki kaynak birbirini etkileyebilir.";
-        }
-        else
-        {
-            StatusHeading.Text = "Native DualSense · deneysel stereo bridge";
-            StatusDescription.Text = "Seçili kaynak: " + HapticRouteCatalog.Get(_settings.Route).Source + ". " +
-                "Deneysel köprü: DualSense'in 4-kanallı UAC ses aygıtındaki haptic 3./4. kanallarını " +
-                "okuyup iki Interhaptics parametrik Sensa efektine dönüştürmeyi dener. " +
-                "Gerçek oyun komutu, bağımsız motor ayrımı ve bit-perfect PCM aktarımı henüz " +
-                "fiziksel olarak kanıtlanmadı. Başlatmak için 'Deneysel Native Stereo Bridge' düğmesini kullan.";
-        }
-        ActiveRouteText.Text = "Etkin tercih: " + HapticRouteCatalog.Get(_settings.Route).DisplayName +
-            " • " + HapticRouteCatalog.Get(_settings.Route).StageLabel;
-        DiagnosticsService.Info("Selected mode: " + selected + ", route: " + _settings.Route +
-            "; a preference is not physical playback evidence.");
-        RefreshDevice();
-        UpdateDiagnostics();
+        catch (Exception ex) { ChannelStatus.Text = "Mikrofon listesi okunamadı: " + ex.Message; }
     }
 
-    private void RefreshDevice()
-    {
-        int index = _rumble.DetectTargetIndex();
-        DeviceStatus.Text = index >= 0 ?
-            "Seçili XInput · Slot " + index + " (Wolverine olduğu henüz doğrulanmadı)" :
-            "Seçilen XInput slotu bağlı değil; cihaz ve PC modunu kontrol et";
-    }
-
-    private void Window_Loaded(object sender, RoutedEventArgs e) => RefreshDevice();
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (_realExit) return;
@@ -220,24 +163,19 @@ public partial class MainWindow : Window
         Show();
         WindowState = WindowState.Normal;
         Activate();
-        RefreshDevice();
     }
 
     private async void ExitCompletely()
     {
         _realExit = true;
-        _diagnosticsTimer.Stop();
-        _testLab?.Close();
-        _nativeBridge?.Close();
-        if (_comparisonLab != null)
-        {
-            try { await _comparisonLab.StopAndCloseAsync(); }
-            catch (Exception ex) { NoteError("Shutdown comparison", ex); }
-        }
+        _timer.Stop();
+        _testCancel?.Cancel();
+        StopAll();
+        await Task.Yield();
+        _bridge.Dispose();
         _rumble.Dispose();
-        SetAudioPriority(false);
         _performance.Dispose();
-        DiagnosticsService.Info("Application exit; requested motor stop.");
+        DiagnosticsService.Info("Application exit; motors stopped.");
         if (_tray != null)
         {
             _tray.Visible = false;
@@ -248,176 +186,1016 @@ public partial class MainWindow : Window
         System.Windows.Application.Current.Shutdown();
     }
 
-    private void OutputLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    public void RecoverFromUnexpectedError(Exception failure)
     {
-        if (!_initialized) return;
-        int next = HapticOutputLevel.Limit((int)Math.Round(e.NewValue));
-        _settings.OutputLevelPercent = next;
-        _rumble.OutputLevelPercent = next;
-        _nativeBridge?.UpdateOutputLevel(next);
-        _comparisonLab?.UpdateOutputLevel(next);
-        OutputLevelLabel.Text = next + "% • yalnızca RW3 çıkışları; USB DualSense = değişmez referans";
-        try { _store.Save(_settings); }
-        catch (Exception ex) { NoteError("Output level settings", ex); }
+        try { StopAll(); } catch { }
+        _lastErrorNoted = "Beklenmeyen hata: " + failure.Message;
+        try { RefreshStatus(); } catch { }
     }
 
-    private void DeviceSlot_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    // ───────────────────────── tabs ─────────────────────────
+
+    private async void Tab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (GeneralPage == null) return;
+        GeneralPage.Visibility = TabGeneral.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        TestPage.Visibility = TabTest.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPage.Visibility = TabSettings.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (TabGeneral.IsChecked == true && _initialized) await RefreshChecksAsync();
+        if (TabSettings.IsChecked == true && _initialized) await RefreshVirtualControllerAsync();
+    }
+
+    // ───────────────────────── Ayarlar: virtual DualSense (HIDMaestro) ─────────────────────────
+
+    private bool _vcBusy;
+
+    private async Task RefreshVirtualControllerAsync(string? lastAction = null)
+    {
+        var st = await Task.Run(VirtualControllerSetup.Query);
+        VcDriverText.Text = !st.SdkPresent ? "SDK: bu derlemede yok (tools/get-hidmaestro.ps1)" :
+            "Sürücü (HIDMaestro " + st.SdkVersion + "): " + (st.DriverInstalled ? "✓ kurulu" : "✗ kurulu değil") +
+            (st.Error != null ? " — " + st.Error : "");
+        VcUsbipText.Text = "USB/IP arka ucu (titreşim sesi kanalı): " + (st.UsbipAvailable ? "✓ hazır" : "✗ yok");
+        var t = st.LastSelfTest;
+        VcSelfTestText.Text = (lastAction != null ? lastAction + Environment.NewLine : "") +
+            (t == null ? "Sağlık testi: henüz yapılmadı." : "Son sağlık testi (" + t.At.ToString("dd.MM HH:mm") + "): " + (t.Ok ? "✓ " : "✗ ") + t.Summary);
+        bool healthy = st.Ready && t?.Ok == true;
+        VcBadgeText.Text = !st.SdkPresent ? "SDK yok" : healthy ? "Sağlıklı" : st.Ready ? "Kurulu • test bekliyor" : st.DriverInstalled ? "Eksik kurulum" : "Kurulu değil";
+        VcBadge.Background = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(
+            healthy ? "#1D4D38" : st.Ready ? "#3A2A10" : "#4D1D1D"));
+        VcInstallBtn.Content = st.Ready ? "Yeniden kur" : "Kur";
+        VcInstallBtn.IsEnabled = st.SdkPresent && !_vcBusy;
+        VcTestBtn.IsEnabled = st.Ready && !_vcBusy;
+        VcUninstallBtn.IsEnabled = st.SdkPresent && (st.DriverInstalled || st.UsbipAvailable) && !_vcBusy;
+    }
+
+    private async Task RunVirtualControllerStepAsync(string arg, string working)
+    {
+        if (_vcBusy) return;
+        _vcBusy = true;
+        VcInstallBtn.IsEnabled = VcTestBtn.IsEnabled = VcUninstallBtn.IsEnabled = false;
+        VcSelfTestText.Text = working + " (Windows yönetici izni isteyecek)…";
+        string result;
+        try { var (_, msg) = await VirtualControllerSetup.RunElevatedAsync(arg); result = msg; }
+        catch (Exception ex) { NoteError("HIDMaestro " + arg, ex); result = "Hata: " + ex.Message; }
+        _vcBusy = false;
+        await RefreshVirtualControllerAsync(result);
+    }
+
+    private async void VcInstall_Click(object sender, RoutedEventArgs e)
+    {
+        await RunVirtualControllerStepAsync(VirtualControllerSetup.InstallArg, "Kuruluyor");
+        if (VirtualControllerSetup.Query().Ready)
+            await RunVirtualControllerStepAsync(VirtualControllerSetup.SelfTestArg, "Kurulum tamam, sağlık testi yapılıyor");
+    }
+
+    private async void VcSelfTest_Click(object sender, RoutedEventArgs e) =>
+        await RunVirtualControllerStepAsync(VirtualControllerSetup.SelfTestArg, "Sanal DualSense oluşturulup kontrol ediliyor");
+
+    private async void VcUninstall_Click(object sender, RoutedEventArgs e)
+    {
+        var answer = System.Windows.MessageBox.Show(
+            "HIDMaestro sürücüsü, sertifikası ve USB/IP arka ucu kaldırılsın mı?" + Environment.NewLine + "PadForge gibi başka bir program da HIDMaestro kullanıyorsa o da çalışmaz.",
+            "Sanal DualSense'i kaldır", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+            await RunVirtualControllerStepAsync(VirtualControllerSetup.UninstallArg, "Kaldırılıyor");
+    }
+
+    // ───────────────────────── Genel: connection checklist ─────────────────────────
+
+    private async void RefreshChecks_Click(object sender, RoutedEventArgs e) => await RefreshChecksAsync();
+
+    private sealed record CheckResult(UsbGamepadPresence Usb, bool Synapse, bool Sdk, string? DualSenseEndpoint);
+
+    private async Task RefreshChecksAsync()
+    {
+        CheckResult r = await Task.Run(() =>
+        {
+            var usb = UsbGamepadMonitor.Read();
+            bool synapse = Process.GetProcessesByName("RazerAppEngine").Length > 0 ||
+                           Process.GetProcessesByName("Razer Synapse").Length > 0;
+            bool sdk = File.Exists(Path.Combine(AppContext.BaseDirectory, "HAR.dll")) &&
+                       File.Exists(Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll"));
+            string? endpoint = null;
+            try { endpoint = NativeBridgeService.FindDualSenseEndpoint()?.Name; }
+            catch (Exception ex) { DiagnosticsService.Error("Endpoint check", ex); }
+            return new CheckResult(usb, synapse, sdk, endpoint);
+        });
+
+        SetCheck(DotWolverine, HintWolverine, r.Usb.WolverineWiredPcNode,
+            "Kabloyla bağlı, PC modunda.",
+            !r.Usb.ScanSucceeded ? "USB listesi okunamadı." :
+            r.Usb.WolverineUsbNode ? "Sadece dongle / Xbox modu görünüyor. Kabloyla tak ve PC moduna al (○ + Menü + A, 2 sn)." :
+            "Bulunamadı. Kabloyla tak ve PC moduna al (○ + Menü + A, 2 sn).");
+        if (!r.Usb.WolverineWiredPcNode && r.Usb.WolverineUsbNode) DotWolverine.Fill = WarnBrush;
+        SetCheck(DotSynapse, HintSynapse, r.Synapse,
+            "Çalışıyor. Synapse'te Haptic Source: Sensa HD Games olmalı.",
+            "Çalışmıyor. Razer Synapse 4'ü aç.");
+        SetCheck(DotSdk, HintSdk, r.Sdk,
+            "HAR.dll ve RazerProvider hazır.",
+            "Eksik. HAR.dll ve Interhaptics.RazerProvider.dll uygulama klasörüne konmalı.");
+        SetCheck(DotDualSense, HintDualSense, r.DualSenseEndpoint != null,
+            "4 kanal ses aygıtı: " + r.DualSenseEndpoint,
+            "4 kanallı DualSense ses aygıtı yok. DualSense'i USB ile tak veya sanal DualSense'i başlat.");
+    }
+
+    private static void SetCheck(System.Windows.Shapes.Ellipse dot, TextBlock hint, bool ok, string okText, string badText)
+    {
+        dot.Fill = ok ? GoodBrush : BadBrush;
+        hint.Text = ok ? okText : badText;
+    }
+
+    // ───────────────────────── Genel: mode (auto-run) ─────────────────────────
+    // Choosing a mode runs it immediately, and the saved mode runs at every app start.
+    // If a source/runtime is missing, the timer retries quietly every few seconds.
+
+    private HapticMode SelectedMode =>
+        ModeAudio.IsChecked == true ? HapticMode.Audio :
+        ModeNative.IsChecked == true ? HapticMode.Native : HapticMode.Normal;
+
+    private bool _starting;
+    private WolverineMode _audioRoute = WolverineMode.Unknown;
+    private AudioHapticsBridge? _xboxAudio;
+    private long _nextAutoStartTick;
+    private const int RetryMs = 5000;
+
+    private void Mode_Checked(object sender, RoutedEventArgs e)
+    {
+        var mode = SelectedMode;
+        if (_initialized && _run != RunState.Off) StopAll();
+        _settings.Mode = mode;
+        _settings.Route = HapticRouteCatalog.DefaultForMode(mode);
+        _lastErrorNoted = null;
+        _nextAutoStartTick = 0;
+        if (_initialized)
+        {
+            try { _store.Save(_settings); } catch (Exception ex) { NoteError("Settings save", ex); }
+            DiagnosticsService.Info("Selected mode: " + mode + " (auto-run).");
+        }
+        if (_normalMenu != null) _normalMenu.Checked = mode == HapticMode.Normal;
+        if (_audioMenu != null) _audioMenu.Checked = mode == HapticMode.Audio;
+        if (_nativeMenu != null) _nativeMenu.Checked = mode == HapticMode.Native;
+        RefreshStatus();
+        if (_initialized) _ = EnsureModeRunningAsync();
+    }
+
+    private void CycleMode()
+    {
+        if (ModeNormal.IsChecked == true) ModeAudio.IsChecked = true;
+        else if (ModeAudio.IsChecked == true) ModeNative.IsChecked = true;
+        else ModeNormal.IsChecked = true;
+    }
+
+    /// <summary>Starts the selected mode if it is not running (no-op for Normal or during tests).</summary>
+    private async Task EnsureModeRunningAsync()
+    {
+        if (_busy || _starting || _realExit || _run != RunState.Off) return;
+        var mode = SelectedMode;
+        if (mode == HapticMode.Normal || Environment.TickCount64 < _nextAutoStartTick) return;
+        _starting = true;
+        try
+        {
+            if (mode == HapticMode.Audio)
+            {
+                // Route by controller protocol: PC mode → Sensa, Xbox mode → motors + triggers.
+                _audioRoute = await Task.Run(WolverineModeDetector.Detect);
+                if (_audioRoute == WolverineMode.Pc)
+                {
+                    await _bridge.StartAudioToSensaAsync();
+                    if (_busy || SelectedMode != HapticMode.Audio) { _bridge.Stop(); return; }
+                }
+                else if (_audioRoute == WolverineMode.Xbox)
+                {
+                    _xboxAudio = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent });
+                    _xboxAudio.Start();
+                }
+                else
+                {
+                    _rumble.StartAudio();          // unknown controller: classic XInput rumble
+                }
+                SetAudioPriority(true);
+                _run = RunState.Audio;
+            }
+            else
+            {
+                await _bridge.StartBridgeAsync();
+                if (_busy || _realExit || SelectedMode != HapticMode.Native) { _bridge.Stop(); return; }   // a test or mode change won
+                _run = RunState.Native;
+            }
+            _lastErrorNoted = null;
+            DiagnosticsService.Info("Mode " + mode + " running.");
+        }
+        catch (Exception ex)
+        {
+            _rumble.StopAudio();
+            SetAudioPriority(false);
+            _bridge.Stop();
+            if (_lastErrorNoted != ex.Message) DiagnosticsService.Error(mode + " auto start", ex);
+            _lastErrorNoted = ex.Message;
+            _nextAutoStartTick = Environment.TickCount64 + RetryMs;
+        }
+        finally
+        {
+            _starting = false;
+            RefreshStatus();
+        }
+    }
+
+    private void StopAll()
+    {
+        _testCancel?.Cancel();
+        _xboxAudio?.Dispose();
+        _xboxAudio = null;
+        _rumble.StopAudio();
+        SetAudioPriority(false);
+        _bridge.Stop();
+        _run = RunState.Off;
+    }
+
+    private void Timer_Tick(object? sender, EventArgs e)
+    {
+        try
+        {
+            _tickCount++;
+            if (_tickCount % 8 == 0)
+            {
+                _performance.Sample();
+                if (_run == RunState.Audio && _performance.SustainedHighSamples >= 3)
+                {
+                    StopAll();
+                    _lastErrorNoted = "İşlemci sınırı (%3) üst üste aşıldı; sesten titreşim 1 dk durduruldu.";
+                    _nextAutoStartTick = Environment.TickCount64 + 60_000;
+                    DiagnosticsService.Info(_lastErrorNoted);
+                }
+            }
+            bool audioAlive = _audioRoute switch
+            {
+                WolverineMode.Pc => _bridge.IsAudioToSensaRunning,
+                WolverineMode.Xbox => _xboxAudio?.IsCapturing == true,
+                _ => _rumble.Snapshot().IsCapturing
+            };
+            if (_run == RunState.Audio && !audioAlive)
+            {
+                _lastErrorNoted = (_audioRoute switch
+                {
+                    WolverineMode.Pc => _bridge.AudioFailure,
+                    WolverineMode.Xbox => _xboxAudio?.Failure,
+                    _ => _rumble.Snapshot().LastError
+                }) ?? "Ses yakalama beklenmedik biçimde durdu.";
+                StopAll();
+                _nextAutoStartTick = Environment.TickCount64 + RetryMs;
+            }
+            if (_run == RunState.Native && !_busy && !_bridge.IsBridgeRunning)
+            {
+                _lastErrorNoted = "Native köprü durdu: " + _bridge.SensaStatus + " / " + _bridge.SourceStatus;
+                DiagnosticsService.Info(_lastErrorNoted);
+                StopAll();
+                _nextAutoStartTick = Environment.TickCount64 + RetryMs;
+            }
+            if (_tickCount % 4 == 0) _ = EnsureModeRunningAsync();   // auto-run / resume after tests
+            RefreshStatus();
+        }
+        catch (Exception ex) { NoteError("Status refresh", ex); }
+    }
+
+    private void RefreshStatus()
+    {
+        var mode = SelectedMode;
+        bool running = _run != RunState.Off;
+        LevelPanel.Visibility = _run == RunState.Native ? Visibility.Visible : Visibility.Collapsed;
+        string waitText = _busy ? "Test sürüyor; bitince otomatik devam eder."
+            : _lastErrorNoted != null ? "Bekleniyor: " + _lastErrorNoted + " (birkaç saniyede bir yeniden denenir)"
+            : "Başlatılıyor…";
+
+        switch (mode)
+        {
+            case HapticMode.Normal:
+                StatusTitle.Text = "Normal mod etkin";
+                StatusDetail.Text = "Oyunun titreşimi doğrudan kola gider. Bu uygulamanın bir şey çalıştırmasına gerek yok.";
+                ModeNote.Text = "Razer'ın kendi Sensa HD efektleri için Synapse'te 'Sensa HD Games' kaynağını kullan.";
+                SetBadge(GoodBrush, "Normal");
+                break;
+            case HapticMode.Audio:
+                var snap = _rumble.Snapshot();
+                string route = _audioRoute switch
+                {
+                    WolverineMode.Pc => "PC modu → Sensa motorları (sol/sağ, v2)",
+                    WolverineMode.Xbox => "Xbox modu → ana motorlar + tetik motorları",
+                    _ => "Klasik Xbox titreşimi"
+                };
+                bool sound = _audioRoute switch
+                {
+                    WolverineMode.Pc => _bridge.AudioHasRecentSound,
+                    WolverineMode.Xbox => _xboxAudio?.HasRecentSound == true,
+                    _ => snap.LastActiveSoundTick > 0 && Environment.TickCount64 - snap.LastActiveSoundTick < 3000
+                };
+                StatusTitle.Text = running ? "Sesten titreşim çalışıyor" : "Sesten titreşim";
+                StatusDetail.Text = running
+                    ? route + " • " + (sound ? "ses algılanıyor." : "şu an ses yok veya çok sessiz. Ses kaydedilmez.")
+                    : waitText;
+                ModeNote.Text = "Kolun modu otomatik algılanır: PC modunda Sensa, Xbox modunda ana motorlar + tetikler. " +
+                                "Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.";
+                SetBadge(running ? GoodBrush : WarnBrush, running ? "Çalışıyor" : "Bekliyor");
+                break;
+            default:
+                if (running)
+                {
+                    bool signal = _bridge.HasRecentHapticSignal;
+                    StatusTitle.Text = signal ? "Arka kanal PCM gözlendi" : "Native v2 açık · sinyal bekleniyor";
+                    StatusDetail.Text = signal
+                        ? NativeCaptureHealth.Describe(NativeCaptureState.RearChannelEnergyObserved) + " • v2 motor " +
+                          _bridge.EngineTickHz.ToString("F0") + " kare/sn."
+                        : "Kaynak: " + (_bridge.SourceName ?? "?") + ". DualSense haptiği destekleyen oyunu aç.";
+                    LeftLevel.Value = Math.Clamp(_bridge.LeftRms * 4, 0, 1);
+                    RightLevel.Value = Math.Clamp(_bridge.RightRms * 4, 0, 1);
+                    SetBadge(WarnBrush, signal ? "Deneysel PCM" : "Hazır");
+                }
+                else
+                {
+                    StatusTitle.Text = "Native DualSense (v2)";
+                    StatusDetail.Text = waitText;
+                    SetBadge(WarnBrush, "Bekliyor");
+                }
+                ModeNote.Text = "Deneysel, kayıplı v2 dönüşümü (33 ms kare). Oyun kaynağı ve fiziksel HD doğrulanmadı.";
+                break;
+        }
+
+        ResourceText.Text = "Uygulama CPU: %" + _performance.CpuPercent.ToString("F2") +
+                            " · RAM: " + _performance.MemoryMb.ToString("F0") + " MB";
+        DiagnosticsText.Text = _lastErrorNoted != null ? "Son sorun: " + _lastErrorNoted : "Son hata: yok";
+    }
+
+    private void SetBadge(Brush dot, string text)
+    {
+        RunBadgeDot.Fill = dot;
+        RunBadgeText.Text = text;
+    }
+
+    // ───────────────────────── Test: Sensa sides ─────────────────────────
+
+    private void SensaLeft_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(HapticTestChannel.Left);
+    private void SensaRight_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(HapticTestChannel.Right);
+    private void SensaBoth_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(null);
+
+    private CancellationToken BeginTest()
+    {
+        if (_run != RunState.Off) StopAll();
+        _testCancel?.Cancel();
+        _testCancel = new CancellationTokenSource();
+        SetTestButtons(false);
+        return _testCancel.Token;
+    }
+
+    private void SetTestButtons(bool enabled)
+    {
+        SensaLeftBtn.IsEnabled = SensaRightBtn.IsEnabled = SensaBothBtn.IsEnabled = AudioPanBtn.IsEnabled =
+            AudioPingPongBtn.IsEnabled = AudioDir8Btn.IsEnabled = AudioFrontBackBtn.IsEnabled = enabled;
+        DemoPlayBtn.IsEnabled = DemoSceneCombo.IsEnabled = enabled;
+        ChannelReplayBtn.IsEnabled = ChannelReferenceBtn.IsEnabled = ChannelEndpointBtn.IsEnabled = ChannelRefreshEndpointsBtn.IsEnabled = ChannelEndpointCombo.IsEnabled = enabled;
+        ChannelSceneCombo.IsEnabled = ChannelMicCombo.IsEnabled = ChannelMicEnabled.IsEnabled = enabled;
+        ChannelEndpointLevelEnabled.IsEnabled = enabled;
+        SensaResetBtn.IsEnabled = enabled;
+    }
+
+    private string? _channelReportPath;
+    private void ChannelReplay_Click(object sender, RoutedEventArgs e) => _ = RunChannelLabAsync(false);
+    private void ChannelReference_Click(object sender, RoutedEventArgs e) => _ = RunChannelLabAsync(true);
+    private void ChannelEndpoint_Click(object sender, RoutedEventArgs e) => _ = RunChannelLabAsync(false, true);
+    private async void ChannelRefreshEndpoints_Click(object sender, RoutedEventArgs e)
+    {
+        try { await RefreshChannelEndpointsAsync(); }
+        catch (Exception ex) { ChannelStatus.Text = "Uç nokta listesi okunamadı: " + ex.Message; }
+    }
+    private async Task RefreshChannelEndpointsAsync()
+    {
+        var endpoints = await Task.Run(NativeDualSenseCapture.EnumeratePossibleSources);
+        var compatible = new List<NativeDualSenseCapture.EndpointCandidate>();
+        foreach (var endpoint in endpoints) if (endpoint.CanCapture) compatible.Add(endpoint);
+        ChannelEndpointCombo.ItemsSource = compatible;
+        ChannelEndpointCombo.SelectedIndex = compatible.Count == 1 ? 0 : -1;
+    }
+    private void ChannelStop_Click(object sender, RoutedEventArgs e)
+    {
+        _testCancel?.Cancel();
+        _bridge.Stop();
+    }
+    private void ChannelReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_channelReportPath != null) OpenPath(_channelReportPath);
+    }
+
+    private async Task RunChannelLabAsync(bool reference, bool endpointRoute = false)
+    {
+        if (_busy || _starting || ChannelSceneCombo.SelectedItem is not ChannelLabScene scene) return;
+        var chosenEndpoint = ChannelEndpointCombo.SelectedItem as NativeDualSenseCapture.EndpointCandidate;
+        if (endpointRoute && chosenEndpoint == null)
+        {
+            ChannelStatus.Text = "4ch/48k uç noktasını yenile ve seç. Doğrudan PCM tekrarına geri dönülmedi.";
+            return;
+        }
+        string? micId = null;
+        if (!reference && ChannelMicEnabled.IsChecked == true)
+        {
+            if (ChannelMicCombo.SelectedItem is not LabMicrophone microphone)
+            {
+                ChannelStatus.Text = "Ölçüm için bir mikrofon seç; yoksa mikrofon ölçümünü kapat.";
+                return;
+            }
+            micId = microphone.Id;
+        }
+        _busy = true;
+        var token = BeginTest();
+        _bridge.Stop(); // No other HAR owner may run during this independent lab operation.
+        ChannelStatus.Text = "Hazırlanıyor • " + scene.Title;
+        ChannelReportBtn.IsEnabled = false;
+        _channelReportPath = null;
+        try
+        {
+            if (endpointRoute)
+            {
+                var progress = new Progress<string>(message => ChannelStatus.Text = scene.Title + " • " + message);
+                var result = await EndpointLabRunner.RunAsync(scene, chosenEndpoint!.Id, _settings.OutputLevelPercent,
+                    _settings.NativeGainPercent, micId, token, progress, ChannelEndpointLevelEnabled.IsChecked == true);
+                string folder = Path.Combine(Path.GetDirectoryName(DiagnosticsService.LogFile)!, "channel-lab");
+                Directory.CreateDirectory(folder);
+                _channelReportPath = Path.Combine(folder, "endpoint-" + Guid.NewGuid().ToString("N") + ".json");
+                File.WriteAllText(_channelReportPath, System.Text.Json.JsonSerializer.Serialize(result,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                ChannelReportBtn.IsEnabled = true;
+                ChannelStatus.Text = "Gerçek WASAPI: " + result.LiveCapturedFrames + " çerçeve • L/R etkin blok " +
+                    result.LiveLeftActiveBlocks + "/" + result.LiveRightActiveBlocks + " • örnekler birebir: " +
+                    (result.SourceComparison.ExactActiveSamples ? "evet" : "hayır") + " • gözlenen kazanç " +
+                    result.SourceComparison.ObservedGain.ToString("F3") + ". Sentetik kaynak; gerçek oyun/fiziksel HD doğrulanmadı.";
+            }
+            else if (reference)
+            {
+                var pcm = DualSenseChannelFixtures.Build(scene);
+                string hash = DualSenseChannelFixtures.Sha256(pcm);
+                var endpoint = await Task.Run(NativeBridgeService.FindDualSenseEndpoint) ??
+                    throw new InvalidOperationException("DualSense 4ch/48k aygıtı yok; referans çalınmadı.");
+                using var awakeStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var awake = Task.Run(() => DualSenseHidControl.KeepAwake(awakeStop.Token));
+                try
+                {
+                    await Task.Delay(150, token);
+                    await DualSensePatternPlayer.PlayPcm16Async(endpoint.Id, pcm, token);
+                }
+                finally { awakeStop.Cancel(); await awake; }
+                ChannelStatus.Text = "DualSense Exclusive PCM gönderimi bitti. SHA256 " + hash[..16] +
+                    "; fiziksel yanıt doğrulanmadı. Wolverine bu referans testinde çalıştırılmadı.";
+            }
+            else
+            {
+                var progress = new Progress<string>(message => ChannelStatus.Text = scene.Title + " • " + message);
+                var result = await ChannelLabRunner.ReplayAsync(scene, _settings.OutputLevelPercent,
+                    _settings.NativeGainPercent, micId, token, progress);
+                _channelReportPath = ChannelLabRunner.SaveReport(result);
+                ChannelReportBtn.IsEnabled = true;
+                ChannelStatus.Text = "PCM değişmedi: " + (result.SourceSha256 == result.SourceAfterSha256 ? "evet" : "HAYIR") +
+                    " • motor " + result.EngineHz.ToString("F0") + " Hz • " + result.SourceFrames + " kaynak çerçevesi" +
+                    (result.Active == null ? " • mikrofon ölçülmedi." :
+                        " • mikrofon RMS: " + result.Background!.BandRms.ToString("G3") + " → " +
+                        result.Active.BandRms.ToString("G3") + " → " + result.Tail!.BandRms.ToString("G3")) +
+                    " • USB kaynak / gerçek oyun / fiziksel HD doğrulanmadı.";
+            }
+        }
+        catch (OperationCanceledException) { ChannelStatus.Text = "Durduruldu; çıkış kapatıldı. Tamamlanmış ölçüm raporu yok."; }
+        catch (Exception ex) { NoteError("DualSense channel lab", ex); ChannelStatus.Text = "Test tamamlanmadı: " + ex.Message; }
+        finally { _busy = false; SetTestButtons(true); }
+    }
+
+    private async void DemoSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _starting || DemoSceneCombo.SelectedItem is not ChannelLabScene { Demo: { } demo }) return;
+        _busy = true;
+        var token = BeginTest();
+        DemoStatus.Text = NativeDemoSignals.Caption(demo, 0);
+        try
+        {
+            var progress = new Progress<int>(ms => DemoStatus.Text = NativeDemoSignals.Caption(demo, ms));
+            if (DemoDevDualSense.IsChecked == true)
+            {
+                await PlayDemoOnDualSenseAsync(demo, progress, token);
+                DemoStatus.Text = NativeDemoSignals.Title(demo) + " bitti • DualSense (Exclusive; fiziksel yanıt teyit edilmedi)";
+            }
+            else
+            {
+                bool ok = await _bridge.PlayDemoAsync(demo, token, progress);
+                if (!ok) throw new InvalidOperationException(_bridge.SensaStatus);
+                DemoStatus.Text = NativeDemoSignals.Title(demo) + " bitti • Wolverine v2 " +
+                                  _bridge.EngineTickHz.ToString("F0") + " kare/sn";
+            }
+            DiagnosticsService.Info("Demo " + demo + " played on " + (DemoDevDualSense.IsChecked == true ? "DualSense" : "Wolverine v2") + ".");
+        }
+        catch (OperationCanceledException) { DemoStatus.Text = "Durduruldu."; }
+        catch (Exception ex)
+        {
+            NoteError("Native demo", ex);
+            DemoStatus.Text = "Çalınamadı: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            SetTestButtons(true);
+        }
+    }
+
+    /// <summary>Plays a demo's PCM directly on the USB DualSense (reference), keeping its haptic path awake.</summary>
+    private static async Task PlayDemoOnDualSenseAsync(NativeDemo demo, IProgress<int> progress, CancellationToken token)
+    {
+        var endpoint = await Task.Run(NativeBridgeService.FindDualSenseEndpoint) ??
+            throw new InvalidOperationException("4 kanallı DualSense ses aygıtı bulunamadı; DualSense'i USB ile tak.");
+        var pcm = DualSenseChannelFixtures.Build(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
+        using var keepAliveStop = new CancellationTokenSource();
+        var keepAlive = Task.Run(() => { try { DualSenseHidControl.KeepAwake(keepAliveStop.Token); } catch { } });
+        var sw = Stopwatch.StartNew();
+        using var progressStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var ticker = Task.Run(async () =>
+        {
+            while (!progressStop.IsCancellationRequested)
+            {
+                progress.Report((int)sw.ElapsedMilliseconds);
+                try { await Task.Delay(50, progressStop.Token); } catch (OperationCanceledException) { }
+            }
+        });
+        try
+        {
+            await Task.Delay(150, token);
+            sw.Restart();
+            await DualSensePatternPlayer.PlayPcm16Async(endpoint.Id, pcm, token);
+        }
+        finally
+        {
+            progressStop.Cancel();
+            keepAliveStop.Cancel();
+            await keepAlive;
+            await ticker;
+        }
+    }
+
+    private async Task RunSensaTestAsync(HapticTestChannel? side)
+    {
+        if (DevXbox.IsChecked == true) { await RunXInputTestAsync(side); return; }
+        if (_busy || _starting) return;
+        _busy = true;
+        var token = BeginTest();
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        string label = side == HapticTestChannel.Left ? "Sol" : side == HapticTestChannel.Right ? "Sağ" : "İki taraf";
+        bool dualSense = DevDualSense.IsChecked == true;
+        string device = dualSense ? "DualSense" : "Wolverine";
+        SensaTestStatus.Text = device + " · " + label + " deseni çalıyor…";
+        try
+        {
+            if (dualSense)
+            {
+                var endpoint = await Task.Run(NativeBridgeService.FindDualSenseEndpoint) ??
+                    throw new InvalidOperationException("4 kanallı DualSense ses aygıtı bulunamadı; DualSense'i USB ile tak.");
+                // Wake the haptic path (power-save / haptic mute off). Live controller state only.
+                try
+                {
+                    string hidPath = await Task.Run(DualSenseHidControl.WakeHaptics);
+                    DiagnosticsService.Info("DualSense haptic wake report (AllowAudioMute, MuteControl=0) sent to " + hidPath);
+                }
+                catch (Exception wakeError)
+                {
+                    DiagnosticsService.Error("DualSense haptic wake", wakeError);
+                    SensaTestStatus.Text = "Uyarı: DualSense uyandırma raporu gönderilemedi (" + wakeError.Message + "). Yine de çalınıyor…";
+                }
+                // Keep the haptic path alive with output reports every 20 ms while the pattern plays.
+                using var keepAliveStop = new CancellationTokenSource();
+                var keepAlive = Task.Run(() => DualSenseHidControl.KeepAwake(keepAliveStop.Token));
+                try
+                {
+                    await Task.Delay(150, token); // let the controller power the path before audio
+                    await DualSensePatternPlayer.PlayAsync(endpoint.Id,
+                        side != HapticTestChannel.Right, side != HapticTestChannel.Left, token);
+                }
+                finally
+                {
+                    keepAliveStop.Cancel();
+                    try { DiagnosticsService.Info("DualSense keep-alive reports sent: " + await keepAlive); }
+                    catch (Exception keepError) { DiagnosticsService.Error("DualSense keep-alive", keepError); }
+                }
+                DiagnosticsService.Info("DualSense reference pattern " + label + " played on rear channel(s) of " +
+                    endpoint.Name + " (Exclusive PCM16 quad; physical response not verified)");
+            }
+            else
+            {
+                bool ok = side is { } s ? await _bridge.TestSideAsync(s, token) : await _bridge.TestBothAsync(token);
+                if (!ok) throw new InvalidOperationException(_bridge.SensaStatus);
+                DiagnosticsService.Info("Sensa test pattern " + label + " sent (target " +
+                    (side == HapticTestChannel.Right ? SensaStereoPrototype.RightTarget.Label : SensaStereoPrototype.LeftTarget.Label) + ").");
+            }
+            SensaTestStatus.Text = device + " · " + label + " deseni çalındı" +
+                (dualSense ? " (Exclusive PCM16; fiziksel yanıt teyidi bekleniyor)." : ".");
+            if (side is { } asked)
+            {
+                _askingSide = asked;
+                _askingDualSense = dualSense;
+                SensaAskText.Text = device + " · " + label + " — nerede hissettin?";
+                SensaAskPanel.Visibility = Visibility.Visible;
+            }
+        }
+        catch (OperationCanceledException) { SensaTestStatus.Text = "Test durduruldu."; }
+        catch (Exception ex)
+        {
+            NoteError("Sensa test", ex);
+            SensaTestStatus.Text = "Gönderilemedi: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            SetTestButtons(true);
+        }
+    }
+
+    /// <summary>
+    /// Audio-haptics check: runs the "Sesten titreşim" route for the controller's current mode
+    /// and plays a bass tone gliding left → right → left on the default playback device.
+    /// </summary>
+    private async void AudioPan_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        var kind = sender is FrameworkElement { Tag: string tag } && Enum.TryParse<AudioTestKind>(tag, out var k) ? k : AudioTestKind.Glide;
+        _busy = true;
+        var token = BeginTest();
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        AudioHapticsBridge? xbox = null;
+        try
+        {
+            var mode = await Task.Run(WolverineModeDetector.Detect);
+            string route;
+            if (mode == WolverineMode.Pc)
+            {
+                // The test follows the on-screen caption, not a speaker: no Bluetooth sync delay.
+                await _bridge.StartAudioToSensaAsync(token, null, 0);
+                route = "PC modu → Sensa motorları";
+            }
+            else if (mode == WolverineMode.Xbox)
+            {
+                xbox = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent }) { DelayOverrideMs = 0 };
+                xbox.Start();
+                route = "Xbox modu → ana motorlar + tetikler";
+            }
+            else throw new InvalidOperationException("Wolverine bulunamadı (PC veya Xbox modunda bağlı olmalı).");
+            await Task.Delay(300, token);
+            var progress = new Progress<int>(ms => SensaTestStatus.Text = AudioPanTest.Caption(kind, ms) + "  (" + route + ")");
+            await AudioPanTest.PlayAsync(kind, progress, token);
+            await Task.Delay(400, token);   // let the last frames finish before the engine stops
+            string expect = kind switch
+            {
+                AudioTestKind.PingPong => "Titreşim sırayla tamamen sol, tamamen sağ elde hissedilmeli.",
+                AudioTestKind.Directions8 => "Sağ/sol konumla, ön keskin tıkırtıyla, arka derin uğultuyla hissedilmeli.",
+                AudioTestKind.FrontBack => "Ön: keskin hızlı tıkırtı, arka: derin yumuşak uğultu; ikisi de iki elde.",
+                _ => "Bas önce sol elde, sonra sağda, sonra yine solda hissedilmeli."
+            };
+            SensaTestStatus.Text = AudioPanTest.Title(kind) + " bitti (" + route + "). " + expect + " " + SynapseA2HWarning;
+            DiagnosticsService.Info("Audio test " + kind + " played via " + route + ".");
+        }
+        catch (OperationCanceledException) { SensaTestStatus.Text = "Ses testi durduruldu."; }
+        catch (Exception ex)
+        {
+            NoteError("Audio pan test", ex);
+            SensaTestStatus.Text = "Ses testi çalışmadı: " + ex.Message;
+        }
+        finally
+        {
+            xbox?.Dispose();
+            _bridge.Stop();
+            _busy = false;
+            SetTestButtons(true);
+        }
+    }
+
+    /// <summary>
+    /// Synapse's own "Audio to Haptics" also turns all PC audio into Sensa vibration (with its own
+    /// delay and long tail). Measured 2026-11-07: with RW3's engine OFF, the test tone still made the
+    /// controller vibrate for 6+ s after the audio ended. It must be off for RW3 audio modes.
+    /// </summary>
+    private const string SynapseA2HWarning =
+        "Titreşim gecikiyor ya da test bitince sürüyorsa başka bir ses→titreşim aracı çalışıyor: " +
+        "Synapse 'Audio to Haptics' veya DSX 'Audio to Haptics' (yakındaki DualSense'i titretir). İkisini de kapat.";
+
+    private async void SensaReset_Click(object sender, RoutedEventArgs e)
+    {
+        // Works even mid-test: cancel, fully quit HAR + Razer provider, then start clean.
+        _testCancel?.Cancel();
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        _askingSide = null;
+        SensaResetBtn.IsEnabled = false;
+        SensaTestStatus.Text = "Sıfırlanıyor…";
+        try
+        {
+            StopAll();
+            await Task.Run(_bridge.Stop);
+            await _bridge.EnsureSensaAsync();
+            SensaTestStatus.Text = "Motor sıfırlandı ve temiz başlatıldı. Tekrar dene.";
+            DiagnosticsService.Info("User reset Sensa engine from Test tab.");
+        }
+        catch (Exception ex)
+        {
+            NoteError("Sensa reset", ex);
+            SensaTestStatus.Text = "Sıfırlanamadı: " + ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            SensaResetBtn.IsEnabled = true;
+            SetTestButtons(true);
+        }
+    }
+
+    private enum SideFeel { Untested, Clean, Leak, NotFelt }
+    private readonly Dictionary<(bool DualSense, HapticTestChannel Side), SideFeel> _feel = new();
+    private bool _askingDualSense;
+
+    private void SensaFeltClean_Click(object sender, RoutedEventArgs e) => RecordFelt(SideFeel.Clean);
+    private void SensaFeltLeak_Click(object sender, RoutedEventArgs e) => RecordFelt(SideFeel.Leak);
+    private void SensaFeltNo_Click(object sender, RoutedEventArgs e) => RecordFelt(SideFeel.NotFelt);
+
+    private void TestDevice_Checked(object sender, RoutedEventArgs e)
+    {
+        if (SensaAskPanel == null) return;
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        _askingSide = null;
+        SensaResetBtn.Visibility = DevWolverine.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RecordFelt(SideFeel feel)
+    {
+        if (_askingSide is not { } side) return;
+        _feel[(_askingDualSense, side)] = feel;
+        DiagnosticsService.Info("User physical rating: " + (_askingDualSense ? "DualSense" : "Wolverine") +
+            " " + side + " = " + feel + (_askingDualSense ? "" :
+            " (targets " + SensaStereoPrototype.LeftTarget.Label + " / " + SensaStereoPrototype.RightTarget.Label + ")"));
+        _askingSide = null;
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        ShowFeelResults();
+    }
+
+    private void ShowFeelResults()
+    {
+        SensaWolverineResult.Text = "Wolverine   " + FeelText(false);
+        SensaDualSenseResult.Text = "DualSense   " + FeelText(true);
+    }
+
+    private string FeelText(bool dualSense) =>
+        "Sol: " + Describe(_feel.GetValueOrDefault((dualSense, HapticTestChannel.Left))) +
+        "    Sağ: " + Describe(_feel.GetValueOrDefault((dualSense, HapticTestChannel.Right)));
+
+    private static string Describe(SideFeel feel) => feel switch
+    {
+        SideFeel.Clean => "✓ sadece bu tarafta",
+        SideFeel.Leak => "⚠ iki tarafa sızıyor",
+        SideFeel.NotFelt => "✕ hissedilmedi",
+        _ => "–"
+    };
+
+    // ───────────────────────── controller control ─────────────────────────
+    // The whole app can be driven from the controller:
+    //   LB/RB = tabs · D-pad/left stick = move focus · A = select · B = back/cancel
+    //   Menu (☰) = next mode. Test prompts take priority over navigation.
+    // Input is only acted on while one of THIS app's windows is in the foreground,
+    // so presses made while playing a game never trigger anything here.
+
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    private void PadTimer_Tick(object? sender, EventArgs e)
+    {
+        ushort buttons = XInputHaptics.ReadButtonsAnyPad();
+        ushort pressed = (ushort)(buttons & ~_prevPadButtons);
+        _prevPadButtons = buttons;
+        if (pressed == 0 || !IsVisible) return;
+        try { HandlePadPress(pressed); }
+        catch (Exception ex) { NoteError("Controller input", ex); }
+    }
+
+    private static bool Has(ushort pressed, ushort mask) => (pressed & mask) != 0;
+
+    private void HandlePadPress(ushort p)
+    {
+        IntPtr fg = GetForegroundWindow();
+        GetWindowThreadProcessId(fg, out uint pid);
+        if (pid != (uint)Environment.ProcessId) return;      // a game or other app has focus
+        IntPtr main = new WindowInteropHelper(this).Handle;
+        if (fg != main)
+        {
+            ForwardPadToForeignWindow(p);                    // MessageBox or a secondary window
+            return;
+        }
+
+        // 1) Test prompts waiting for an answer.
+        if (TestPage.Visibility == Visibility.Visible)
+        {
+            if (SensaAskPanel.Visibility == Visibility.Visible && !_busy)
+            {
+                if (Has(p, XInputHaptics.ButtonA)) { RecordFelt(SideFeel.Clean); return; }
+                if (Has(p, XInputHaptics.ButtonX)) { RecordFelt(SideFeel.Leak); return; }
+                if (Has(p, XInputHaptics.ButtonB)) { RecordFelt(SideFeel.NotFelt); return; }
+            }
+        }
+
+        // 2) Global navigation.
+        if (Has(p, XInputHaptics.ButtonLeftShoulder)) { SwitchTab(-1); return; }
+        if (Has(p, XInputHaptics.ButtonRightShoulder)) { SwitchTab(+1); return; }
+        if (Has(p, XInputHaptics.ButtonMenu)) { CycleMode(); return; }
+        if (Has(p, XInputHaptics.ButtonB))
+        {
+            if (_busy) _testCancel?.Cancel();                // stop a running test/demo
+            else if (TabGeneral.IsChecked != true) TabGeneral.IsChecked = true;
+            return;
+        }
+        if (Has(p, XInputHaptics.ButtonDpadUp)) { MoveFocusPad(FocusNavigationDirection.Up); return; }
+        if (Has(p, XInputHaptics.ButtonDpadDown)) { MoveFocusPad(FocusNavigationDirection.Down); return; }
+        if (Has(p, XInputHaptics.ButtonDpadLeft)) { MoveFocusPad(FocusNavigationDirection.Left); return; }
+        if (Has(p, XInputHaptics.ButtonDpadRight)) { MoveFocusPad(FocusNavigationDirection.Right); return; }
+        if (Has(p, XInputHaptics.ButtonA)) ActivateFocused();
+    }
+
+    private FrameworkElement CurrentPage =>
+        TabTest.IsChecked == true ? TestPage : TabSettings.IsChecked == true ? SettingsPage : GeneralPage;
+
+    private void SwitchTab(int delta)
+    {
+        var tabs = new[] { TabGeneral, TabTest, TabSettings };
+        int current = Array.FindIndex(tabs, t => t.IsChecked == true);
+        int next = (current + delta + tabs.Length) % tabs.Length;
+        tabs[next].IsChecked = true;
+        FocusFirstIn(CurrentPage);
+    }
+
+    private void FocusFirstIn(FrameworkElement page) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            // On Genel the natural starting point is the selected mode card.
+            if (ReferenceEquals(page, GeneralPage))
+            {
+                var mode = ModeAudio.IsChecked == true ? ModeAudio :
+                           ModeNative.IsChecked == true ? ModeNative : ModeNormal;
+                if (mode.Focus()) return;
+            }
+            Keyboard.Focus(page);
+            page.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+        }));
+
+    private void MoveFocusPad(FocusNavigationDirection direction)
+    {
+        // Nothing focused yet (or focus is outside the visible page): start at its first item.
+        if (Keyboard.FocusedElement is not UIElement focused || !focused.IsVisible ||
+            (!CurrentPage.IsAncestorOf((DependencyObject)focused) && !IsTabButton(focused)))
+        {
+            FocusFirstIn(CurrentPage);
+            return;
+        }
+        focused.MoveFocus(new TraversalRequest(direction));
+    }
+
+    private bool IsTabButton(object element) =>
+        ReferenceEquals(element, TabGeneral) || ReferenceEquals(element, TabTest) || ReferenceEquals(element, TabSettings);
+
+    private static void ActivateFocused()
+    {
+        switch (Keyboard.FocusedElement)
+        {
+            case RadioButton { IsEnabled: true } rb:
+                rb.IsChecked = true;
+                break;
+            case System.Windows.Controls.CheckBox { IsEnabled: true } cb:
+                cb.IsChecked = cb.IsChecked != true;
+                break;
+            case System.Windows.Controls.Button { IsEnabled: true } b:
+                b.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, b));
+                break;
+            case System.Windows.Controls.ComboBox { IsEnabled: true, Items.Count: > 0 } combo:
+                combo.SelectedIndex = (combo.SelectedIndex + 1) % combo.Items.Count;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Message boxes and the advanced windows are driven with synthetic keys:
+    /// A = Space (press focused button), B = Esc, D-pad = arrow keys / Tab.
+    /// </summary>
+    private static void ForwardPadToForeignWindow(ushort p)
+    {
+        string? keys =
+            Has(p, XInputHaptics.ButtonA) ? " " :
+            Has(p, XInputHaptics.ButtonB) ? "{ESC}" :
+            Has(p, XInputHaptics.ButtonDpadLeft) ? "+{TAB}" :
+            Has(p, XInputHaptics.ButtonDpadRight) ? "{TAB}" :
+            Has(p, XInputHaptics.ButtonDpadUp) ? "+{TAB}" :
+            Has(p, XInputHaptics.ButtonDpadDown) ? "{TAB}" : null;
+        if (keys != null) Forms.SendKeys.SendWait(keys);
+    }
+
+    // ───────────────────────── Test: XInput (classic) + A/B ─────────────────────────
+
+    private async Task RunXInputTestAsync(HapticTestChannel? side)
+    {
+        if (_busy || _starting) return;
+        _busy = true;
+        var token = BeginTest();
+        SensaAskPanel.Visibility = Visibility.Collapsed;
+        string label = side == HapticTestChannel.Left ? "Sol" : side == HapticTestChannel.Right ? "Sağ" : "İki";
+        try
+        {
+            bool ok = side is { } s1 ? await _rumble.TestChannelAsync(s1, token) : await _rumble.TestAsync();
+            SensaTestStatus.Text = ok
+                ? "Xbox · " + label + " motor komutu gönderildi. Hissetmediysen Ayarlar'dan kontrolcü yuvasını değiştir."
+                : "Xbox kontrolcüsü bulunamadı. Kolun bağlı ve PC modunda olduğunu kontrol et.";
+        }
+        catch (OperationCanceledException) { SensaTestStatus.Text = "Test durduruldu."; }
+        catch (Exception ex) { NoteError("XInput test", ex); SensaTestStatus.Text = ex.Message; }
+        finally
+        {
+            _busy = false;
+            SetTestButtons(true);
+        }
+    }
+
+    // ───────────────────────── Ayarlar ─────────────────────────
+
+    private void SelectLevelPreset(int percent)
+    {
+        RadioButton best = Level100;
+        int bestDiff = int.MaxValue;
+        foreach (var rb in new[] { Level25, Level50, Level75, Level100 })
+        {
+            int diff = Math.Abs(int.Parse((string)rb.Tag) - percent);
+            if (diff < bestDiff) { bestDiff = diff; best = rb; }
+        }
+        best.IsChecked = true;
+    }
+
+    private void Level_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int next = HapticOutputLevel.Limit(int.Parse(tag));
+        _settings.OutputLevelPercent = next;
+        _rumble.OutputLevelPercent = next;
+        _bridge.OutputLevelPercent = next;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Output level", ex); }
+    }
+
+    private void NativeGain_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int gain = int.Parse(tag);
+        _settings.NativeGainPercent = gain;
+        _bridge.SourceGainPercent = gain;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Native gain", ex); }
+        DiagnosticsService.Info("Native v2 source gain " + gain + "%.");
+    }
+
+    private void AudioSync_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
+        int ms = int.Parse(tag);
+        _settings.AudioSyncDelayMs = ms;
+        AudioHapticsBridge.SyncDelaySetting = ms;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Audio sync", ex); }
+        DiagnosticsService.Info("Audio sync delay setting " + ms + " ms.");
+        if (_run == RunState.Audio) { StopAll(); _ = EnsureModeRunningAsync(); }   // apply now
+        UpdateAudioSyncStatus();
+    }
+
+    private void ExperimentalMultiband_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        bool enabled = ExperimentalMultibandBox.IsChecked == true;
+        if (enabled == _settings.ExperimentalMultiband) return;
+        if (_busy || _starting) { ExperimentalMultibandBox.IsChecked = _settings.ExperimentalMultiband; return; }
+        StopAll();
+        _bridge.ExperimentalMultiband = enabled;
+        _settings.ExperimentalMultiband = enabled;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Experimental multiband", ex); }
+        DiagnosticsService.Info("Experimental multiband .haps output " + (enabled ? "enabled; phase/transient loss remains" : "disabled") + ".");
+        _ = EnsureModeRunningAsync();
+    }
+
+    private void UpdateAudioSyncStatus()
+    {
+        try
+        {
+            using var en = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            var dev = en.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Multimedia);
+            bool bt = AudioHapticsBridge.IsBluetooth(dev);
+            int ms = AudioSyncDelay.Resolve(_settings.AudioSyncDelayMs, bt);
+            AudioSyncStatus.Text = "Şu anki çıkış: " + dev.FriendlyName + (bt ? " (Bluetooth)" : "") + " → titreşim " + ms + " ms geciktiriliyor.";
+        }
+        catch { AudioSyncStatus.Text = ""; }
+    }
+
+    private void DeviceSlot_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized || DeviceSlotCombo.SelectedIndex < 0) return;
         int slot = DeviceSlotCombo.SelectedIndex - 1;
         _settings.PreferredXInputSlot = slot;
         _rumble.PreferredIndex = slot;
-        _manualPulseConfirmed = false;
-        try { _store.Save(_settings); }
-        catch (Exception ex) { NoteError("XInput slot settings", ex); }
-        if (_settings.Mode == HapticMode.Audio)
-            SetMode(HapticMode.Normal); // Do not continue writing rumble to a changed target.
-        else UpdateDiagnostics();
+        if (_run == RunState.Audio) StopAll(); // never keep writing rumble to a changed target
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("XInput slot", ex); }
         DiagnosticsService.Info("User selected XInput slot: " + (slot < 0 ? "auto" : slot.ToString()));
-    }
-
-    private void RouteCombo_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (_initialized) RefreshRoutePreview();
-    }
-
-    private void RefreshRoutePreview()
-    {
-        if (RouteCombo.SelectedItem is not HapticRouteOption route) return;
-        RouteStageText.Text = route.StageLabel +
-            (route.RecommendedForOriginalSource ? " • ÖZGÜN KAYNAK İÇİN ÖNCELİKLİ ADAY" : "");
-        RouteDetailText.Text = "Giriş: " + route.Source + "\nÇıkış: " + route.Output +
-            "\n" + route.Guidance;
-    }
-
-    private void ApplyRoute_Click(object sender, RoutedEventArgs e)
-    {
-        if (RouteCombo.SelectedItem is not HapticRouteOption route) return;
-        SetMode(route.Mode, fromUser: true, routeOverride: route.Route);
-        // Native still requires an explicit endpoint and consent in the bridge.
-        // External and Wwise routes do not attempt device playback in this app.
-    }
-
-    private void RouteGuide_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (RouteCombo.SelectedItem is HapticRouteOption route)
-                OpenPath(route.ReferenceUrl);
-        }
-        catch (Exception ex) { NoteError("Route guide", ex); }
-    }
-
-    private void Normal_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Normal);
-    private void Audio_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Audio);
-    private void Native_Click(object sender, RoutedEventArgs e) => SetMode(HapticMode.Native);
-
-    private void Test_Click(object sender, RoutedEventArgs e)
-    {
-        if (_comparisonLab?.IsPlaying == true)
-        {
-            _comparisonLab.RequestStop();
-            return;
-        }
-        if (_testLab != null && _testLab.IsVisible)
-        {
-            _testLab.Activate();
-            return;
-        }
-        _testLab = new TestLabWindow(_settings.Mode, _rumble) { Owner = this };
-        _testLab.Closed += (_, _) => _testLab = null;
-        _testLab.Show();
-    }
-
-    private void Comparison_Click(object sender, RoutedEventArgs e)
-    {
-        if (_comparisonLab?.IsVisible == true)
-        {
-            _comparisonLab.Activate();
-            return;
-        }
-        // Never run RW3's conventional rumble or native bridge against the A/B test.
-        _testLab?.Close();
-        _nativeBridge?.Close();
-        _rumble.StopAudio();
-        SetAudioPriority(false);
-        _comparisonLab = new BehavioralComparisonWindow(_settings.OutputLevelPercent)
-        {
-            Owner = this
-        };
-        _comparisonLab.Closed += (_, _) => _comparisonLab = null;
-        _comparisonLab.Show();
-        DiagnosticsService.Info("Physical dual-controller subjective A/B lab opened.");
-    }
-
-    private void NativeBridge_Click(object sender, RoutedEventArgs e)
-    {
-        if (_comparisonLab?.IsPlaying == true)
-        {
-            _comparisonLab.RequestStop();
-            return;
-        }
-        _comparisonLab?.Close();
-        if (_settings.Mode != HapticMode.Native) SetMode(HapticMode.Native);
-        if (_nativeBridge != null && _nativeBridge.IsVisible)
-        {
-            _nativeBridge.Activate();
-            return;
-        }
-        _nativeBridge = new NativeBridgeWindow(_settings.Route, _settings.OutputLevelPercent)
-        { Owner = this };
-        _nativeBridge.Closed += (_, _) => _nativeBridge = null;
-        _nativeBridge.Show();
-    }
-
-    private async Task CheckForUpdatesAsync()
-    {
-        UpdateStatusText.Text = "GitHub Releases kontrol ediliyor…";
-        DownloadUpdateButton.Visibility = Visibility.Collapsed;
-        try
-        {
-            _availableUpdate = await _updates.CheckAsync();
-            if (_availableUpdate == null)
-                UpdateStatusText.Text = "Daha yeni bir sürüm bulunamadı veya henüz yayımlanmış Release yok.";
-            else
-            {
-                UpdateStatusText.Text = "Yeni sürüm: v" + _availableUpdate.Version +
-                    " · SHA256 kontrolüyle indirmeye hazır.";
-                DownloadUpdateButton.Visibility = Visibility.Visible;
-            }
-        }
-        catch (Exception ex) { NoteError("Release check", ex); UpdateStatusText.Text = "Güncelleme kontrol edilemedi: " + ex.Message; }
-    }
-
-    private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync();
-
-    private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        if (_availableUpdate is null) return;
-        DownloadUpdateButton.IsEnabled = false;
-        UpdateStatusText.Text = "Paket indiriliyor ve SHA256 doğrulanıyor…";
-        try
-        {
-            var file = await _updates.DownloadVerifiedAsync(_availableUpdate);
-            UpdateStatusText.Text = "SHA256 doğrulandı: " + file;
-            if (_availableUpdate.IsPortable)
-            {
-                System.Windows.MessageBox.Show(
-                    "Taşınabilir sürüm Downloads klasörüne indirildi. Çalışan uygulamadan tamamen çıkıp ZIP'i ayrı bir klasöre çıkarın; " +
-                    "ayarlarınızı koruyun. Uygulama kendini otomatik değiştirmez.",
-                    "Portable güncelleme", MessageBoxButton.OK, MessageBoxImage.Information);
-                OpenPath(Path.GetDirectoryName(file)!);
-            }
-            else if (System.Windows.MessageBox.Show(
-                "Kurulum dosyası SHA256 ile doğrulandı. Uygulamadan çıkıp kurucuyu açmak ister misiniz?",
-                "Güncelleme kurulumu", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-            {
-                OpenPath(file);
-                ExitCompletely();
-            }
-        }
-        catch (Exception ex) { NoteError("Release download", ex); UpdateStatusText.Text = "Güncelleme başarısız: " + ex.Message; }
-        finally { DownloadUpdateButton.IsEnabled = true; }
     }
 
     private void Autostart_Changed(object sender, RoutedEventArgs e)
@@ -427,139 +1205,57 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             NoteError("Autostart", ex);
-            System.Windows.MessageBox.Show(ex.Message, "Otomatik başlatma", MessageBoxButton.OK, MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(this, ex.Message, "Otomatik başlatma", MessageBoxButton.OK, MessageBoxImage.Warning);
             AutostartCheckbox.IsChecked = StartupService.IsEnabled;
         }
     }
 
-
-    private void SetAudioPriority(bool enabled)
+    private async Task CheckForUpdatesAsync()
     {
+        UpdateStatusText.Text = "Kontrol ediliyor…";
+        DownloadUpdateButton.Visibility = Visibility.Collapsed;
         try
         {
-            using var process = Process.GetCurrentProcess();
-            process.PriorityClass = enabled ? ProcessPriorityClass.BelowNormal :
-                (_originalPriority ?? ProcessPriorityClass.Normal);
+            _availableUpdate = await _updates.CheckAsync();
+            if (_availableUpdate == null)
+                UpdateStatusText.Text = "En güncel sürümü kullanıyorsun.";
+            else
+            {
+                UpdateStatusText.Text = "Yeni sürüm var: v" + _availableUpdate.Version;
+                DownloadUpdateButton.Visibility = Visibility.Visible;
+            }
         }
-        catch (Exception ex) { DiagnosticsService.Error("Process priority", ex); }
+        catch (Exception ex) { NoteError("Release check", ex); UpdateStatusText.Text = "Kontrol edilemedi: " + ex.Message; }
     }
 
-    private void NoteError(string where, Exception ex)
-    {
-        _lastErrorNoted = where + ": " + ex.Message;
-        DiagnosticsService.Error(where, ex);
-        DiagnosticsText.Text = "Son hata: " + _lastErrorNoted;
-    }
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync();
 
-    private void DiagnosticsTick(object? sender, EventArgs e)
+    private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
     {
+        if (_availableUpdate is null) return;
+        DownloadUpdateButton.IsEnabled = false;
+        UpdateStatusText.Text = "İndiriliyor ve SHA256 doğrulanıyor…";
         try
         {
-            _performance.Sample();
-            if (_settings.Mode == HapticMode.Audio && _performance.SustainedHighSamples >= 3)
+            var file = await _updates.DownloadVerifiedAsync(_availableUpdate);
+            UpdateStatusText.Text = "İndirildi ve doğrulandı.";
+            if (_availableUpdate.IsPortable)
             {
-                const string warning = "İşlemci bütçesi (%3) 3 ardışık ölçüm aşıldı; Audio durduruldu ve Normal moda geçildi.";
-                DiagnosticsService.Info(warning);
-                SetMode(HapticMode.Normal);
-                _lastErrorNoted = warning;
+                System.Windows.MessageBox.Show(this,
+                    "Taşınabilir sürüm İndirilenler klasörüne kaydedildi. Uygulamadan çıkıp ZIP'i yeni bir klasöre aç.",
+                    "Güncelleme", MessageBoxButton.OK, MessageBoxImage.Information);
+                OpenPath(Path.GetDirectoryName(file)!);
             }
-            var snap = _rumble.Snapshot();
-            if (_settings.Mode == HapticMode.Audio && !snap.IsCapturing)
+            else if (System.Windows.MessageBox.Show(this,
+                         "Kurulum dosyası doğrulandı. Uygulamadan çıkıp kurulsun mu?",
+                         "Güncelleme", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
-                var message = snap.LastError ?? "WASAPI yakalama beklenmedik biçimde durdu.";
-                DiagnosticsService.Info("Audio mode stopped: " + message);
-                SetMode(HapticMode.Normal);
-                _lastErrorNoted = message;
+                OpenPath(file);
+                ExitCompletely();
             }
-            UpdateDiagnostics();
         }
-        catch (Exception ex) { NoteError("Status refresh", ex); }
-    }
-
-    private void UpdateDiagnostics()
-    {
-        var snap = _rumble.Snapshot();
-        var now = Environment.TickCount64;
-        bool framesRecent = snap.LastAudioTick > 0 && now - snap.LastAudioTick < 3500;
-        bool activeSoundRecent = snap.LastActiveSoundTick > 0 && now - snap.LastActiveSoundTick < 3500;
-        bool outputRecent = snap.LastOutputTick > 0 && now - snap.LastOutputTick < 3500;
-        RefreshDevice();
-
-        switch (_settings.Mode)
-        {
-            case HapticMode.Normal:
-                ProvenanceText.Text = _settings.Route switch
-                {
-                    HapticRoute.OfficialRazerSensaGames =>
-                        "HARİCÎ: Razer Sensa HD Games tercih edildi. Oyun Sensa çıktısı RW3 tarafından izlenmiyor.",
-                    HapticRoute.OfficialRazerAudioToHaptics =>
-                        "HARİCÎ: Razer Synapse Audio-to-Haptics tercih edildi. DualSense PCM değildir.",
-                    HapticRoute.WwiseStereoMotionLab =>
-                        "ARAŞTIRMA: Wwise Motion tercih edildi. RW3 içinde canlı entegrasyon YOK.",
-                    _ => "KAYNAK: Oyunun standart XInput titreşimi (uygulama izlemiyor)"
-                };
-                bool external = _settings.Route is HapticRoute.OfficialRazerSensaGames or
-                    HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab;
-                CaptureText.Text = external
-                    ? "Haricî yöntem tercih edildi; RW3 hiçbir oyun/sistem haptic akışını gözlemlemez."
-                    : "Oyun tarafından gönderilen rumble olayları yakalanmıyor; etkin haptic kaynağı doğrulanamıyor.";
-                DeliveryText.Text = external
-                    ? "Çıkış RW3 dışındadır: " + HapticRouteCatalog.Get(_settings.Route).Output +
-                      ". Çalışma durumu ve fiziksel çıktı doğrulanmadı."
-                    : "Yalnızca isteğe bağlı 250 ms test: XInputSetState sonucu, fiziksel hareket sensörü değildir.";
-                break;
-            case HapticMode.Audio:
-                ProvenanceText.Text = "KAYNAK: WASAPI sistem sesi • Native DualSense PCM DEĞİL";
-                CaptureText.Text = !snap.IsCapturing ? "Ses yakalama DURDU" :
-                    framesRecent ? (activeSoundRecent ? "Ses veri akışı var; anlamlı ses algılandı." :
-                        "Ses verisi alındı; şu anda sessiz veya çok düşük seviyede.") :
-                    "WASAPI başlatıldı; ses çerçevesi henüz gelmedi veya veri bekleniyor.";
-                DeliveryText.Text = "Ses tamponları: " + snap.Callbacks +
-                    " | Çerçeve: " + snap.AudioFrames +
-                    " | XInput kabul: " + snap.OutputAccepted +
-                    " | Hata: " + snap.OutputRejected +
-                    (outputRecent ? " | Yakın zamanda motor komutu iletildi." : " | Güncel motor komutu yok.");
-                break;
-            default:
-                ProvenanceText.Text = "KAYNAK: 4ch UAC haptic adayı — deneysel (gerçek oyun doğrulanmadı)";
-                CaptureText.Text = _nativeBridge is { IsVisible: true }
-                    ? _nativeBridge.StatusForParent
-                    : "Deneysel köprü kapalı. UAC PCM yakalayıcı ve Interhaptics çıkışı başlatılmadı.";
-                DeliveryText.Text = "Sensa parametrik 2 kanal / 50 Hz prototipi. Ham DualSense 48k PCM birebir iletilmez.";
-                break;
-        }
-        if (_settings.Mode != HapticMode.Native &&
-            _settings.Route is not (HapticRoute.OfficialRazerSensaGames or
-                HapticRoute.OfficialRazerAudioToHaptics or HapticRoute.WwiseStereoMotionLab))
-            ProvenanceText.Text = HapticEvidence.Evaluate(
-                _settings.Mode, framesRecent, outputRecent && snap.OutputAccepted > 0,
-                nativeStereoCaptured: false, nativeStereoOutputAcknowledged: false,
-                physicalNativePlaybackConfirmed: false);
-        else if (_settings.Mode == HapticMode.Native)
-            ProvenanceText.Text = _nativeBridge?.HasRecentHapticChannelSamples == true
-                ? "Deneysel UAC stereo haptic sinyali GÖZLENDİ (kaynağın oyun olduğu kanıtlanmadı)"
-                : "Native DualSense 4-kanal PCM kaynağı henüz GÖZLENMEDİ / DOĞRULANMADI";
-        PhysicalText.Text = _manualPulseConfirmed ?
-            "Fiziksel teyit: Kullanıcı standart 250ms XInput titreşimini hissettiğini bildirdi. Native HD kanıtı değil." :
-            "Fiziksel teyit: Kullanıcı tarafından henüz doğrulanmadı; API kabulü motor titreşimini kanıtlamaz.";
-
-        ResourceText.Text = "RW3 CPU: %" + _performance.CpuPercent.ToString("F2") +
-            " (toplam sistem bazında) | RAM: " + _performance.MemoryMb.ToString("F0") +
-            " MB | Bütçe: <%3 (3 ardışık ölçümde koruma)";
-        if (snap.OutputRejected > 0 && _lastErrorNoted == null)
-            DiagnosticsText.Text = "XInput komutları reddedildi: " + snap.OutputRejected;
-        else
-            DiagnosticsText.Text = _lastErrorNoted != null ? "Son hata/uyarı: " + _lastErrorNoted :
-                snap.LastError is not null ? "Son cihaz hatası: " + snap.LastError : "Son hata: yok";
-    }
-
-    public void RecoverFromUnexpectedError(Exception failure)
-    {
-        try { _rumble.StopAudio(); } catch { }
-        try { SetAudioPriority(false); } catch { }
-        try { SetMode(HapticMode.Normal); } catch { }
-        _lastErrorNoted = "Beklenmeyen hata: " + failure.Message;
-        try { UpdateDiagnostics(); } catch { }
+        catch (Exception ex) { NoteError("Release download", ex); UpdateStatusText.Text = "Başarısız: " + ex.Message; }
+        finally { DownloadUpdateButton.IsEnabled = true; }
     }
 
     private void CopyStatus_Click(object sender, RoutedEventArgs e)
@@ -569,23 +1265,21 @@ public partial class MainWindow : Window
             var snap = _rumble.Snapshot();
             string report = "RW3 Pro Haptics Diagnostics\n" +
                 "Timestamp: " + DateTimeOffset.Now.ToString("O") + "\n" +
-                "Mode: " + _settings.Mode + "\n" +
-                "RW3OutputLevelPercent: " + _settings.OutputLevelPercent +
-                    " (does not modify physical DualSense PCM)\n" +
-                "SelectedRoute: " + _settings.Route + "\n" +
-                "RouteReadiness: " + HapticRouteCatalog.Get(_settings.Route).StageLabel + "\n" +
-                "Evidence: " + ProvenanceText.Text + "\n" +
-                "Capture: " + CaptureText.Text + "\n" +
-                "Delivery: " + DeliveryText.Text + "\n" +
-                "Physical: " + PhysicalText.Text + "\n" +
+                "Version: " + UpdateService.InstalledVersion + "\n" +
+                "Mode: " + _settings.Mode + " | Running: " + _run + "\n" +
+                "OutputLevelPercent: " + _settings.OutputLevelPercent + "\n" +
+                "NativeGainPercent: " + _settings.NativeGainPercent + " | EngineTickHz: " + _bridge.EngineTickHz.ToString("F0") + "\n" +
+                "SensaStatus: " + _bridge.SensaStatus + "\n" +
+                "SourceStatus: " + _bridge.SourceStatus + " (" + (_bridge.SourceName ?? "none") + ")\n" +
+                "UserFeel Wolverine: " + FeelText(false) + "\n" +
+                "UserFeel DualSense: " + FeelText(true) + "\n" +
+                "AudioCallbacks: " + snap.Callbacks + " | XInputAccepted: " + snap.OutputAccepted + "\n" +
                 "Performance: " + ResourceText.Text + "\n" +
-                "AudioCallbacks: " + snap.Callbacks + "\n" +
-                "AudioFrames: " + snap.AudioFrames + "\n" +
-                "ExperimentalNativeBridge: " + (_nativeBridge?.StatusForParent ?? "not started") + "\n" +
-                "NativeGameAuthoredPcmVerified: false (UAC data may be synthetic/other application)\n" +
-                "NativeBitPerfectRazerPlaybackVerified: false (parametric conversion only)\n" +
-                "LastProblem: " + DiagnosticsText.Text + "\n";
+                "NativeGameAuthoredPcmVerified: false\n" +
+                "NativeOutput: v2 parametric stream (33 ms frames; amplitude/frequency/transients), not the DualSense waveform\n" +
+                "LastProblem: " + (_lastErrorNoted ?? "none") + "\n";
             System.Windows.Clipboard.SetText(report);
+            DiagnosticsText.Text = "Rapor panoya kopyalandı.";
         }
         catch (Exception ex) { NoteError("Copy diagnostics", ex); }
     }
@@ -594,19 +1288,34 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (!File.Exists(DiagnosticsService.LogFile))
-                DiagnosticsService.Info("Log viewed.");
+            if (!File.Exists(DiagnosticsService.LogFile)) DiagnosticsService.Info("Log viewed.");
             OpenPath(DiagnosticsService.LogFile);
         }
         catch (Exception ex) { NoteError("Open log", ex); }
     }
 
+    private void Github_Click(object sender, RoutedEventArgs e) => OpenPath("https://github.com/skonyd/rw3pronativedshaptics");
+    private void Synapse_Click(object sender, RoutedEventArgs e) => OpenPath("https://www.razer.com/synapse-4");
+
+    // ───────────────────────── helpers ─────────────────────────
+
     private static void OpenPath(string target) =>
         Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
 
-    private void Github_Click(object sender, RoutedEventArgs e) =>
-        OpenPath("https://github.com/skonyd/rw3pronativedshaptics");
+    private void SetAudioPriority(bool enabled)
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            process.PriorityClass = enabled ? ProcessPriorityClass.BelowNormal
+                : (_originalPriority ?? ProcessPriorityClass.Normal);
+        }
+        catch (Exception ex) { DiagnosticsService.Error("Process priority", ex); }
+    }
 
-    private void Synapse_Click(object sender, RoutedEventArgs e) =>
-        OpenPath("https://www.razer.com/synapse-4");
+    private void NoteError(string where, Exception ex)
+    {
+        _lastErrorNoted = where + ": " + ex.Message;
+        DiagnosticsService.Error(where, ex);
+    }
 }

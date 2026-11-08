@@ -1,5 +1,11 @@
 # Research and reference log (2026-11-05)
 
+## 2026-11-08 multiband correction
+
+[Official `.haps` melodies](https://doc.wyvrn.com/docs/interhaptics-sdk/haptic-composer/haps-file-format/) can express simultaneous patterns subject to device capability; [public AddHM/UpdateHM](https://doc.wyvrn.com/docs/interhaptics-sdk/haptics-sdk-for-game-engines/engine-control/) is a documented route distinct from the earlier parametric API experiment. Local separate-melody tests yield repeatable extra Wolverine provider payload regions and are implemented as an opt-in prototype. This corrects the blanket one-band claim, without claiming a decoded/physically measured multiband waveform. [Evidence](MULTIBAND_RESULTS_20261108.md).
+
+The official [RazerSensa_DevKit README](https://github.com/WyvrnOfficial/RazerSensa_DevKit/blob/master/README.md#how-it-works) explicitly describes approximately33ms/30fps output quantization in its **WYVRN event-service integration** context. It supports the chosen cadence and agrees with historical backlog tests, but does not prove an immutable controller-hardware limit for all direct-provider versions/routes. Distinguish software scheduling, service buffering and physical latency.
+
 Evidence tags: **VERIFIED** = official source or teardown; **THIRD-PARTY** = author claim; **HYPOTHESIS** = not proven; **TO RECHECK** = update risk.
 
 | Statement | State | Source/qualifier |
@@ -36,3 +42,19 @@ See [ADR-002](ADR-002-NATIVE-BRIDGE-ROUTE.md) for date-qualified alternatives, c
 - [PadForge 5.2](https://padforge.org/) advertises virtual DualSense Full with controller audio; it also translates generic rumble to mono Interhaptics Razer Sensa. These are **distinct paths**, not proof of a built-in stereo DualSense→Wolverine bridge.
 - [DSX+ 3.2 beta notes](https://steamcommunity.com/app/1812620/announcements/) indicate virtual DualSense audio/haptics support, while the Steam DLC store description may still say upcoming. Wolverine as input is not established.
 - [Official Wwise Sensa HD plugin](https://doc.wyvrn.com/docs/interhaptics-sdk/razer-sensa-hd-haptics-wwise/) documents 2-channel WAV-to-Motion rendering, but runtime arbitrary PCM, output waveform identity and commercial distribution require separate proof/license.
+
+## Local evidence update — 2026-11-07
+
+[Pipeline analysis](SENSA_PIPELINE_ANALYSIS.md) and [hardware log](HARDWARE_TEST_LOG.md) supersede earlier untested Hand L/R statements under the recorded Windows/Synapse/SDK conditions. Hand L/R pulses were user-felt; v2 uses a target 5ms one-band amplitude/frequency/transient mapping. This is lossy, not original waveform output. Real-game provenance and calibrated physical fidelity remain unverified. DualSense reference now fails explicitly if Exclusive is unsupported; no conversion/Shared fallback. No new external vendor API claim is introduced by this correction.
+
+## Channel conversion lab increment — 2026-11-07
+
+Test card **DualSense → W3 Pro** adds seven channel/negative-control scenes plus the 23 demos, one canonical unmodified 4ch PCM source, the shared production decoder boundary, strict separate DualSense Exclusive reference and optional microphone level metering. Original-source SHA256 and software saturation/channel statistics are separate from acoustic observations. This is synthetic replay, not USB/WASAPI source capture or game-authored evidence; M3/M4 remain open. See [channel lab contract and procedure](CHANNEL_LAB.md).
+
+## Synapse independence review — 2026-11-08
+
+Re-read the current [official DevKit setup](https://github.com/WyvrnOfficial/RazerSensa_DevKit/blob/master/README.md), [official haptic configuration](https://doc.wyvrn.com/docs/wyvrn-sdk/wyvrn-configuration/haptics/), and PadForge's own [Sensa implementation](https://github.com/hifihedgehog/PadForge/blob/main/PadForge.App/Services/SensaHapticsService.cs) / [internals](https://padforge.org/docs/reference/sensa-haptics-internals/). These support an installed vendor-runtime path, not a standalone Wolverine waveform sink. The official DevKit's approximately33ms output quantization supersedes the early inference that generating more SDK frames proves finer actuator cadence.
+
+The author-maintained [razer_ui static Sensa analysis](https://github.com/han1548772930/razer_ui/blob/main/docs/products/host/sensa.md) supplies third-party reverse-engineering evidence for IPC/proxy/host/device boundaries. Its direct branch and successful callbacks are not physical delivery or a completed independent backend. Its current Rust status explicitly lacks the independent Sensa production chain. Do not transfer addresses/contracts to the locally installed versions without verification. [Resulting staged research plan](SYNAPSE_INDEPENDENCE.md).
+
+An adjacent Kishi project was checked at its own [README](https://github.com/XipleETH/RetroRazer-/): that current README describes a Nexus audio-haptics dependency on different hardware. Public claims about another controller's direct USB path are not Wolverine evidence. No binaries or modified games were downloaded/run.

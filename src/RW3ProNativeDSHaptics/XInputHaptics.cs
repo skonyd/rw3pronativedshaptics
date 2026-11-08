@@ -74,6 +74,39 @@ public sealed class XInputHaptics : IDisposable
     private string? _audioEndpointId;
     private long _leftSoundTick, _rightSoundTick, _leftOutputAck, _rightOutputAck;
 
+    // XInput button masks used to answer tests from the controller itself.
+    public const ushort ButtonDpadLeft = 0x0004, ButtonDpadRight = 0x0008,
+        ButtonLeftShoulder = 0x0100, ButtonRightShoulder = 0x0200,
+        ButtonA = 0x1000, ButtonB = 0x2000, ButtonX = 0x4000, ButtonY = 0x8000;
+
+    public const ushort ButtonDpadUp = 0x0001, ButtonDpadDown = 0x0002,
+        ButtonMenu = 0x0010, ButtonView = 0x0020;
+    private const short StickThreshold = 20000;
+
+    /// <summary>
+    /// Buttons held on any connected XInput pad (OR-ed); 0 when none.
+    /// A deflected left stick is reported as the matching D-pad direction.
+    /// </summary>
+    public static ushort ReadButtonsAnyPad()
+    {
+        ushort buttons = 0;
+        try
+        {
+            for (uint index = 0; index < 4; index++)
+            {
+                if (XInputGetState(index, out var state) != 0) continue;
+                buttons |= state.Buttons;
+                if (state.ThumbLX < -StickThreshold) buttons |= ButtonDpadLeft;
+                if (state.ThumbLX > StickThreshold) buttons |= ButtonDpadRight;
+                if (state.ThumbLY > StickThreshold) buttons |= ButtonDpadUp;
+                if (state.ThumbLY < -StickThreshold) buttons |= ButtonDpadDown;
+            }
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+        return buttons;
+    }
+
     public static int DetectIndex()
     {
         try

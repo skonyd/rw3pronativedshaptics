@@ -12,7 +12,7 @@ namespace RW3ProNativeDSHaptics;
 public sealed record UsbGamepadPresence(
     bool DualSenseUsbNode, bool WolverineUsbNode,
     int DualSenseNodes, int RazerNodes,
-    bool ScanSucceeded, string Diagnostic)
+    bool ScanSucceeded, string Diagnostic, bool WolverineWiredPcNode = false)
 {
     public static UsbGamepadPresence Unknown(string error) =>
         new(false, false, 0, 0, false, error);
@@ -24,8 +24,15 @@ public static class UsbGamepadClassifier
         IsUsbVidPid(pnpId, "054C", "0CE6") ||
         IsUsbVidPid(pnpId, "054C", "0DF2");
 
+    // Observed on real hardware (2026-11-07, Windows 11): the HyperSpeed dongle and the
+    // controller in Xbox mode enumerate as 1532:0A3F; the controller on a USB cable in
+    // PC mode enumerates as 1532:0A4C ("Razer Wolverine V3 Pro for Xbox", with a MEDIA
+    // interface). Only 0A4C proves a wired PC-mode connection.
     public static bool IsWolverineV3ProUsbNode(string? pnpId) =>
-        IsUsbVidPid(pnpId, "1532", "0A3F");
+        IsUsbVidPid(pnpId, "1532", "0A3F") || IsWolverineWiredPcModeNode(pnpId);
+
+    public static bool IsWolverineWiredPcModeNode(string? pnpId) =>
+        IsUsbVidPid(pnpId, "1532", "0A4C");
 
     private static bool IsUsbVidPid(string? input, string vid, string pid)
     {
@@ -44,12 +51,14 @@ public static class UsbGamepadClassifier
     {
         if (presentPnPIds == null) return UsbGamepadPresence.Unknown("USB aygıt listesi bulunamadı");
         int sony = 0, razer = 0;
+        bool wired = false;
         foreach (string? id in presentPnPIds)
         {
             if (IsDualSenseUsbNode(id)) ++sony;
             if (IsWolverineV3ProUsbNode(id)) ++razer;
+            if (IsWolverineWiredPcModeNode(id)) wired = true;
         }
         return new(sony > 0, razer > 0, sony, razer, true,
-            "USB PnP kimliği gözlendi; dongle/fiziksel kontrolcü ayrımı ve fiziksel haptics ayrı doğrulanmalıdır.");
+            "USB PnP kimliği gözlendi; fiziksel haptics ayrı doğrulanmalıdır.", wired);
     }
 }

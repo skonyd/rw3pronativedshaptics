@@ -1,5 +1,7 @@
 # USB DualSense ↔ Wolverine V3 Pro physical A/B lab
 
+> **2026-11-07 scope update:** See [current implementation](IMPLEMENTATION_STATUS.md). Separate A/B, Test Lab and expert bridge windows and the route selector are removed. Any instructions below using those controls describe historical workflows; underlying fixture/evidence/WAV/recorder/transport libraries remain. Current Test has 23 synthetic Wolverine/DualSense demos; DualSense reference is Exclusive-only without Shared fallback. Current Sensa v2 targets 5ms amplitude/frequency/transient updates, remains lossy and does not prove game provenance or physical HD. Hardware acceptance requirements remain open unless explicitly recorded in [HARDWARE_TEST_LOG](HARDWARE_TEST_LOG.md).
+
 **Status (2026-11-06):** Software implementation and deterministic hardware-free checks **pass [main Windows CI 42214409530](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42214409530)**. **Physical haptics, fidelity, channel separation and end-to-end latency are NOT verified without both controllers.** See [implementation stage M3](IMPLEMENTATION_STATUS.md).
 
 The comparison is designed to answer a *subjective tactile question*: when someone holds a physical wired DualSense in one hand and Wolverine V3 Pro in the other, which device conveys a synthetic texture or event more convincingly?
