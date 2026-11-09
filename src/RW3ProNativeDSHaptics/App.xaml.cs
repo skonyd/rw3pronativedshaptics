@@ -8,7 +8,7 @@ namespace RW3ProNativeDSHaptics;
 
 public partial class App : System.Windows.Application
 {
-    internal const string StartVirtualDualSenseArg = "--start-virtual-dualsense";
+    internal const string StartVirtualDualSenseArg = ElevatedLaunchTask.BridgeArg;
     internal const string StartXboxAudioBridgeArg = "--start-xbox-audio-bridge";
 
     private Mutex? _singleInstance;

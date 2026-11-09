@@ -465,7 +465,13 @@ public sealed class VirtualDualSenseBridge : IDisposable
             Thread.Sleep(4);
         }
         }
-        catch (Exception ex) { Status = "Sanal DualSense giriş hatası: " + ex.Message; DiagnosticsService.Error("Virtual input", ex); }
+        catch (Exception ex)
+        {
+            // The loop is gone: never keep showing "running" (the UI would offer Stop on a dead bridge).
+            Status = "Köprü bir hata nedeniyle durdu: " + ex.Message + " — yeniden başlat.";
+            DiagnosticsService.Error("Virtual input", ex);
+            IsRunning = false;
+        }
         finally
         {
             _inputHealthy = false;

@@ -271,8 +271,40 @@ public partial class MainWindow : Window
 
     private bool _vcBusy;
 
+    private async Task RefreshBridgeTaskAsync()
+    {
+        if (VcTaskText == null) return;
+        var t = await Task.Run(() => ElevatedLaunchTask.Query());
+        VcTaskText.Text = t switch
+        {
+            ElevatedLaunchTask.TaskState.Ready => "UAC'siz başlatma: ✓ açık (köprü izin sormadan başlar).",
+            ElevatedLaunchTask.TaskState.OtherExe => "UAC'siz başlatma: başka bir derleme için kurulu; bu sürüm için yeniden etkinleştir.",
+            _ => "UAC'siz başlatma: kapalı (her başlatmada Windows izin sorar)."
+        };
+        VcTaskBtn.Content = t == ElevatedLaunchTask.TaskState.Ready ? "Kapat" : "Etkinleştir";
+        VcTaskBtn.Tag = t;
+        VcTaskBtn.IsEnabled = !_vcBusy;
+    }
+
+    private async void VcTask_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vcBusy) return;
+        bool remove = VcTaskBtn.Tag is ElevatedLaunchTask.TaskState.Ready;
+        _vcBusy = true; VcTaskBtn.IsEnabled = false;
+        VcTaskText.Text = (remove ? "Kapatılıyor" : "Etkinleştiriliyor") + " (Windows bir kez yönetici izni isteyecek)…";
+        try
+        {
+            var (_, msg) = await VirtualControllerSetup.RunElevatedAsync(remove ? ElevatedLaunchTask.UninstallArg : ElevatedLaunchTask.InstallArg);
+            DiagnosticsService.Info("Bridge task " + (remove ? "removed" : "installed") + ": " + msg);
+        }
+        catch (Exception ex) { NoteError("Bridge task", ex); }
+        _vcBusy = false;
+        await RefreshBridgeTaskAsync();
+    }
+
     private async Task RefreshVirtualControllerAsync(string? lastAction = null)
     {
+        await RefreshBridgeTaskAsync();
         var st = await Task.Run(VirtualControllerSetup.Query);
         VcDriverText.Text = !st.SdkPresent ? "SDK: bu derlemede yok (tools/get-hidmaestro.ps1)" :
             "HIDMaestro " + st.SdkVersion + ": sürücü " + (st.DriverInstalled ? "✓" : "✗ kurulu değil") +
@@ -517,8 +549,8 @@ public partial class MainWindow : Window
             _bridge.StopVirtualDualSense();
             _bridge.Stop();
             _run = RunState.Off;
+            _nextAutoStartTick = long.MaxValue;   // stopped by the user: no automatic restart until the mode is re-selected
             UpdateBridgeStatus();
-            _ = EnsureModeRunningAsync();
             return;
         }
         if (!VirtualDualSenseBridge.IsElevated)
@@ -532,6 +564,12 @@ public partial class MainWindow : Window
 
     private bool RestartElevated(string argument)
     {
+        if (argument == App.StartVirtualDualSenseArg && ElevatedLaunchTask.TryRun())
+        {
+            DiagnosticsService.Info("Virtual bridge started through the elevated task (no UAC prompt).");
+            ExitCompletely();
+            return true;
+        }
         try
         {
             using var process = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, argument)
@@ -691,6 +729,7 @@ public partial class MainWindow : Window
         _settings.Mode = mode;
         _settings.Route = HapticRouteCatalog.DefaultForMode(mode);
         _lastErrorNoted = null;
+        _nativeWaitNote = null;
         _nextAutoStartTick = 0;
         if (_initialized)
         {
@@ -719,6 +758,7 @@ public partial class MainWindow : Window
         if (mode == HapticMode.Normal || Environment.TickCount64 < _nextAutoStartTick) return;
         if (mode == HapticMode.Audio && !_settings.AudioOutputEnabled ||
             mode == HapticMode.Native && !_settings.XboxNativeMix.PcmEnabled) return;
+        bool startVirtual = false;
         _starting = true;
         try
         {
@@ -769,6 +809,11 @@ public partial class MainWindow : Window
             }
             else
             {
+                if (await Task.Run(NativeBridgeService.FindDualSenseEndpoint) == null)
+                {
+                    startVirtual = true;   // no USB DualSense: the virtual bridge is the native source
+                    return;
+                }
                 await _bridge.StartBridgeAsync();
                 if (_busy || _realExit || SelectedMode != mode || !_settings.XboxNativeMix.PcmEnabled) { _bridge.Stop(); return; }
                 _run = RunState.Native;
@@ -796,6 +841,30 @@ public partial class MainWindow : Window
             _starting = false;
             RefreshStatus();
         }
+        if (startVirtual) await StartVirtualAutomaticallyAsync();
+    }
+
+    private string? _nativeWaitNote;
+
+    /// <summary>Native mode without a USB DualSense: start the virtual bridge without asking when possible
+    /// (already elevated, or the UAC-free task is set up); otherwise wait for the user's click instead of
+    /// retrying and logging every few seconds.</summary>
+    private async Task StartVirtualAutomaticallyAsync()
+    {
+        if (_busy || _starting || _realExit || _run != RunState.Off || SelectedMode != HapticMode.Native) return;
+        var st = await Task.Run(VirtualControllerSetup.Query);
+        string? note = null;
+        if (!st.Ready) note = "Sanal DualSense için Ayarlar → Sanal DualSense → Kur.";
+        else if (VirtualDualSenseBridge.IsElevated) { await StartVirtualBridgeAsync(); return; }
+        else if (await Task.Run(() => ElevatedLaunchTask.Query()) == ElevatedLaunchTask.TaskState.Ready)
+        {
+            if (RestartElevated(App.StartVirtualDualSenseArg)) return;
+            note = "UAC'siz başlatma görevi çalıştırılamadı; köprüyü elle başlat.";
+        }
+        else note = "Köprüyü başlatmak için \"Sanal köprüyü başlat\" düğmesine bas (bir kez Ayarlar'dan UAC'siz başlatmayı etkinleştirebilirsin).";
+        _nextAutoStartTick = long.MaxValue;   // wait for the user; re-selecting the mode tries again
+        if (note != _nativeWaitNote) { _nativeWaitNote = note; DiagnosticsService.Info("Native mode waiting: " + note); }
+        RefreshStatus();
     }
 
     private void StopAll()
@@ -926,6 +995,16 @@ public partial class MainWindow : Window
                     StatusDetail.Text = $"PCM kapalı · Geri bildirim raporu: {reports} · Tetik raporu: {triggers}";
                     SetBadge(GoodBrush, "Köprü açık");
                 }
+                else if (_bridge.IsVirtualDualSenseRunning)
+                {
+                    var (blocks, reports, triggers) = _bridge.VirtualDualSenseCounters;
+                    bool xbox = _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox;
+                    StatusTitle.Text = blocks > 0 ? "Oyunun DualSense titreşimi çalışıyor" : "Sanal DualSense hazır · oyun bekleniyor";
+                    StatusDetail.Text = (xbox ? "Xbox modu: haptik → gövde, L2/R2 → tetik motorları" : "PC modu: haptik → Sensa (avuç)") +
+                        $" • haptik blok {blocks}, tetik raporu {triggers}" +
+                        (_bridge.VirtualDualSenseInputCheck.Length > 0 ? " • " + _bridge.VirtualDualSenseInputCheck : "");
+                    SetBadge(GoodBrush, "Köprü açık");
+                }
                 else if (running)
                 {
                     bool signal = _bridge.HasRecentHapticSignal;
@@ -940,12 +1019,12 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    StatusTitle.Text = "Native DualSense (v2)";
-                    StatusDetail.Text = waitText;
+                    StatusTitle.Text = "Oyunun DualSense titreşimi";
+                    StatusDetail.Text = _nativeWaitNote != null && _lastErrorNoted == null && !_busy ? _nativeWaitNote : waitText;
                     SetBadge(WarnBrush, "Bekliyor");
                 }
                 ModeNote.Text = _settings.XboxNativeMix.PcmEnabled
-                    ? "Deneysel, kayıplı v2 dönüşümü (33 ms kare). Oyun kaynağı ve fiziksel HD doğrulanmadı."
+                    ? "USB DualSense takılıysa onun sesi, değilse sanal DualSense köprüsü kullanılır. HD haptik 33 ms karelerle Sensa'ya (PC modu) ya da gövde motorlarına (Xbox modu) çevrilir."
                     : "";
                 break;
         }
@@ -1235,6 +1314,14 @@ public partial class MainWindow : Window
     private async Task RunSensaTestAsync(HapticTestChannel? side)
     {
         if (DevXbox.IsChecked == true) { await RunXInputTestAsync(side); return; }
+        // Xbox mode has no Sensa: test what the controller does have instead of failing with a USB error.
+        if (DevWolverine.IsChecked == true && !_busy && !_starting &&
+            await Task.Run(WolverineModeControl.Detect) == WolverineControllerMode.Xbox)
+        {
+            await RunXInputTestAsync(side);
+            SensaTestStatus.Text = "Kol Xbox modunda: bu modda Sensa yok, gövde motorları test edildi. " + WolverineModeControl.PcComboHint;
+            return;
+        }
         if (_busy || _starting) return;
         _busy = true;
         var token = BeginTest();
@@ -1630,7 +1717,7 @@ public partial class MainWindow : Window
             bool ok = side is { } s1 ? await _rumble.TestChannelAsync(s1, token) : await _rumble.TestAsync();
             SensaTestStatus.Text = ok
                 ? "Xbox · " + label + " motor komutu gönderildi. Hissetmediysen Ayarlar'dan kontrolcü yuvasını değiştir."
-                : "Xbox kontrolcüsü bulunamadı. Kolun bağlı ve PC modunda olduğunu kontrol et.";
+                : "Xbox kontrolcüsü bulunamadı. Kolun bağlı ve açık olduğunu, Ayarlar'daki yuvanın doğru olduğunu kontrol et.";
         }
         catch (OperationCanceledException) { SensaTestStatus.Text = "Test durduruldu."; }
         catch (Exception ex) { NoteError("XInput test", ex); SensaTestStatus.Text = ex.Message; }

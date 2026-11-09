@@ -236,10 +236,10 @@
               </RadioButton>
               <RadioButton x:Name="ModeNative" GroupName="Mode" Style="{StaticResource ChoiceCard}" Checked="Mode_Checked">
                 <StackPanel>
-                  <TextBlock Text="Native DualSense" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="4 kanal PCM'den deneysel, kayıplı Sensa dönüşümü." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+                  <TextBlock Text="Oyunun DualSense titreşimi" FontSize="15" FontWeight="SemiBold"/>
+                  <TextBlock Text="Oyun kolu DualSense sanır: HD haptik, tetik efektleri. Sanal köprüyle ya da USB DualSense ile." Style="{StaticResource Hint}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                   <Border Background="#3A2A10" CornerRadius="6" Padding="6,1" Margin="0,8,0,0" HorizontalAlignment="Left">
-                    <TextBlock Text="DENEYSEL" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
+                    <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
                   </Border>
                 </StackPanel>
               </RadioButton>
@@ -591,7 +591,12 @@
             </Grid>
             <TextBlock Text="Oyun gerçek bir DualSense görür (titreşim sesi + tetikler); fiziksel DualSense gerekmez. Yönetici izni ister." Style="{StaticResource Hint}" Margin="0,0,0,8"/>
             <TextBlock x:Name="VcDriverText" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
-            <TextBlock x:Name="VcSelfTestText" Style="{StaticResource Hint}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+            <TextBlock x:Name="VcSelfTestText" Style="{StaticResource Hint}" Margin="0,0,0,4" TextWrapping="Wrap"/>
+            <DockPanel Margin="0,0,0,6">
+              <Button x:Name="VcTaskBtn" DockPanel.Dock="Right" Content="Etkinleştir" Style="{StaticResource SmallBtn}" Click="VcTask_Click"
+                      ToolTip="Bir kez yönetici izni ister; sonra köprü UAC sormadan başlar (Windows zamanlanmış görevi)."/>
+              <TextBlock x:Name="VcTaskText" Style="{StaticResource Hint}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            </DockPanel>
             <WrapPanel>
               <Button x:Name="VcInstallBtn" Content="Kur" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" Margin="0,0,6,6" Click="VcInstall_Click"/>
               <Button x:Name="VcTestBtn" Content="Sağlık testi" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="VcSelfTest_Click"/>

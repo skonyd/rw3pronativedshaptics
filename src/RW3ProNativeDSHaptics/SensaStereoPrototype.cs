@@ -306,7 +306,7 @@ public sealed class SensaStereoPrototype : IDisposable
             try { uint task = 0; mmcss = Timing.AvSetMmThreadCharacteristicsW("Games", ref task); } catch { }
             timer = Timing.CreateWaitableTimerExW(IntPtr.Zero, null, Timing.HighResolution, Timing.AllAccess);
             if (timer == IntPtr.Zero) periodSet = Timing.timeBeginPeriod(1) == 0;
-            Report("Direct USB: looking for Wolverine (USB cable, PC mode)");
+            Report("Doğrudan USB: Wolverine aranıyor (PC modunda, kablo ya da alıcıyla)");
             double reopenAt = 0;
             var frame = new byte[SensaFrameEncoder.FrameLength];
             byte[] silence = SensaFrameEncoder.Silence();
@@ -331,10 +331,10 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         DirectDevicePath = tx.DevicePath;
                         Volatile.Write(ref _providerActive, 1);
-                        Report("Direct USB active • own encoder, no Synapse/HAR • " + TickMs + " ms");
+                        Report("Doğrudan USB çalışıyor • kendi kodlayıcı, Synapse gerekmez • " + TickMs + " ms");
                         silenceToSend = 2;
                     }
-                    else { Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0; Report("Direct USB: Wolverine not found (USB cable, PC mode); retrying"); }
+                    else { Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0; Report("Wolverine PC modunda bulunamadı (Xbox modunda Sensa yoktur); tekrar deneniyor"); }
                 }
                 SideFeatures fl, fr;
                 double gain = SourceGainPercent / 100.0;

@@ -1600,3 +1600,19 @@ SpectralContracts.Run(Check);
     bool consistent = redirected == null || Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", redirected));
     Check(consistent && clean, $"Redirect probe: {(redirected ?? "not redirected")}, names a real package store when redirected, probe file removed");
 }
+
+// UAC-free bridge task: well-formed, highest privileges for the interactive user, normal priority, this exe only.
+{
+    string exe = @"C:\Users\x\AppData\Local\Programs\RW3 & Co\RW3ProNativeDSHaptics.exe";
+    string xml = ElevatedLaunchTask.BuildXml(exe, @"PC\user");
+    var doc = System.Xml.Linq.XDocument.Parse(xml);
+    System.Xml.Linq.XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+    string? V(string name) => doc.Descendants(ns + name).FirstOrDefault()?.Value;
+    bool shape = V("RunLevel") == "HighestAvailable" && V("LogonType") == "InteractiveToken" && V("Priority") == "4"
+        && V("Command") == exe && V("Arguments") == ElevatedLaunchTask.BridgeArg && V("UserId") == @"PC\user"
+        && V("MultipleInstancesPolicy") == "IgnoreNew" && V("ExecutionTimeLimit") == "PT0S";
+    bool points = ElevatedLaunchTask.PointsAt(xml, exe) && !ElevatedLaunchTask.PointsAt(xml, @"C:\other\RW3ProNativeDSHaptics.exe")
+        && ElevatedLaunchTask.PointsAt(xml.Replace(@"\Programs\", @"\PROGRAMS\"), exe);
+    Check(shape && points && ElevatedLaunchTask.BridgeArg == "--start-virtual-dualsense",
+        "UAC-free bridge task: highest privileges, interactive user, normal priority, escaped exe path, only this exe");
+}
