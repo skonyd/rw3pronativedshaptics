@@ -11,4 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="../../src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../src/RW3Pro.Lab/SingleMicrophoneAudit.cs" Link="Lab/SingleMicrophoneAudit.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/HapticScenarioAudit.cs" Link="Lab/HapticScenarioAudit.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/AudioStructureFixtures.cs" Link="Lab/AudioStructureFixtures.cs" />
+  </ItemGroup>
 </Project>

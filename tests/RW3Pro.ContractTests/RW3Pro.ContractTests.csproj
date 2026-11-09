@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../src/RW3ProNativeDSHaptics/AudioStructureFixtures.cs" Link="AudioStructureFixtures.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/AudioStructureFixtures.cs" Link="AudioStructureFixtures.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioReferenceFixtures.cs" Link="AudioReferenceFixtures.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/BridgeMotorOutput.cs" Link="BridgeMotorOutput.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/GameInputPadMapping.cs" Link="GameInputPadMapping.cs" />
@@ -20,8 +20,8 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/NativeCaptureHealth.cs" Link="NativeCaptureHealth.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticOutputLevel.cs" Link="HapticOutputLevel.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/UsbGamepadClassifier.cs" Link="UsbGamepadClassifier.cs" />
-    <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralEvidenceRules.cs" Link="BehavioralEvidenceRules.cs" />
-    <Compile Include="../../src/RW3ProNativeDSHaptics/BehavioralHapticFixtures.cs" Link="BehavioralHapticFixtures.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/BehavioralEvidenceRules.cs" Link="BehavioralEvidenceRules.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/BehavioralHapticFixtures.cs" Link="BehavioralHapticFixtures.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticStereoWave.cs" Link="HapticStereoWave.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/RealtimeStereoPcmTransport.cs" Link="RealtimeStereoPcmTransport.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/WasapiLoopbackBufferPolicy.cs" Link="WasapiLoopbackBufferPolicy.cs" />
@@ -43,7 +43,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/EndpointFixturePlayer.cs" Link="EndpointFixturePlayer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/EndpointSignalVerification.cs" Link="EndpointSignalVerification.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioSinkDelivery.cs" Link="AudioSinkDelivery.cs" />
-    <Compile Include="../../src/RW3ProNativeDSHaptics/HapticScenarioAudit.cs" Link="HapticScenarioAudit.cs" />
+    <Compile Include="../../src/RW3Pro.Lab/HapticScenarioAudit.cs" Link="HapticScenarioAudit.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticSpectrumAnalyzer.cs" Link="HapticSpectrumAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/MultibandHaps.cs" Link="MultibandHaps.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticLimiter.cs" Link="HapticLimiter.cs" />
