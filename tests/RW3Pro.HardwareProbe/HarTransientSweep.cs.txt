@@ -1,0 +1,87 @@
+using System; using System.Collections.Generic; using System.Runtime.InteropServices;
+// Deterministic HAR render: one transient at a controlled time, frames rendered at fixed clock steps.
+// Prints the transient record (strength, pitch, time, tail) of the frame that carries it.
+bool init = Har.Init(); Console.WriteLine("HAR init " + init);
+var amp = new double[] { 0, 0.3, 60, 0.3 };           // constant envelope for 60 s
+double p = 0.3;
+var pitch = new double[] { 0, p, 60, p };
+int id = Har.AddParametricEffect(amp, amp.Length, pitch, pitch.Length, 30, 400, null, 0, false);
+Har.AddTargetToEventMarshal(id, new[] { new Cmd(302, 2) }, 1);
+bool prov = Prov.ProviderInit(); Console.WriteLine($"effect {id}, provider init {prov}, present {Prov.ProviderIsPresent()}");
+var buf = new byte[256];
+const double tick = 0.033;
+string Rec(byte[] f, int len)
+{
+    var bits = new List<int>(); for (int i = 0; i < len; i++) for (int k = 7; k >= 0; k--) bits.Add((f[i] >> k) & 1);
+    int pos = 7; int Rd(int n) { int v = 0; for (int i = 0; i < n; i++) v = (v << 1) | bits[pos + i]; pos += n; return v; }
+    var outs = new List<string>();
+    for (int hand = 0; hand < 2; hand++)
+    {
+        for (int band = 0; band < 3; band++) { Rd(1); for (int q = 0; q < 4; q++) { Rd(6); Rd(7); } }
+        if (Rd(1) == 1) { int s = Rd(6), pp = Rd(7), t = Rd(8), tail = Rd(3); outs.Add($"{(hand == 0 ? "L" : "R")} s{s} p{pp} t{t} tail{Convert.ToString(tail, 2).PadLeft(3, '0')}"); }
+    }
+    return outs.Count == 0 ? "-" : string.Join(" | ", outs);
+}
+double start = 10.0;   // effect clock origin
+string Sweep(double? offset)
+{
+    var tr = offset is double o ? new double[] { o, 0.5, p } : null;
+    Har.UpdateParametricEffect(id, amp, amp.Length, pitch, pitch.Length, 30, 400, tr, tr?.Length ?? 0, false);
+    Har.StopAllEvents();
+    Har.PlayEvent(id, -start, 0, 0);
+    var parts = new List<string>();
+    for (int k = 0; k < 4; k++)
+    {
+        Har.ComputeAllEvents(start + k * tick);
+        int len = Prov.RenderHapticsDebug(buf, 0, buf.Length);
+        if (len > 41) parts.Add($"k{k}:{Rec(buf, len)}");
+    }
+    return string.Join("  ", parts);
+}
+string Grid(double envAmp, double trAmp, double trPitch, double effPitch)
+{
+    var a = new double[] { 0, envAmp, 60, envAmp };
+    var pc = new double[] { 0, effPitch, 60, effPitch };
+    var tr = new double[] { 0.050, trAmp, trPitch };
+    Har.UpdateParametricEffect(id, a, a.Length, pc, pc.Length, 30, 400, tr, tr.Length, false);
+    Har.StopAllEvents(); Har.PlayEvent(id, -start, 0, 0);
+    var parts = new List<string>();
+    for (int k = 0; k < 3; k++) { Har.ComputeAllEvents(start + k * tick); int len = Prov.RenderHapticsDebug(buf, 0, buf.Length); if (len > 41 && k == 1) parts.Add(Rec(buf, len)); }
+    return string.Join(" ", parts);
+}
+// Varying envelope inside the frame (like the AM phase): rising / falling ramps, transient at several positions.
+Har.StopAllEvents(); Har.PlayEvent(id, -start, 0, 0);
+int kk = 0;
+foreach (var (name, a0, a3) in new[] { ("rise .1>.5", 0.1, 0.5), ("rise .2>.45", 0.2, 0.45), ("fall .5>.1", 0.5, 0.1), ("flat .3", 0.3, 0.3) })
+foreach (var pos in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+foreach (var trA in new[] { 0.34, 0.43 })
+{
+    double e = kk++ * tick;
+    var a = new double[] { e, a0, e + tick / 3, a0 + (a3 - a0) / 3, e + 2 * tick / 3, a0 + 2 * (a3 - a0) / 3, e + tick, a3, e + tick + 0.05, a3 };
+    var pc = new double[] { e, 0.243, e + tick + 0.05, 0.243 };
+    var tr = new double[] { e + pos * tick, trA, 0.243 };
+    Har.UpdateParametricEffect(id, a, a.Length, pc, pc.Length, 30, 400, tr, tr.Length, false);
+    Har.ComputeAllEvents(start + e);
+    int len = Prov.RenderHapticsDebug(buf, 0, buf.Length);
+    Console.WriteLine($"{name,-12} pos {pos:F1} trA {trA:F2} -> {(len > 41 ? Rec(buf, len) : "-")}");
+}
+Har.StopAllEvents(); Prov.ProviderClean(); Har.Quit();
+readonly struct Cmd { public readonly int Sign, Group, Side; public Cmd(int g, int s) { Sign = 1; Group = g; Side = s; } }
+static class Har
+{
+    [DllImport("HAR")] public static extern bool Init();
+    [DllImport("HAR")] public static extern void Quit();
+    [DllImport("HAR")] public static extern int AddParametricEffect([In] double[] a, int an, [In] double[]? p, int pn, double mn, double mx, [In] double[]? t, int tn, bool loop);
+    [DllImport("HAR")] public static extern bool UpdateParametricEffect(int id, [In] double[] a, int an, [In] double[]? p, int pn, double mn, double mx, [In] double[]? t, int tn, bool loop);
+    [DllImport("HAR")] public static extern void AddTargetToEventMarshal(int id, [In] Cmd[] t, int n);
+    [DllImport("HAR")] public static extern void PlayEvent(int id, double v, double t, double s);
+    [DllImport("HAR")] public static extern void ComputeAllEvents(double now);
+    [DllImport("HAR")] public static extern void StopAllEvents();
+}
+static class Prov
+{
+    [DllImport("Interhaptics.RazerProvider")] public static extern bool ProviderInit();
+    [DllImport("Interhaptics.RazerProvider")] public static extern bool ProviderIsPresent();
+    [DllImport("Interhaptics.RazerProvider")] public static extern bool ProviderClean();
+    [DllImport("Interhaptics.RazerProvider")] public static extern int RenderHapticsDebug([Out] byte[] buffer, int index, int size);
+}

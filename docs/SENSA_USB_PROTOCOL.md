@@ -92,3 +92,20 @@ pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two reco
 Verified 2026-11-08 morning: works with Synapse fully closed, and **wirelessly** through the
 HyperSpeed dongle (its own COL04 collection, same report) — which Synapse never did.
 Open: Xbox mode; coexistence when Synapse also writes.
+
+
+## Transient record, 2026-11-09 study
+
+Method: HAR rendered offline with a controlled clock (Synapse open and attached; RenderHapticsDebug returns -12 otherwise). We varied 129 time offsets in 0.25 ms steps and a grid of envelope × transient amplitude × transient pitch × effect pitch. We also ran per-tick updates and rising/falling envelopes. Source: `tests/RW3Pro.HardwareProbe/HarTransientSweep.cs.txt`.
+
+Record layout:
+- **strength 6 bits:** ⌊amplitude × 63⌋.
+- **7 bits:** always 24, whatever the transient or effect pitch. This is a type/constant, not a pitch.
+- **time 8 bits:** 2 × round(position × 33). Whole milliseconds within the frame in 0.5 ms units, so the value is always even.
+- **tail 3 bits:** `100` in every controlled case (~300 records).
+
+The tail value `101` appeared only in the live "am" stream of 2026-11-08 (14 of 57 records). Its cause is not reproduced: it is not time, amplitude, pitch, envelope shape or the update pattern.
+
+Offline back-to-back rendering produced header values 0110001/0110010 besides 0111100; live frames are always 0111100.
+
+**Next step:** write records as strength / 24 / time / `100`, at most one per hand. Stop folding hits into the points: HAR does not fold. Compare against the folded version with the mic on the short-hits scene.
