@@ -450,6 +450,19 @@
               <RadioButton x:Name="TriggerFeelClassic" Content="Klasik (yalnız haptik)" Tag="0" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="170" Checked="TriggerFeel_Checked"
                            ToolTip="Tetik motorları kullanılmaz; tetik hissi de gövde titreşimiyle verilir (PC modundaki gibi)."/>
             </WrapPanel>
+            <TextBlock Text="Native DualSense · Xbox kaynak karışımı" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="0 kaynağı kapatır. Öncelik, gövdeye giden PCM ve rumble arasında uygulanır." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+            <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxPcmLevel, StringFormat='HD PCM · %{0:0}'}"/>
+            <Slider x:Name="XboxPcmLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="HD PCM seviyesi"/>
+            <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxRumbleLevel, StringFormat='Rumble · %{0:0}'}"/>
+            <Slider x:Name="XboxRumbleLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="Rumble seviyesi"/>
+            <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxTriggerLevel, StringFormat='L2/R2 · %{0:0}'}"/>
+            <Slider x:Name="XboxTriggerLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="L2/R2 seviyesi"/>
+            <ComboBox x:Name="XboxBodyMixPriority" SelectedIndex="0" Margin="0,4,0,10" SelectionChanged="XboxMix_Changed" AutomationProperties.Name="Gövde titreşimi önceliği">
+              <ComboBoxItem Content="Baskın sinyal"/>
+              <ComboBoxItem Content="Normal rumble öncelikli"/>
+              <ComboBoxItem Content="HD PCM öncelikli"/>
+            </ComboBox>
             <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
                       Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
           </StackPanel>

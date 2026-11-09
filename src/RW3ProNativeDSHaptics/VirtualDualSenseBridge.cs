@@ -21,6 +21,10 @@ namespace RW3ProNativeDSHaptics;
 /// with the physical Xbox pad (<see cref="VirtualPadVerifier"/>); a lasting mismatch is logged and shown.
 /// HidHide (to hide the Wolverine from the game and avoid double input) is not configured here.
 /// </summary>
+#if !HAS_HIDMAESTRO
+// Keep the status API available in builds without the optional SDK.
+#pragma warning disable CS0169, CS0649
+#endif
 public sealed class VirtualDualSenseBridge : IDisposable
 {
     public string Status { get; private set; } = "Durdu";
@@ -50,6 +54,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public static double XboxHapticGain = 1.6;
     /// <summary>Xbox mode: trigger effects on the impulse-trigger motors (true) or, classic, on the body motors.</summary>
     public bool TriggerMotors { get; set; } = true;
+    private volatile XboxNativeMix _xboxMix = new();
+    public XboxNativeMix XboxMix { get => _xboxMix; set => _xboxMix = value; }
     private int _outputLevelPercent = 100;
     public int OutputLevelPercent
     {
@@ -394,7 +400,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
                     double body = XboxHapticGain;
-                    var routed = BridgeMotorFrame.Route(rl / 255.0, rr / 255.0, el * body, er * body, lt, rt, motors);
+                    var routed = XboxMix.Route(rl / 255.0, rr / 255.0, el * body, er * body, lt, rt, motors);
                     _motors?.Submit(routed, Environment.TickCount64);
                     var (bl, br, tl, tr) = routed.Scale(OutputLevelPercent);
                     _wBodyL = Math.Max(_wBodyL, Math.Min(1, bl)); _wBodyR = Math.Max(_wBodyR, Math.Min(1, br));
@@ -510,8 +516,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
             return; // retain native objects until the worker has actually exited
         }
         _input = null;
-        _pcOutputSlot = -1;
 #if HAS_HIDMAESTRO
+        _pcOutputSlot = -1;
         try { _ctrl?.Dispose(); } catch { }
         try { _ctx?.Dispose(); } catch { }
         _ctrl = null; _ctx = null;

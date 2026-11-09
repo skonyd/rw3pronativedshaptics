@@ -95,6 +95,12 @@ public partial class MainWindow : Window
         _settings.TriggerFeel = Math.Clamp(_settings.TriggerFeel, 0, 1);
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
+        var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
+        XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
+        XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
+        XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
+        XboxBodyMixPriority.SelectedIndex = Math.Clamp((int)mix.Priority, 0, 2);
+        ApplyXboxMix();
         HhHideCheckbox.IsChecked = _settings.HidePadInGames;
         ((SensaOutputMethod)_settings.OutputMethod switch
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
@@ -289,6 +295,20 @@ public partial class MainWindow : Window
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Trigger feel", ex); }
         DiagnosticsService.Info("Trigger effects in Xbox mode: " + (_settings.TriggerFeel == 1 ? "trigger motors + haptics" : "classic (body motors)") + ".");
+    }
+
+    private void ApplyXboxMix()
+    {
+        _settings.XboxNativeMix = new((int)XboxPcmLevel.Value, (int)XboxRumbleLevel.Value,
+            (int)XboxTriggerLevel.Value, (XboxBodyPriority)XboxBodyMixPriority.SelectedIndex);
+        _bridge.XboxMix = _settings.XboxNativeMix;
+    }
+
+    private void XboxMix_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        ApplyXboxMix();
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox Native mix", ex); }
     }
 
     private async void PadModeXbox_Click(object sender, RoutedEventArgs e)

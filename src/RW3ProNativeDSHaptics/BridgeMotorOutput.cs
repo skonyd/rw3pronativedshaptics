@@ -2,6 +2,34 @@ using System;
 
 namespace RW3ProNativeDSHaptics;
 
+public enum XboxBodyPriority { Strongest, GameRumble, HapticPcm }
+
+public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100, int TriggerPercent = 100,
+    XboxBodyPriority Priority = XboxBodyPriority.Strongest)
+{
+    public BridgeMotorFrame Route(double rumbleL, double rumbleR, double pcmL, double pcmR,
+        double triggerL, double triggerR, bool impulse)
+    {
+        static double Gain(double value, int percent) =>
+            double.IsFinite(value) ? Math.Clamp(value, 0, 1) * HapticOutputLevel.Limit(percent) / 100 : 0;
+
+        double Mix(double rumble, double pcm)
+        {
+            rumble = Gain(rumble, RumblePercent);
+            pcm = Gain(pcm, PcmPercent);
+            return Priority switch
+            {
+                XboxBodyPriority.GameRumble when rumble > 0 => rumble,
+                XboxBodyPriority.HapticPcm when pcm > 0 => pcm,
+                _ => Math.Max(rumble, pcm)
+            };
+        }
+
+        return BridgeMotorFrame.Route(Mix(rumbleL, pcmL), Mix(rumbleR, pcmR), 0, 0,
+            Gain(triggerL, TriggerPercent), Gain(triggerR, TriggerPercent), impulse);
+    }
+}
+
 /// <summary>Game-authored haptic envelopes and trigger interpretation remain separate until routing.</summary>
 public readonly record struct BridgeMotorFrame(double BodyLeft, double BodyRight, double TriggerLeft, double TriggerRight)
 {

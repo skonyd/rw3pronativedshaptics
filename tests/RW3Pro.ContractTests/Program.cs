@@ -1448,6 +1448,19 @@ SpectralContracts.Run(Check);
     Check(silentBody && parsed && held >= 0.9, $"Trigger motor test scene: no haptic audio, R2 vibration {held:F2} while held, L2 feedback");
 }
 
+// Native Xbox mix: saved defaults retain the original output, with independent channel controls.
+{
+    var original = BridgeMotorFrame.Route(.25, .75, 1.4, .5, .5, 1, true);
+    Check(new XboxNativeMix().Route(.25, .75, 1.4, .5, .5, 1, true) == original,
+        "Native Xbox mixer defaults preserve existing motor routing");
+    var rumbleFirst = new XboxNativeMix(50, 100, 0, XboxBodyPriority.GameRumble);
+    Check(rumbleFirst.Route(.25, 0, 1, .5, 1, 1, true) == new BridgeMotorFrame(.25, .25, 0, 0),
+        "Native Xbox rumble priority falls back to PCM on the opposite side and mutes both triggers");
+    var pcmFirst = new XboxNativeMix(100, 0, 50, XboxBodyPriority.HapticPcm);
+    Check(pcmFirst.Route(1, 1, .25, double.NaN, .25, 1, false) == new BridgeMotorFrame(.25, .5, 0, 0),
+        "Native Xbox Classic folds scaled triggers into the body and rejects invalid PCM");
+}
+
 // Native legacy fallback: real report parsing to the production body/trigger router, no PCM.
 {
     byte[] wire=new byte[48];wire[0]=1;wire[2]=51;wire[3]=204;

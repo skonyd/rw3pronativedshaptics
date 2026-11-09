@@ -247,6 +247,12 @@ public sealed class NativeBridgeService : IDisposable
     public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
     public bool HidePadInGames { get; set; } = true;
     private bool _triggerMotors = true;
+    private XboxNativeMix _xboxMix = new();
+    public XboxNativeMix XboxMix
+    {
+        get => _xboxMix;
+        set { _xboxMix = value; if (_virtual != null) _virtual.XboxMix = value; }
+    }
     /// <summary>Xbox mode: trigger effects on the trigger motors (true) or classic body rumble. Applies live.</summary>
     public bool TriggerMotors
     {
@@ -289,6 +295,7 @@ public sealed class NativeBridgeService : IDisposable
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
             _virtual.TriggerMotors = _triggerMotors;
+            _virtual.XboxMix = _xboxMix;
             _virtual.OutputLevelPercent = OutputLevelPercent;
             _virtual.EngineProbe = () => SensaEngineSummary;
             // The bridge feeds the engine's feature extractor; if the engine thread is gone, nothing
