@@ -1576,3 +1576,27 @@ SpectralContracts.Run(Check);
     Check(ll > 0.2 && lr < 0.01 && rr > 0.2 && rl < 0.01 && Math.Abs(bl - br) < 0.05,
         $"Xbox audio body motors are stereo: left-only {ll:F2}/{lr:F2}, right-only {rl:F2}/{rr:F2}, centre {bl:F2}/{br:F2}");
 }
+
+// Started from a packaged app (Claude/Codex): relaunch as a plain desktop app so settings/log are not redirected.
+{
+    var now = new DateTime(2026, 11, 9, 22, 30, 0, DateTimeKind.Utc);
+    string claude = "Claude_1.0.0.0_x64__pzs8sxrjxfjjc", codex = "OpenAI.Codex_1.0.0.0_x64__2p2nqsd0c76g0";
+    bool fromPackages = PackageContext.ShouldBreakAway(claude, [], null, now) && PackageContext.ShouldBreakAway(codex, [], now.AddMinutes(-5), now);
+    bool plainDesktop = !PackageContext.ShouldBreakAway(null, [], null, now);
+    bool ownPackage = !PackageContext.ShouldBreakAway("RW3ProNativeDSHaptics_0.1.0.0_x64__abc", [], null, now);
+    bool withArgs = !PackageContext.ShouldBreakAway(codex, ["--start-virtual-dualsense"], null, now) && !PackageContext.ShouldBreakAway(codex, ["--self-test"], null, now);
+    bool loopGuard = !PackageContext.ShouldBreakAway(codex, [], now.AddSeconds(-5), now) && PackageContext.ShouldBreakAway(codex, [], now.AddSeconds(-30), now);
+    bool realApi = PackageContext.CurrentPackage() is null or { Length: > 0 };
+    Check(fromPackages && plainDesktop && ownPackage && withArgs && loopGuard && realApi,
+        "Package breakaway: relaunch only for a plain start inside a foreign package, never with arguments, loop-guarded");
+}
+
+// The redirect probe finds nothing for an ordinary desktop process (this test host) and cleans up after itself.
+{
+    string? redirected = PackageContext.DetectRedirectedWrites();
+    string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3ProNativeDSHaptics");
+    bool clean = !Directory.Exists(dir) || !Directory.EnumerateFiles(dir, ".redirect-probe-*").Any();
+    // Environment-dependent: a test host started from a packaged tool (e.g. the Claude app) IS redirected.
+    bool consistent = redirected == null || Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", redirected));
+    Check(consistent && clean, $"Redirect probe: {(redirected ?? "not redirected")}, names a real package store when redirected, probe file removed");
+}

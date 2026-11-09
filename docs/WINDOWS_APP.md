@@ -38,3 +38,20 @@ Pull requests and pushes to main run the deterministic contract suite, Windows W
 ## Current UI (2026-11-07)
 
 One Genel/Test/Ayarlar window; selected/saved modes auto-run and retry missing prerequisites every 5 seconds. Test offers 23 synthetic demos for Wolverine or DualSense. DualSense reference is Exclusive PCM16 only with no automatic Shared fallback. Separate expert and A/B windows were removed; retained library tools are not exposed in the current UI. Native source activity never proves game provenance or physical HD.
+
+## Started from a packaged app (Claude / Codex desktop) — 2026-11-09
+
+The Claude and Codex desktop apps are MSIX packages. Processes they start (their terminals, `dotnet run`,
+`Start-Process`) get Windows file/registry redirection: writes under `%LOCALAPPDATA%` land in
+`%LOCALAPPDATA%\Packages\<package>\LocalCache\Local\…` and HKCU writes in the package's private hive.
+For RW3 this produced three diverging copies of `settings.json` and `rw3.log` (real folder, Claude store,
+Codex store); autostart and the HidHide restore file are affected the same way. Measured: a process started
+from the Claude app is redirected **without** a package identity (`GetCurrentPackageFullName` = none), so
+the API check alone is not enough.
+
+`PackageContext` (called first in `App.OnStartup`): package identity **or** a write-probe (a token written
+under `%LOCALAPPDATA%\RW3ProNativeDSHaptics` that shows up in `Packages\*\LocalCache`) ⇒ on a plain start
+(no arguments) RW3 relaunches itself through `explorer.exe`, which starts it as an ordinary desktop process
+(verified: direct start redirected to `Claude_…`, explorer start not redirected), and exits. Loop guard: a
+second attempt within 20 s continues with a log line. Starts with arguments (UAC restarts, autostart,
+`--self-test`) are never relaunched. Tools/agents should start RW3 with `explorer.exe "<path>\RW3ProNativeDSHaptics.exe"`.

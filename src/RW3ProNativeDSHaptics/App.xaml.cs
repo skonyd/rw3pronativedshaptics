@@ -30,6 +30,15 @@ public partial class App : System.Windows.Application
             Shutdown(await EndpointFixturePlayer.RunCommandAsync(e.Args));
             return;
         }
+        // Started from a packaged app (Claude/Codex desktop): its file/registry redirection would give this
+        // run its own settings, log and HidHide restore file. Restart as a plain desktop app, before the mutex.
+        if (!e.Args.Contains(PackageContext.NoBreakawayArg, StringComparer.OrdinalIgnoreCase) &&
+            PackageContext.RelaunchOutsideForeignPackage(e.Args, DiagnosticsService.Info))
+        {
+            base.OnStartup(e);
+            Shutdown();
+            return;
+        }
         const string mutexName = "Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd";
         _singleInstance = new Mutex(true, mutexName, out bool created);
         // The elevated instance waits while the original releases its motor outputs and mutex.
