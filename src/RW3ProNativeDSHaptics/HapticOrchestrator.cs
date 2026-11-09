@@ -76,19 +76,23 @@ public sealed class HapticOrchestrator
             {
                 if (!await StartAudioAsync(mode)) return;
             }
+            else if (await Task.Run(NativeBridgeService.FindDualSenseEndpoint) == null)
+            {
+                // No USB DualSense: the virtual bridge is the native source. Started after the finally block -
+                // a `return` here would skip it (2026-11-09 bug: the mode then waited forever).
+                startVirtual = true;
+            }
             else
             {
-                if (await Task.Run(NativeBridgeService.FindDualSenseEndpoint) == null)
-                {
-                    startVirtual = true;   // no USB DualSense: the virtual bridge is the native source
-                    return;
-                }
                 await _bridge.StartBridgeAsync();
                 if (Superseded(mode) || !_settings.XboxNativeMix.PcmEnabled) { _bridge.Stop(); return; }
                 Run = RunState.Native;
             }
-            LastError = null;
-            DiagnosticsService.Info("Mode " + mode + " running.");
+            if (!startVirtual)
+            {
+                LastError = null;
+                DiagnosticsService.Info("Mode " + mode + " running.");
+            }
         }
         catch (Exception ex)
         {
