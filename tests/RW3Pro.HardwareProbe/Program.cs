@@ -113,7 +113,7 @@ if (args.FirstOrDefault() == "audio-endpoints")
 }
 if (args.FirstOrDefault() == "audit-spectrum")
 {
-    if (args.Length is < 2 or > 3) throw new ArgumentException("audit-spectrum <report.json> [2048|4096]");
+    if (args.Length is < 2 or > 3) throw new ArgumentException("audit-spectrum <report.json> [2048|4096|0=multi-resolution]");
     SpectralAudit.Run(args[1], args.Length==3?int.Parse(args[2]):4096); return;
 }
 if (args.FirstOrDefault() == "probe-multiband-live")

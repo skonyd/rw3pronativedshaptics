@@ -7,7 +7,7 @@ public enum SensaOutputMethod
 {
     /// <summary>One frequency per hand (zero-crossing), fast 4-point envelope, transients. Default.</summary>
     Standard = 0,
-    /// <summary>Experimental: up to three spectral components (85 ms FFT) as .haps melodies.</summary>
+    /// <summary>Experimental: up to three spectral components (multi-resolution FFT: 42.7 ms for >= 60 Hz, 85.3 ms below) as .haps melodies.</summary>
     Multiband = 1,
     /// <summary>Experimental: Standard for onsets/hits, Multiband only for steady mixed sounds.</summary>
     Hybrid = 2,
@@ -33,7 +33,9 @@ public sealed class HybridOutputPolicy
     public const float SecondComponentRatio = 0.20f;
     public const float SteadyEnvelopeRatio = 2.0f;        // max/min of the 4 points within a frame
     public const int EnterSteadyFrames = 2;
-    public static readonly double SettleSeconds = HapticSpectrumAnalyzer.WindowSamples / 2.0 / 48000.0;   // 42.7 ms
+    // Half the window the spectrum's >= 60 Hz components come from (multi-resolution short window): 21.3 ms
+    // (was half of 4096 = 42.7 ms before 2026-11-09).
+    public static readonly double SettleSeconds = MultiResolutionSpectrumAnalyzer.ShortSamples / 2.0 / 48000.0;
 
     private double _activeSince = -1;
     private int _steadyFrames;

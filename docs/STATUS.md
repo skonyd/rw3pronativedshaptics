@@ -45,7 +45,7 @@ Updated 2026-11-09. This page replaces reading the dated reports in order; they 
 - Xbox-mode trigger effects in the bridge after the GameInput input fix: software-checked, not yet felt by the user.
 - Xbox audio stereo fix (0346115): unit-tested, not yet felt by the user.
 - Transient record (last 3 bits) not decoded: hits are folded into strength points.
-- Spectral history 85 ms (Hybrid/Multiband); shorter validated path still to do.
+- Spectral history: multi-resolution since 2026-11-09. Components >= 60 Hz come from a 42.7 ms window, the bass from 85.3 ms. The 240-case audit passes 240/240 (max 0.36 Hz error); the plain 2048 window failed 55 cases. Hybrid enters multiband after 21.3 ms + 2 steady frames. A physical mic comparison is pending.
 - Mode orchestration is in `HapticOrchestrator` (decisions in `HapticModePolicy`, contract-tested).
   `MainWindow.xaml.cs` is still large (~1,860 lines). The next split candidates are the test/simulator page and the settings page.
 - YouTube seek recovery (audio mode) unresolved; see the dated reports.

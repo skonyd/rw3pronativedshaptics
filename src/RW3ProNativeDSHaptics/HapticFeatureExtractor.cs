@@ -95,7 +95,7 @@ public sealed class HapticFeatureExtractor
     private int _samplesInSlot;
     private long _lastPushTick;
     private readonly object _spectrumGate = new();
-    private HapticSpectrumAnalyzer? _spectrumAnalyzer;
+    private MultiResolutionSpectrumAnalyzer? _spectrumAnalyzer;
     private float[]? _pcmLeft, _pcmRight, _snapshotLeft, _snapshotRight;
     private int _pcmPosition, _pcmCount;
 
@@ -107,7 +107,7 @@ public sealed class HapticFeatureExtractor
             if (_pcmRight != null) Array.Clear(_pcmRight);
             if (_snapshotLeft != null) Array.Clear(_snapshotLeft);
             if (_snapshotRight != null) Array.Clear(_snapshotRight);
-            _spectrumAnalyzer = enabled ? new HapticSpectrumAnalyzer() : null;
+            _spectrumAnalyzer = enabled ? new MultiResolutionSpectrumAnalyzer() : null;
             _pcmLeft = enabled ? new float[HapticSpectrumAnalyzer.WindowSamples] : null;
             _pcmRight = enabled ? new float[HapticSpectrumAnalyzer.WindowSamples] : null;
             _snapshotLeft = enabled ? new float[HapticSpectrumAnalyzer.WindowSamples] : null;
@@ -128,15 +128,18 @@ public sealed class HapticFeatureExtractor
     {
         lock (_spectrumGate) {
             left = right = default;
+            int valid;
             lock (_gate) {
-                if (_spectrumAnalyzer == null || _pcmCount < HapticSpectrumAnalyzer.WindowSamples) return false;
+                // 42.7 ms of audio give the >= 60 Hz components; the bass joins once 85.3 ms exist.
+                if (_spectrumAnalyzer == null || _pcmCount < MultiResolutionSpectrumAnalyzer.ShortSamples) return false;
+                valid = _pcmCount;
                 for (int i = 0; i < HapticSpectrumAnalyzer.WindowSamples; i++) {
                     int p = (_pcmPosition + i) % HapticSpectrumAnalyzer.WindowSamples;
                     _snapshotLeft![i] = _pcmLeft![p]; _snapshotRight![i] = _pcmRight![p];
                 }
             }
             // No FFT, JSON or vendor call while holding the capture/feature lock.
-            left = _spectrumAnalyzer.Analyze(_snapshotLeft); right = _spectrumAnalyzer.Analyze(_snapshotRight);
+            left = _spectrumAnalyzer.Analyze(_snapshotLeft, valid); right = _spectrumAnalyzer.Analyze(_snapshotRight, valid);
             return true;
         }
     }

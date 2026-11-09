@@ -922,7 +922,9 @@ SpectralContracts.Run(Check);
     var weakSecond = new HapticSpectrum(new(80, .5f, 0), new(190, .05f, 0), default, 2);
     var p = new HybridOutputPolicy(); double t = 0, dt = 0.033;
     var seq = new List<bool>(); for (int i = 0; i < 6; i++) { seq.Add(p.Decide(Steady(.5f), mixed, true, t)); t += dt; }
-    bool enters = !seq[0] && !seq[1] && seq[3] && seq[4] && seq[5];
+    // First multiband frame: settled (SettleSeconds since onset) and >= EnterSteadyFrames steady frames.
+    int expectedFirst = Enumerable.Range(0, 6).First(i => i * dt >= HybridOutputPolicy.SettleSeconds && i + 1 >= HybridOutputPolicy.EnterSteadyFrames);
+    bool enters = expectedFirst >= 1 && Enumerable.Range(0, 6).All(i => seq[i] == (i >= expectedFirst));
     var hit = Steady(.5f); hit.TransientCount = 1; hit.T0Amplitude = .9f;
     bool leavesOnHit = !p.Decide(hit, mixed, true, t);
     var p2 = new HybridOutputPolicy(); bool singleStays = true; t = 0;
@@ -1681,4 +1683,32 @@ SpectralContracts.Run(Check);
     var (dl, dr) = DemoRoutePolicy.HapticChannels(pcm);
     bool channels = dl.Length == 3 && dl[0] == 0.5f && dr[0] == 0 && dl[1] == 0 && dr[1] == -1f && dl[2] == 0 && dr[2] == 0;
     Check(route && channels, "Demo routing: bridge running → through the bridge; PC → Sensa; Xbox → body motors; haptic ch3/ch4 only");
+}
+
+// Multi-resolution spectrum: same accuracy, faster for >= 60 Hz (42.7 ms history instead of 85.3 ms).
+{
+    var multi = new MultiResolutionSpectrumAnalyzer();
+    var single = new HapticSpectrumAnalyzer();
+    float[] W(int startAt, params (double Hz, double A)[] tones) => Enumerable.Range(0, 4096)
+        .Select(i => i < startAt ? 0f : (float)tones.Sum(t => t.A * Math.Sin(2 * Math.PI * t.Hz * i / 48000))).ToArray();
+    bool Has(HapticSpectrum s, double hz, double amp, double ampTol = .02) =>
+        Enumerable.Range(0, s.Count).Any(i => Math.Abs(s[i].FrequencyHz - hz) < 1.5 && Math.Abs(s[i].Amplitude - amp) < ampTol);
+    var sets = new[] { new[] { (80d, .25), (190d, .25) }, new[] { (40d, .2), (120d, .2), (300d, .2) }, new[] { (35d, .3), (110d, .2) },
+                       new[] { (65d, .3), (150d, .2) }, new[] { (45d, .25), (250d, .25) } };
+    bool tones = sets.All(set => { var r = multi.Analyze(W(0, set)); return r.Count == set.Length && set.All(t => Has(r, t.Item1, t.Item2)); });
+    bool order = sets.All(set => { var r = multi.Analyze(W(0, set)); return Enumerable.Range(1, r.Count - 1).All(i => r[i - 1].FrequencyHz < r[i].FrequencyHz); });
+    // Onset: a 190 Hz tone present only in the newest 2048 samples (42.7 ms).
+    var onset = W(2048, (190, .5));
+    var fast = multi.Analyze(onset); var slow = single.Analyze(onset);
+    bool faster = Has(fast, 190, .5, .03) && (slow.Count == 0 || slow.A.Amplitude < .3);
+    // Filling history: high components after 42.7 ms, bass joins at 85.3 ms; nothing before 42.7 ms.
+    var mix = W(0, (40, .3), (190, .3));
+    var half = multi.Analyze(mix, 2048); var full = multi.Analyze(mix, 4096);
+    bool filling = multi.Analyze(mix, 2000).Count == 0 && half.Count == 1 && Has(half, 190, .3) && full.Count == 2 && Has(full, 40, .3);
+    bool silent = multi.Analyze(new float[4096]).Count == 0;
+    multi.Analyze(mix); long before = GC.GetAllocatedBytesForCurrentThread();
+    for (int i = 0; i < 50; i++) multi.Analyze(mix);
+    bool noAlloc = GC.GetAllocatedBytesForCurrentThread() == before;
+    Check(tones && order && faster && filling && silent && noAlloc,
+        $"Multi-resolution spectrum: multitones incl. 35+110/65+150 near the crossover, onset 190 Hz in 42.7 ms ({fast.A.Amplitude:F2} vs single-window {(slow.Count > 0 ? slow.A.Amplitude : 0):F2}), bass after 85.3 ms, no allocation");
 }

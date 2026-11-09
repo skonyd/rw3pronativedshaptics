@@ -45,9 +45,12 @@ internal static class SpectralContracts
         var features = new HapticFeatureExtractor(); features.EnableSpectralAnalysis(true);
         var stereo = new float[8192]; var left = Wave((80,.3,0));
         for(int i=0;i<4096;i++)stereo[2*i]=left[i];
-        features.PushStereo(stereo.AsSpan(0,4000));
-        check(!features.TryTakeSpectrum(out _,out _),"Experimental spectrum explicitly waits for a complete 85.33ms window");
-        features.PushStereo(stereo.AsSpan(4000));
+        features.PushStereo(stereo.AsSpan(0,4000));   // 2000 frames < 2048
+        check(!features.TryTakeSpectrum(out _,out _),"Spectrum waits for 42.7ms of history (multi-resolution short window)");
+        features.PushStereo(stereo.AsSpan(4000,200));  // 2100 frames: the 80 Hz tone (>= 60 Hz) is already available
+        check(features.TryTakeSpectrum(out var early,out _) && early.Count==1 && Math.Abs(early.A.FrequencyHz-80)<1.5,
+            "Spectrum after 42.7ms reports >= 60Hz components (multi-resolution, was 85.33ms)");
+        features.PushStereo(stereo.AsSpan(4200));
         check(features.TryTakeSpectrum(out var ls,out var rs) && ls.Count==1 && rs.Count==0,"Original spectral history preserves left/right isolation across uneven packets");
         features.ClearForSilence();
         check(!features.TryTakeSpectrum(out _,out _),"Silence discards spectral history instead of replaying old tones");

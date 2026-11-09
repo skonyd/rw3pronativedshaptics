@@ -7,7 +7,10 @@ internal static class SpectralAudit
 {
     public static void Run(string path, int windowSamples = 4096)
     {
-        var analyzer=new HapticSpectrumAnalyzer(windowSamples);
+        // windowSamples 0 = multi-resolution (2048 for >= 60 Hz, 4096 below), fed the latest 4096 samples.
+        bool multi=windowSamples==0; if(multi)windowSamples=4096;
+        var single=multi?null:new HapticSpectrumAnalyzer(windowSamples);var multires=new MultiResolutionSpectrumAnalyzer();
+        var analyzer=new{Analyze=(Func<float[],HapticSpectrum>)(w=>multi?multires.Analyze(w):single!.Analyze(w))};
         float[] Wave(double hz,double level,double phase)=>Enumerable.Range(0,windowSamples).Select(i=>(float)(level*Math.Sin(2*Math.PI*hz*i/48000+phase))).ToArray();
         var rows=new List<object>();int failed=0;double maxHz=0,maxAmp=0;
         foreach(double hz in new[]{30d,31,35,40,50,60,80,81.3,120,150,190,250,300,350,399,400})
@@ -26,7 +29,7 @@ internal static class SpectralAudit
         allocated=GC.GetAllocatedBytesForCurrentThread()-allocated;Array.Sort(durations);
         var resultObject=new{Cases=rows,Failed=failed,MaxFrequencyError=maxHz,MaxAmplitudeError=maxAmp,
             MonoWindowMilliseconds=new{Median=durations[200],P95=durations[380],Maximum=durations[^1]},AllocatedBytes=allocated,
-            SourceHistoryMs=windowSamples/48d,SelectedBinSeparationHz=3*48000d/windowSamples,PhysicalFidelityVerified=false,
+            SourceHistoryMs=multi?"42.7 (>=60 Hz) / 85.3 (<60 Hz)":(object)(windowSamples/48d),SelectedBinSeparationHz=3*48000d/windowSamples,PhysicalFidelityVerified=false,
             Limit="Finite original-PCM analyzer oracle, not physical fidelity or phase output. Resolution depends on window/level/spacing; 80+84 is unresolved. Runtime timing is this machine's warmed single-mono FFT, not full bridge CPU or game latency."};
         File.WriteAllText(path,JsonSerializer.Serialize(resultObject,new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine(JsonSerializer.Serialize(new{Cases=rows.Count,Failed=failed,MaxHz=maxHz,MaxAmplitude=maxAmp,resultObject.MonoWindowMilliseconds,AllocatedBytes=allocated}));
