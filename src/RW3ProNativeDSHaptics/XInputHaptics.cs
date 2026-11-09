@@ -36,10 +36,19 @@ public sealed class XInputHaptics : IDisposable
         public ushort LeftMotorSpeed, RightMotorSpeed;
     }
 
-    [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
-    private static extern uint XInputGetState(uint userIndex, out XInputState state);
-    [DllImport("xinput1_4.dll", EntryPoint = "XInputSetState")]
-    private static extern uint XInputSetState(uint userIndex, ref XInputVibration vibration);
+    private static uint XInputGetState(uint userIndex, out XInputState state)
+    {
+        uint r = XInput.XInputGetState(userIndex, out var s);
+        var g = s.Gamepad;
+        state = new XInputState { PacketNumber = s.dwPacketNumber, Buttons = g.wButtons, LeftTrigger = g.bLeftTrigger, RightTrigger = g.bRightTrigger,
+            ThumbLX = g.sThumbLX, ThumbLY = g.sThumbLY, ThumbRX = g.sThumbRX, ThumbRY = g.sThumbRY };
+        return r;
+    }
+    private static uint XInputSetState(uint userIndex, ref XInputVibration vibration)
+    {
+        var v = new XInput.Vibration { wLeftMotorSpeed = vibration.LeftMotorSpeed, wRightMotorSpeed = vibration.RightMotorSpeed };
+        return XInput.XInputSetState(userIndex, ref v);
+    }
 
     private readonly object _motorGate = new();
     private int _outputLevelPercent = 100;

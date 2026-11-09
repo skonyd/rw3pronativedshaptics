@@ -200,11 +200,11 @@
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotSynapse" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>
-              <StackPanel Grid.Column="1"><TextBlock Text="Razer Synapse" FontWeight="SemiBold"/><TextBlock x:Name="HintSynapse" Style="{StaticResource Hint}"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Sensa bağlantısı (Doğrudan USB)" FontWeight="SemiBold"/><TextBlock x:Name="HintSynapse" Style="{StaticResource Hint}"/></StackPanel>
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotSdk" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>
-              <StackPanel Grid.Column="1"><TextBlock Text="Sensa SDK dosyaları" FontWeight="SemiBold"/><TextBlock x:Name="HintSdk" Style="{StaticResource Hint}"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Sanal DualSense (HIDMaestro)" FontWeight="SemiBold"/><TextBlock x:Name="HintSdk" Style="{StaticResource Hint}"/></StackPanel>
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotDualSense" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>

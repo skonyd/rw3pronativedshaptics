@@ -37,18 +37,13 @@ public sealed class XboxAudioSink : IAudioHapticSink
 
     private int FindSlot()
     {
-        if (PreferredIndex is >= 0 and <= 3) return XInputGetState((uint)PreferredIndex, out _) == 0 ? PreferredIndex : -1;
+        if (PreferredIndex is >= 0 and <= 3) return XInput.IsConnected((uint)PreferredIndex) ? PreferredIndex : -1;
         int found = -1;
         for (uint i = 0; i < 4; i++)
-            if (XInputGetState(i, out _) == 0) { if (found >= 0) return -1; found = (int)i; }
+            if (XInput.IsConnected(i)) { if (found >= 0) return -1; found = (int)i; }
         return found; // ambiguous selection fails closed
     }
 
-    [StructLayout(LayoutKind.Sequential)] private struct BodyVibration { public ushort Left, Right; }
-    [StructLayout(LayoutKind.Sequential)] private struct PadState
-    { public uint Packet; public ushort Buttons; public byte LT, RT; public short LX, LY, RX, RY; }
-    [DllImport("xinput1_4.dll")] private static extern uint XInputGetState(uint index, out PadState state);
-    [DllImport("xinput1_4.dll")] private static extern uint XInputSetState(uint index, ref BodyVibration vibration);
 
     public void Accept(ReadOnlySpan<float> stereo48k)
     {
@@ -94,11 +89,10 @@ public sealed class XboxAudioSink : IAudioHapticSink
             _diagnosticWriter(v); _last = v; _lastWriteTick = now; return;
         }
         int slot = FindSlot();
-        if (_outputSlot >= 0 && _outputSlot != slot) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); }
+        if (_outputSlot >= 0 && _outputSlot != slot) { XInput.SetMotors((uint)_outputSlot, 0, 0); }
         _outputSlot = slot;
         if (slot < 0) return;
-        var body = new BodyVibration { Left = (ushort)(v.LeftMotor * 65535), Right = (ushort)(v.RightMotor * 65535) };
-        if (XInputSetState((uint)slot, ref body) == 0) { _last = v; _lastWriteTick = now; }
+        if (XInput.SetMotors((uint)slot, v.LeftMotor, v.RightMotor) == XInput.Success) { _last = v; _lastWriteTick = now; }
     }
 
     private static double Clamp(double x) => double.IsFinite(x) ? Math.Clamp(x, 0, 1) : 0;
@@ -110,7 +104,7 @@ public sealed class XboxAudioSink : IAudioHapticSink
         if (_last.LeftMotor >= 1.0 / 65535 || _last.RightMotor >= 1.0 / 65535)
         {
             if (_diagnosticWriter != null) _diagnosticWriter(default);
-            else { try { if (_outputSlot >= 0) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); } } catch { } }
+            else { try { if (_outputSlot >= 0) { XInput.SetMotors((uint)_outputSlot, 0, 0); } } catch { } }
         }
         _last = default;
     }
@@ -121,13 +115,12 @@ public enum WolverineMode { Unknown, Pc, Xbox }
 
 public static class WolverineModeDetector
 {
-    /// <summary>PC mode = wired 1532:0A4C (Sensa available); Xbox mode = 1532:0A3F (GIP, triggers).</summary>
-    public static WolverineMode Detect()
+    /// <summary>PC mode = 1532:0A4C (cable or HyperSpeed dongle; Sensa available); Xbox mode = 1532:0A3F
+    /// (GIP, trigger motors). One implementation: <see cref="WolverineModeControl.Detect"/>.</summary>
+    public static WolverineMode Detect() => WolverineModeControl.Detect() switch
     {
-        var usb = UsbGamepadMonitor.Read();
-        if (!usb.ScanSucceeded) return WolverineMode.Unknown;
-        if (usb.WolverineWiredPcNode) return WolverineMode.Pc;
-        if (usb.WolverineUsbNode) return WolverineMode.Xbox;
-        return WolverineMode.Unknown;
-    }
+        WolverineControllerMode.Pc => WolverineMode.Pc,
+        WolverineControllerMode.Xbox => WolverineMode.Xbox,
+        _ => WolverineMode.Unknown
+    };
 }

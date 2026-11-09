@@ -559,25 +559,4 @@ public sealed class VirtualDualSenseBridge : IDisposable
     }
 
     public void Dispose() => Stop();
-
-    private static class XInput
-    {
-        [StructLayout(LayoutKind.Sequential)] public struct Gamepad { public ushort wButtons; public byte bLeftTrigger, bRightTrigger; public short sThumbLX, sThumbLY, sThumbRX, sThumbRY; }
-        [StructLayout(LayoutKind.Sequential)] public struct State { public uint dwPacketNumber; public Gamepad Gamepad; }
-        [StructLayout(LayoutKind.Sequential)] public struct Vibration { public ushort wLeftMotorSpeed, wRightMotorSpeed; }
-        [DllImport("xinput1_4.dll")] public static extern uint XInputGetState(uint index, out State state);
-        // Undocumented but long-stable ordinal 100: same state plus the Guide (Xbox) button bit 0x0400.
-        [DllImport("xinput1_4.dll", EntryPoint = "#100")] private static extern uint XInputGetStateEx(uint index, out State state);
-        private static bool _exMissing;
-        public static uint GetState(uint index, out State state)
-        {
-            if (!_exMissing)
-            {
-                try { return XInputGetStateEx(index, out state); }
-                catch (EntryPointNotFoundException) { _exMissing = true; }
-            }
-            return XInputGetState(index, out state);
-        }
-        [DllImport("xinput1_4.dll")] public static extern uint XInputSetState(uint index, ref Vibration vibration);
-    }
 }

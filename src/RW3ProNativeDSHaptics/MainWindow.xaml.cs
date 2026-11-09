@@ -630,38 +630,46 @@ public partial class MainWindow : Window
 
     private async void RefreshChecks_Click(object sender, RoutedEventArgs e) => await RefreshChecksAsync();
 
-    private sealed record CheckResult(UsbGamepadPresence Usb, bool Synapse, bool Sdk, string? DualSenseEndpoint);
+    private sealed record CheckResult(WolverineControllerMode Mode, int SensaPaths, bool Synapse, VirtualControllerStatus Virtual, string? DualSenseEndpoint);
 
     private async Task RefreshChecksAsync()
     {
         CheckResult r = await Task.Run(() =>
         {
-            var usb = UsbGamepadMonitor.Read();
-            bool synapse = Process.GetProcessesByName("RazerAppEngine").Length > 0 ||
-                           Process.GetProcessesByName("Razer Synapse").Length > 0;
-            bool sdk = File.Exists(Path.Combine(AppContext.BaseDirectory, "HAR.dll")) &&
-                       File.Exists(Path.Combine(AppContext.BaseDirectory, "Interhaptics.RazerProvider.dll"));
+            var mode = WolverineModeControl.Detect();
+            int sensa = mode == WolverineControllerMode.Pc ? SensaHidTransport.Candidates().Count : 0;
+            bool synapse = SynapseSensaCheck.IsSynapseRunning();
+            var virtualStatus = VirtualControllerSetup.Query();
             string? endpoint = null;
             try { endpoint = NativeBridgeService.FindDualSenseEndpoint()?.Name; }
             catch (Exception ex) { DiagnosticsService.Error("Endpoint check", ex); }
-            return new CheckResult(usb, synapse, sdk, endpoint);
+            return new CheckResult(mode, sensa, synapse, virtualStatus, endpoint);
         });
 
-        SetCheck(DotWolverine, HintWolverine, r.Usb.WolverineWiredPcNode,
-            "Kabloyla bağlı, PC modunda.",
-            !r.Usb.ScanSucceeded ? "USB listesi okunamadı." :
-            r.Usb.WolverineUsbNode ? "Sadece dongle / Xbox modu görünüyor. Kabloyla tak ve PC moduna al (○ + Menü + A, 2 sn)." :
-            "Bulunamadı. Kabloyla tak ve PC moduna al (○ + Menü + A, 2 sn).");
-        if (!r.Usb.WolverineWiredPcNode && r.Usb.WolverineUsbNode) DotWolverine.Fill = WarnBrush;
-        SetCheck(DotSynapse, HintSynapse, r.Synapse,
-            "Çalışıyor. Synapse'te Haptic Source: Sensa HD Games olmalı.",
-            "Çalışmıyor. Razer Synapse 4'ü aç.");
-        SetCheck(DotSdk, HintSdk, r.Sdk,
-            "HAR.dll ve RazerProvider hazır.",
-            "Eksik. HAR.dll ve Interhaptics.RazerProvider.dll uygulama klasörüne konmalı.");
-        SetCheck(DotDualSense, HintDualSense, r.DualSenseEndpoint != null,
-            "4 kanal ses aygıtı: " + r.DualSenseEndpoint,
-            "4 kanallı DualSense ses aygıtı yok. DualSense'i USB ile tak veya sanal DualSense'i başlat.");
+        // PC mode works over the cable AND the HyperSpeed dongle (both 1532:0A4C); Xbox mode is a valid mode too.
+        switch (r.Mode)
+        {
+            case WolverineControllerMode.Pc: SetState(DotWolverine, HintWolverine, GoodBrush, "PC modunda: avuçta Sensa HD titreşim."); break;
+            case WolverineControllerMode.Xbox: SetState(DotWolverine, HintWolverine, GoodBrush, "Xbox modunda: tetik motorları var, Sensa yok. " + WolverineModeControl.PcComboHint); break;
+            default: SetState(DotWolverine, HintWolverine, BadBrush, "Bulunamadı. Kolu kablo ya da kendi alıcısıyla bağla ve aç."); break;
+        }
+        if (r.Mode == WolverineControllerMode.Pc)
+            SetState(DotSynapse, HintSynapse, r.SensaPaths > 0 ? GoodBrush : BadBrush, r.SensaPaths > 0
+                ? "Hazır: titreşim doğrudan kola yazılır, Synapse gerekmez." + (r.Synapse ? " Synapse açık: 'Audio to Haptics' kapalı olmalı." : "")
+                : "Kolun Sensa arabirimi açılamadı. Kolu çıkarıp tak.");
+        else SetState(DotSynapse, HintSynapse, MutedBrush, r.Mode == WolverineControllerMode.Xbox ? "Xbox modunda kullanılmaz." : "Kol bağlı değil.");
+        SetState(DotSdk, HintSdk, r.Virtual.Ready ? GoodBrush : WarnBrush, r.Virtual.Ready
+            ? "Kurulu. 'Oyunun DualSense titreşimi' modu için gerekli."
+            : "Kurulu değil. Yalnız 'Oyunun DualSense titreşimi' için gerekir: Ayarlar → Sanal DualSense → Kur.");
+        SetState(DotDualSense, HintDualSense, r.DualSenseEndpoint != null ? GoodBrush : MutedBrush, r.DualSenseEndpoint != null
+            ? "4 kanal ses aygıtı: " + r.DualSenseEndpoint
+            : "Şu an yok: sanal köprü kapalı ve USB DualSense takılı değil. 'Oyunun DualSense titreşimi' modu köprüyü açar.");
+    }
+
+    private static void SetState(System.Windows.Shapes.Ellipse dot, TextBlock hint, Brush brush, string text)
+    {
+        dot.Fill = brush;
+        hint.Text = text;
     }
 
     private static void SetCheck(System.Windows.Shapes.Ellipse dot, TextBlock hint, bool ok, string okText, string badText)

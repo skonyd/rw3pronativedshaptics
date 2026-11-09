@@ -43,7 +43,7 @@ public static class RazerCommand
 /// </summary>
 public static class WolverineModeControl
 {
-    public const string PcComboHint = "Kolda PC moduna dönmek için: ○ (Razer) + Menu + A tuşlarına birlikte bas.";
+    public const string PcComboHint = "PC moduna dönmek için kolda ○ + Menü + A tuşlarını 2 sn birlikte basılı tut.";
 
     public static WolverineControllerMode Detect()
     {
