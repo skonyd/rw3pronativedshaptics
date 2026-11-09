@@ -2,6 +2,8 @@
 
 Windows 11 desktop application and research project for game-authored DualSense body haptics on Wolverine V3 Pro.
 
+**Current state: [docs/STATUS.md](docs/STATUS.md)** (one page, kept up to date). Documentation index: [docs/README.md](docs/README.md). The dated notes below are history.
+
 2026-11-08: [Native Xbox trigger routing / Audio-mode separation](docs/XBOX_NATIVE_ROUTING_20261108.md). Native can approximate game trigger commands on impulse motors alongside haptic body output; Audio generates body output only. New routing is software-checked, not newly verified on physical hardware. See [standalone Direct USB status](docs/STANDALONE_STATUS_20261108.md) for later work beyond the historical milestones below.
 
 **2026-11-07: Native v2 is a lossy prototype. M3 remains open; M4 high-fidelity live output is not implemented.** A real game's authored source and end-to-end fidelity have not been validated. Prior user-felt Wolverine Hand Left/Right pulses are recorded in [hardware tests](docs/HARDWARE_TEST_LOG.md); they do not prove waveform fidelity.
