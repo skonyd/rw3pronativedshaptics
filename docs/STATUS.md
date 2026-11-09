@@ -40,7 +40,8 @@ Updated 2026-11-09. This page replaces reading the dated reports in order; they 
 - Xbox audio stereo fix (0346115): unit-tested, not yet felt by the user.
 - Transient record (last 3 bits) not decoded: hits are folded into strength points.
 - Spectral history 85 ms (Hybrid/Multiband); shorter validated path still to do.
-- `MainWindow.xaml.cs` (~1,900 lines) still holds mode orchestration; extracting it is the next structural step.
+- Mode orchestration is in `HapticOrchestrator` (decisions in `HapticModePolicy`, contract-tested).
+  `MainWindow.xaml.cs` is still large (~1,860 lines). The next split candidates are the test/simulator page and the settings page.
 - YouTube seek recovery (audio mode) unresolved; see the dated reports.
 
 ## Code map

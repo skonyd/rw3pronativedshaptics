@@ -1614,3 +1614,28 @@ SpectralContracts.Run(Check);
     Check(shape && points && ElevatedLaunchTask.BridgeArg == "--start-virtual-dualsense",
         "UAC-free bridge task: highest privileges, interactive user, normal priority, escaped exe path, only this exe");
 }
+
+// Mode orchestration decisions (HapticModePolicy, used by HapticOrchestrator).
+{
+    bool May(HapticMode m, RunState run = RunState.Off, bool starting = false, bool busy = false, bool exiting = false,
+             long now = 1000, long next = 0, bool audio = true, bool pcm = true) =>
+        HapticModePolicy.MayAutoStart(m, run, starting, busy, exiting, now, next, audio, pcm);
+    bool start = May(HapticMode.Audio) && May(HapticMode.Native);
+    bool blocked = !May(HapticMode.Normal) && !May(HapticMode.Audio, run: RunState.Audio) && !May(HapticMode.Native, starting: true)
+        && !May(HapticMode.Audio, busy: true) && !May(HapticMode.Native, exiting: true) && !May(HapticMode.Audio, now: 1000, next: 1001)
+        && !May(HapticMode.Audio, audio: false) && !May(HapticMode.Native, pcm: false)
+        && May(HapticMode.Audio, pcm: false) && May(HapticMode.Native, audio: false)          // each mode only checks its own switch
+        && !May(HapticMode.Native, next: HapticModePolicy.Never, now: long.MaxValue - 1);
+    bool retry = HapticModePolicy.RetryAfterFailure(HapticMode.Audio, false, 100) == 100 + HapticModePolicy.RetryMs
+        && HapticModePolicy.RetryAfterFailure(HapticMode.Native, true, 100) == 100 + HapticModePolicy.RetryMs
+        && HapticModePolicy.RetryAfterFailure(HapticMode.Audio, true, 100) == HapticModePolicy.Never;   // virtual-Xbox bridge: never by itself
+    bool plan = HapticModePolicy.PlanNativeSource(true, false, false, false) == NativeSourcePlan.UsbDualSense
+        && HapticModePolicy.PlanNativeSource(false, false, true, true) == NativeSourcePlan.WaitForInstall
+        && HapticModePolicy.PlanNativeSource(false, true, true, false) == NativeSourcePlan.VirtualHere
+        && HapticModePolicy.PlanNativeSource(false, true, false, true) == NativeSourcePlan.VirtualViaTask
+        && HapticModePolicy.PlanNativeSource(false, true, false, false) == NativeSourcePlan.WaitForClick
+        && HapticModePolicy.WaitNote(NativeSourcePlan.WaitForClick)!.Contains("UAC'siz")
+        && HapticModePolicy.WaitNote(NativeSourcePlan.VirtualHere) == null;
+    Check(start && blocked && retry && plan,
+        "Mode policy: auto-start gates, per-mode switches, retry timing (virtual-Xbox never by itself), native source plan");
+}
