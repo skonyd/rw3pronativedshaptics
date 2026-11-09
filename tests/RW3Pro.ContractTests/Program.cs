@@ -1639,3 +1639,31 @@ SpectralContracts.Run(Check);
     Check(start && blocked && retry && plan,
         "Mode policy: auto-start gates, per-mode switches, retry timing (virtual-Xbox never by itself), native source plan");
 }
+
+// L2 feedback (0x21) feels like steady resistance: one click on entering, no ratchet while pressing, tension held.
+{
+    var fb = new TriggerEffectInterpreter { TensionScale = 0.45, ClickSeconds = 0.09 };
+    fb.SetEffect(GameSignalSimulator.Zones(0x21, 1, 8));
+    int clickTicks = 0; double held = 0;
+    for (int i = 0; i <= 200; i++) { double v = fb.Update(0.05 + 0.9 * i / 200.0, 0.004); if (v > 0.5) clickTicks++; }   // slow press 5 % → 95 %
+    for (int i = 0; i < 50; i++) held = fb.Update(0.95, 0.004);
+    var rising = new TriggerEffectInterpreter { TensionScale = 0.45, ClickSeconds = 0.09 };
+    var two = GameSignalSimulator.Zones(0x21, 2, 3);                       // zones 2.. strength 3, then stronger from zone 6:
+    ulong packed = two.P2 | ((ulong)two.P3 << 8) | ((ulong)two.P4 << 16) | ((ulong)two.P5 << 24);
+    for (int z = 6; z < 10; z++) packed = (packed & ~(7UL << (3 * z))) | (6UL << (3 * z));
+    rising.SetEffect(two with { P2 = (byte)packed, P3 = (byte)(packed >> 8), P4 = (byte)(packed >> 16), P5 = (byte)(packed >> 24) });
+    int clicks2 = 0; bool inClick = false;
+    for (int i = 0; i <= 250; i++) { bool c = rising.Update(i / 250.0, 0.004) > 0.3; /* entry click 0.375 > tension 0.17 */ if (c && !inClick) clicks2++; inClick = c; }
+    Check(clickTicks <= 25 && held > 0.4 && held < 0.5 && clicks2 == 2,
+        $"L2 feedback: one entry click ({clickTicks * 4} ms of click on a slow press), held tension {held:F2}, a second click only where it gets stronger ({clicks2})");
+}
+
+// Xbox body motors: stereo widening keeps centre, keeps hard pans one-sided, spreads partial pans.
+{
+    var c = XboxBodyEnvelope.Widen(0.5f, 0.5f);
+    var hard = XboxBodyEnvelope.Widen(0.6f, 0f);
+    var part = XboxBodyEnvelope.Widen(0.6f, 0.4f);
+    Check(Math.Abs(c.L - 0.5f) < 1e-6 && Math.Abs(c.R - 0.5f) < 1e-6 && hard.R == 0 && hard.L > 0.6f
+          && part.L - part.R > 2 * (0.6f - 0.4f) - 1e-6 && Math.Abs(part.L + part.R - 1.0f) < 1e-6,
+        $"Xbox stereo widening: centre 0.50/0.50, hard {hard.L:F2}/{hard.R:F2}, partial 0.60/0.40 → {part.L:F2}/{part.R:F2}");
+}

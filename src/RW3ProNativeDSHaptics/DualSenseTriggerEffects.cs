@@ -91,8 +91,12 @@ public sealed class TriggerEffectInterpreter
             {
                 int zone = Math.Min(9, (int)(pull * 10)), prev = Math.Min(9, (int)(_lastPull * 10));
                 int mask = e.P0 | (e.P1 << 8);
-                if (zone > prev && (mask & (1 << zone)) != 0) Click(ZoneStrength(e, zone) / 8.0);
-                if ((mask & (1 << zone)) != 0 && pull > 0.02) tension = ZoneStrength(e, zone) / 8.0;
+                bool inside = (mask & (1 << zone)) != 0 && pull > 0.02, wasInside = (mask & (1 << prev)) != 0 && _lastPull > 0.02;
+                // A DualSense feedback zone is steady resistance, not a ratchet: click once where the resistance
+                // starts (or gets stronger), then hold the tension. A click at every 10 % step made L2 feel fastest
+                // while moving and weaker when held (user report 2026-11-09).
+                if (inside && zone > prev && (!wasInside || ZoneStrength(e, zone) > ZoneStrength(e, prev))) Click(ZoneStrength(e, zone) / 8.0);
+                if (inside) tension = ZoneStrength(e, zone) / 8.0;
                 break;
             }
             case 0x25: // weapon: start zone mask (P0,P1 low/high), end zone, strength
