@@ -32,7 +32,12 @@ Updated 2026-11-09. This page replaces reading the dated reports in order; they 
 - Hybrid places mixed 80+190 Hz correctly.
 - Dongle works (Direct USB).
 - Xbox-mode trigger motors: GameInput from the background +27/+19 dB; WGI in the background 0 dB.
-- PC mode trigger motors: unreachable (XUSB).
+- PC mode trigger motors: unreachable.
+  - XInput has no trigger channel; WGI gives 0 dB.
+  - GameInput's trigger channels (2026-11-09) give +12.5 dB at a separate 222 Hz actuator (body motors: 76 / 62 Hz), but the user felt it outside the triggers.
+- Sensa in Xbox mode: no route.
+  - The controller exposes only a GIP device: no Razer HID, and Razer's haptics service sees no device.
+  - GIP vendor messaging (`GipGameControllerProvider.SendMessage`) is reported not to work and Razer's GIP commands are undocumented, so we did not probe the firmware blindly.
 - Virtual DualSense input matched the Xbox pad in every readback report.
 
 ## Open / not verified
