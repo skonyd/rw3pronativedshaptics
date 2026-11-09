@@ -1,5 +1,23 @@
 # Routing audit and diagnostic cleanup — 2026-11-09
 
+## Source selection below the mode cards
+
+The General screen now stores independent Native PCM, rumble and L2/R2 checkboxes.
+Native's audio endpoint bridge can play PCM alone. Start the virtual DualSense bridge
+from the same panel to receive game rumble and trigger reports. In Xbox mode the
+existing four-motor writer can combine all three sources, with an impulse/body
+destination checkbox and the existing gain and priority controls in Settings.
+PC mode routes L2/R2 effects to the body and honors the three source switches.
+The Audio panel has a system-audio switch. Combining system audio with real Xbox
+game feedback still requires the four-channel feedback adapter described below.
+
+Contracts exercised all eight Native Xbox source combinations and loaded older
+saved levels with enabled-source defaults. The connected wired Wolverine enumerated
+as 1532:0A3F. GameInput returned 1,222 successful reads and zero misses in 20 seconds.
+The sampled triggers were at rest throughout, and the probe sent zero motor
+commands. Physical effect and real-game acceptance remain open. The separate
+Opera foreground defect is tracked in [issue #16](https://github.com/skonyd/rw3pronativedshaptics/issues/16).
+
 Review of current local source; API/software routing is distinct from physical acceptance.
 Follow-up on main: Native Xbox now has persisted PCM, rumble and L2/R2 levels (0 mutes
 the source) and per-side body priority. Defaults preserve the previous max mixer. Audio

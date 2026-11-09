@@ -55,7 +55,20 @@ public sealed class VirtualDualSenseBridge : IDisposable
     /// <summary>Xbox mode: trigger effects on the impulse-trigger motors (true) or, classic, on the body motors.</summary>
     public bool TriggerMotors { get; set; } = true;
     private volatile XboxNativeMix _xboxMix = new();
-    public XboxNativeMix XboxMix { get => _xboxMix; set => _xboxMix = value; }
+    public XboxNativeMix XboxMix
+    {
+        get => _xboxMix;
+        set
+        {
+            lock (_framesGate)
+            {
+                _xboxMix = value;
+#if HAS_HIDMAESTRO
+                if (!value.PcmEnabled) _target?.ClearForSilence();
+#endif
+            }
+        }
+    }
     private int _outputLevelPercent = 100;
     public int OutputLevelPercent
     {
@@ -274,7 +287,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _markL = Math.Max(_markL, pl); _markR = Math.Max(_markR, pr); _logL = Math.Max(_logL, pl); _logR = Math.Max(_logR, pr);
             _envL = el; _envR = er; _envTick = Environment.TickCount64;
         }
-        if (_mode == WolverineControllerMode.Pc)
+        if (_mode == WolverineControllerMode.Pc && XboxMix.PcmEnabled)
             _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
         Interlocked.Increment(ref _hapticBlocks);
         }
@@ -410,7 +423,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 {
                     if (_xbox?.HasDevice == true) _xbox.Forget();
                     // PC mode: no trigger motors reachable (XUSB): trigger effects become body rumble on that side.
-                    _motors?.Submit(BridgeMotorFrame.Route(rl / 255.0, rr / 255.0, 0, 0, lt, rt, false), Environment.TickCount64);
+                    var mix = XboxMix;
+                    _motors?.Submit(BridgeMotorFrame.Route(
+                        mix.RumbleEnabled ? rl / 255.0 : 0, mix.RumbleEnabled ? rr / 255.0 : 0,
+                        0, 0, mix.TriggersEnabled ? lt : 0, mix.TriggersEnabled ? rt : 0, false),
+                        Environment.TickCount64);
                 }
             }
             else if (_inputHealthy)

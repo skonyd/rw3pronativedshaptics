@@ -1451,6 +1451,18 @@ SpectralContracts.Run(Check);
 // Native Xbox mix: saved defaults retain the original output, with independent channel controls.
 {
     var original = BridgeMotorFrame.Route(.25, .75, 1.4, .5, .5, 1, true);
+    var saved = System.Text.Json.JsonSerializer.Deserialize<UserSettings>("""{"XboxNativeMix":{"PcmPercent":70}}""")!;
+    Check(saved.XboxNativeMix.PcmEnabled && saved.XboxNativeMix.RumbleEnabled && saved.XboxNativeMix.TriggersEnabled
+        && saved.XboxNativeMix.PcmPercent == 70 && saved.AudioOutputEnabled,
+        "Older saved mixer settings retain enabled sources and existing levels");
+    for (int mask = 0; mask < 8; mask++)
+    {
+        bool pcm = (mask & 1) != 0, rumble = (mask & 2) != 0, triggers = (mask & 4) != 0;
+        var mix = new XboxNativeMix(PcmEnabled: pcm, RumbleEnabled: rumble, TriggersEnabled: triggers);
+        Check(mix.Route(.75, 0, 0, .5, .25, .125, true)
+            == new BridgeMotorFrame(rumble ? .75 : 0, pcm ? .5 : 0, triggers ? .25 : 0, triggers ? .125 : 0),
+            $"Native Xbox source combination {mask} gates only the selected channels");
+    }
     Check(new XboxNativeMix().Route(.25, .75, 1.4, .5, .5, 1, true) == original,
         "Native Xbox mixer defaults preserve existing motor routing");
     var rumbleFirst = new XboxNativeMix(50, 100, 0, XboxBodyPriority.GameRumble);

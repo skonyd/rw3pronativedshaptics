@@ -94,8 +94,13 @@ public partial class MainWindow : Window
         _bridge.HidePadInGames = _settings.HidePadInGames;
         _settings.TriggerFeel = Math.Clamp(_settings.TriggerFeel, 0, 1);
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
+        RouteImpulse.IsChecked = _bridge.TriggerMotors;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
+        RoutePcm.IsChecked = mix.PcmEnabled;
+        RouteRumble.IsChecked = mix.RumbleEnabled;
+        RouteTriggers.IsChecked = mix.TriggersEnabled;
+        RouteAudio.IsChecked = _settings.AudioOutputEnabled;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
         XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
         XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
@@ -293,6 +298,7 @@ public partial class MainWindow : Window
         if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
         _settings.TriggerFeel = int.Parse(tag);
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
+        RouteImpulse.IsChecked = _bridge.TriggerMotors;
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Trigger feel", ex); }
         DiagnosticsService.Info("Trigger effects in Xbox mode: " + (_settings.TriggerFeel == 1 ? "trigger motors + haptics" : "classic (body motors)") + ".");
     }
@@ -300,8 +306,16 @@ public partial class MainWindow : Window
     private void ApplyXboxMix()
     {
         _settings.XboxNativeMix = new((int)XboxPcmLevel.Value, (int)XboxRumbleLevel.Value,
-            (int)XboxTriggerLevel.Value, (XboxBodyPriority)XboxBodyMixPriority.SelectedIndex);
+            (int)XboxTriggerLevel.Value, (XboxBodyPriority)XboxBodyMixPriority.SelectedIndex,
+            RoutePcm.IsChecked == true, RouteRumble.IsChecked == true, RouteTriggers.IsChecked == true);
         _bridge.XboxMix = _settings.XboxNativeMix;
+    }
+
+    private void RouteImpulse_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        (RouteImpulse.IsChecked == true ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
+        RefreshStatus();
     }
 
     private void XboxMix_Changed(object sender, RoutedEventArgs e)
@@ -309,6 +323,21 @@ public partial class MainWindow : Window
         if (!_initialized) return;
         ApplyXboxMix();
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox Native mix", ex); }
+    }
+
+    private void RouteSource_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        ApplyXboxMix();
+        _settings.AudioOutputEnabled = RouteAudio.IsChecked == true;
+        if (SelectedMode == HapticMode.Audio || (SelectedMode == HapticMode.Native && !_bridge.IsVirtualDualSenseRunning))
+        {
+            if (_run != RunState.Off) StopAll();
+            _nextAutoStartTick = 0;
+            _ = EnsureModeRunningAsync();
+        }
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Titreşim kaynakları", ex); }
+        RefreshStatus();
     }
 
     private async void PadModeXbox_Click(object sender, RoutedEventArgs e)
@@ -557,6 +586,8 @@ public partial class MainWindow : Window
         if (_busy || _starting || _realExit || _run != RunState.Off) return;
         var mode = SelectedMode;
         if (mode == HapticMode.Normal || Environment.TickCount64 < _nextAutoStartTick) return;
+        if (mode == HapticMode.Audio && !_settings.AudioOutputEnabled ||
+            mode == HapticMode.Native && !_settings.XboxNativeMix.PcmEnabled) return;
         _starting = true;
         try
         {
@@ -564,10 +595,11 @@ public partial class MainWindow : Window
             {
                 // Audio owns body motors only. Native trigger interpretation is a separate mode.
                 _audioRoute = await Task.Run(WolverineModeDetector.Detect);
+                if (_busy || _realExit || SelectedMode != mode || !_settings.AudioOutputEnabled) return;
                 if (_audioRoute == WolverineMode.Pc)
                 {
                     await _bridge.StartAudioToSensaAsync();
-                    if (_busy || SelectedMode != HapticMode.Audio) { _bridge.Stop(); return; }
+                    if (_busy || _realExit || SelectedMode != mode || !_settings.AudioOutputEnabled) { _bridge.Stop(); return; }
                 }
                 else if (_audioRoute == WolverineMode.Xbox)
                 {
@@ -584,7 +616,7 @@ public partial class MainWindow : Window
             else
             {
                 await _bridge.StartBridgeAsync();
-                if (_busy || _realExit || SelectedMode != HapticMode.Native) { _bridge.Stop(); return; }   // a test or mode change won
+                if (_busy || _realExit || SelectedMode != mode || !_settings.XboxNativeMix.PcmEnabled) { _bridge.Stop(); return; }
                 _run = RunState.Native;
             }
             _lastErrorNoted = null;
@@ -667,11 +699,26 @@ public partial class MainWindow : Window
     private void RefreshStatus()
     {
         var mode = SelectedMode;
+        NativeSourceRows.Visibility = mode == HapticMode.Native ? Visibility.Visible : Visibility.Collapsed;
+        AudioSourceRows.Visibility = mode == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
+        NormalSourceRows.Visibility = mode == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
+        RouteNativeHint.Text = !_bridge.IsVirtualDualSenseRunning
+            ? "PCM ses köprüsünde kullanılabilir. Oyun rumble ve L2/R2 için sanal DualSense köprüsünü başlat."
+            : _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox && _bridge.TriggerMotors
+                ? "PCM ve rumble gövdede. L2/R2 bağımsız tetik motorlarında."
+                : "PCM ve rumble gövdede. L2/R2 efektleri de gövdeye yönlendirilir.";
+        RouteVirtualButton.Content = _bridge.IsVirtualDualSenseRunning ? "Sanal köprüyü durdur" : "Sanal köprüyü başlat";
+        RouteVirtualButton.IsEnabled = !_busy && !_starting;
+        RouteImpulse.IsEnabled = RouteTriggers.IsChecked == true;
         bool running = _run != RunState.Off;
         LevelPanel.Visibility = _run == RunState.Native ? Visibility.Visible : Visibility.Collapsed;
         string waitText = _busy ? "Test sürüyor; bitince otomatik devam eder."
             : _lastErrorNoted != null ? "Bekleniyor: " + _lastErrorNoted + " (birkaç saniyede bir yeniden denenir)"
             : "Başlatılıyor…";
+
+        if (!running && !_busy && (mode == HapticMode.Audio && !_settings.AudioOutputEnabled ||
+            mode == HapticMode.Native && !_settings.XboxNativeMix.PcmEnabled))
+            waitText = "Kaynak kapalı. Titreşim tablosundan yeniden açabilirsin.";
 
         switch (mode)
         {

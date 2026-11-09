@@ -244,6 +244,27 @@
                 </StackPanel>
               </RadioButton>
             </UniformGrid>
+            <TextBlock Text="Titreşim kaynakları" Style="{StaticResource CardTitle}" Margin="0,14,0,4"/>
+            <StackPanel x:Name="NormalSourceRows" Visibility="Collapsed">
+              <TextBlock Text="Normal rumble ve desteklenen tetik titreşimini oyun yönetir." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel x:Name="AudioSourceRows" Visibility="Collapsed">
+              <CheckBox x:Name="RouteAudio" Content="Sesten gövde titreşimi" Foreground="#EEF3FF"
+                        Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              <TextBlock Text="Oyun rumble ve tetikleri için ortak çıkış henüz kullanılamıyor." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel x:Name="NativeSourceRows" Visibility="Collapsed">
+              <UniformGrid Columns="3">
+                <CheckBox x:Name="RoutePcm" Content="Haptik PCM" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+                <CheckBox x:Name="RouteRumble" Content="Normal rumble" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+                <CheckBox x:Name="RouteTriggers" Content="L2/R2 efektleri" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              </UniformGrid>
+              <CheckBox x:Name="RouteImpulse" Content="Xbox modunda L2/R2 efektlerini tetik motorlarına gönder"
+                        Foreground="#EEF3FF" Margin="0,5,0,0"
+                        Checked="RouteImpulse_Changed" Unchecked="RouteImpulse_Changed"/>
+              <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,5,0,4"/>
+              <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
+            </StackPanel>
           </StackPanel>
         </Border>
 

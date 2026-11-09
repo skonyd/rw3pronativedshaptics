@@ -1,5 +1,13 @@
 # Hardware test log
 
+## 2026-11-09 — Native source selectors and Xbox USB input
+
+Wolverine Xbox USB 1532:0A3F was present. The read-only GameInput probe completed
+1,222 reads with zero misses in 20 seconds. Both triggers were sampled at rest.
+The probe sent zero motor commands. All eight software source combinations
+passed channel isolation checks. Physical output for these combinations and
+real-game feedback coexistence remain pending. [Routing audit](HAPTIC_ROUTER_AUDIT_20261109.md).
+
 ## 2026-11-09 — foreground interruption remains open
 
 Independent40% body probes using XInput1.4, GameInputv0, XInputEnable, XInput9.1.0 and

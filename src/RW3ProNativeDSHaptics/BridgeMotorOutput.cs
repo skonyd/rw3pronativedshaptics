@@ -5,7 +5,8 @@ namespace RW3ProNativeDSHaptics;
 public enum XboxBodyPriority { Strongest, GameRumble, HapticPcm }
 
 public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100, int TriggerPercent = 100,
-    XboxBodyPriority Priority = XboxBodyPriority.Strongest)
+    XboxBodyPriority Priority = XboxBodyPriority.Strongest,
+    bool PcmEnabled = true, bool RumbleEnabled = true, bool TriggersEnabled = true)
 {
     public BridgeMotorFrame Route(double rumbleL, double rumbleR, double pcmL, double pcmR,
         double triggerL, double triggerR, bool impulse)
@@ -15,8 +16,8 @@ public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100
 
         double Mix(double rumble, double pcm)
         {
-            rumble = Gain(rumble, RumblePercent);
-            pcm = Gain(pcm, PcmPercent);
+            rumble = RumbleEnabled ? Gain(rumble, RumblePercent) : 0;
+            pcm = PcmEnabled ? Gain(pcm, PcmPercent) : 0;
             return Priority switch
             {
                 XboxBodyPriority.GameRumble when rumble > 0 => rumble,
@@ -26,7 +27,8 @@ public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100
         }
 
         return BridgeMotorFrame.Route(Mix(rumbleL, pcmL), Mix(rumbleR, pcmR), 0, 0,
-            Gain(triggerL, TriggerPercent), Gain(triggerR, TriggerPercent), impulse);
+            TriggersEnabled ? Gain(triggerL, TriggerPercent) : 0,
+            TriggersEnabled ? Gain(triggerR, TriggerPercent) : 0, impulse);
     }
 }
 

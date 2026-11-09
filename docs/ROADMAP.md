@@ -1,5 +1,10 @@
 # Roadmap — 2026-11-08
 
+The General screen now has per-source Native checkboxes and an Xbox trigger
+destination switch. Remaining work includes capturing real Xbox game feedback
+for simultaneous Audio mode output and physical/real-game acceptance.
+[Routing and test evidence](HAPTIC_ROUTER_AUDIT_20261109.md).
+
 2026-11-09 follow-up: [current router/coexistence audit](HAPTIC_ROUTER_AUDIT_20261109.md).
 Native report rumble/adaptive-trigger routing already exists; independent source switches,
 general priority mixer and Audio plus Xbox-game impulse preservation remain open.
