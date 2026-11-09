@@ -146,6 +146,9 @@ if (args.FirstOrDefault() == "audit-xbox-safety")
     var sink = new XboxAudioSink(v => writes.Add(v));
     var delivery = new AudioSinkDelivery(sink);
     float[] signal = new float[4800 * 2];
+    sink.Accept(signal);
+    sink.Silence();
+    bool idleNoWrites = writes.Count == 0;
     for (int i = 0; i < 4800; i++) { signal[2 * i] = .8f * MathF.Sin(2 * MathF.PI * 80 * i / 48000); signal[2 * i + 1] = signal[2 * i] * .7f; }
     delivery.Enqueue(signal, 0, 0); delivery.Pump(0);
     bool active = writes.Any(v => v.LeftMotor > 0 || v.RightMotor > 0 || v.LeftTrigger > 0 || v.RightTrigger > 0);
@@ -179,12 +182,12 @@ if (args.FirstOrDefault() == "audit-xbox-safety")
     levelDelivery.Dispose(); int levelStopped=levelWrites.Count;
     levelDelivery.Configure(s=>((XboxAudioSink)s).OutputLevelPercent=100);
     bool levelSafe=initiallyActive && liveZero && liveResume && levelWrites.Count==levelStopped && levelWrites.All(v=>v.LeftTrigger==0 && v.RightTrigger==0);
-    var result = new { ActiveMappingObserved = active, NoEarlySilence = held, AllFourChannelsZeroAtWatchdog = zeroed,
+    var result = new { IdleMakesNoWrites = idleNoWrites, ActiveMappingObserved = active, NoEarlySilence = held, AllFourChannelsZeroAtWatchdog = zeroed,
         NoPostStopWrite = noLateWrites, FilterHistoryCleared = reset, PartialStereoRejected = partialRejected,
         NonFiniteInputSilent = invalidSilent, ValidAudioRecoversAfterInvalidInput = recovered,
         AudioNeverMapsToTriggerChannels = bodyOnly, LiveLevelZeroResumeStopSafe = levelSafe, PhysicalXboxHardwareTested = false };
     File.WriteAllText(args[1], JsonSerializer.Serialize(result, jsonOptions)); Console.WriteLine(JsonSerializer.Serialize(result));
-    Environment.ExitCode = active && held && zeroed && noLateWrites && reset && partialRejected && invalidSilent && recovered && bodyOnly && levelSafe ? 0 : 1;
+    Environment.ExitCode = idleNoWrites && active && held && zeroed && noLateWrites && reset && partialRejected && invalidSilent && recovered && bodyOnly && levelSafe ? 0 : 1;
     return;
 }
 if (args.FirstOrDefault() == "audit-software-scenarios")

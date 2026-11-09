@@ -89,10 +89,14 @@ public sealed class XboxAudioSink : IAudioHapticSink
 
     private void Write(GamepadVibration v)
     {
+        bool silent = v.LeftMotor < 1.0 / 65535 && v.RightMotor < 1.0 / 65535;
+        bool wasSilent = _last.LeftMotor < 1.0 / 65535 && _last.RightMotor < 1.0 / 65535;
+        // Avoid periodic zero packets when RW3 has no body vibration to stop.
+        if (silent && wasSilent) return;
         long now = Environment.TickCount64;
         bool changed = Math.Abs(v.LeftMotor - _last.LeftMotor) > 0.02 || Math.Abs(v.RightMotor - _last.RightMotor) > 0.02 ||
                        Math.Abs(v.LeftTrigger - _last.LeftTrigger) > 0.02 || Math.Abs(v.RightTrigger - _last.RightTrigger) > 0.02;
-        if (!changed && now - _lastWriteTick < 100) return;
+        if (!silent && !changed && now - _lastWriteTick < 100) return;
         if (_diagnosticWriter != null)
         {
             _diagnosticWriter(v); _last = v; _lastWriteTick = now; return;
@@ -112,8 +116,11 @@ public sealed class XboxAudioSink : IAudioHapticSink
         _envBassL = _envBassR = _envMid = 0;
         _bassL.Reset(); _bassR.Reset(); _midL.Reset(); _midR.Reset();
         _inBlock = 0;
-        if (_diagnosticWriter != null) _diagnosticWriter(default);
-        else { try { if (_outputSlot >= 0) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); } } catch { } }
+        if (_last.LeftMotor >= 1.0 / 65535 || _last.RightMotor >= 1.0 / 65535)
+        {
+            if (_diagnosticWriter != null) _diagnosticWriter(default);
+            else { try { if (_outputSlot >= 0) { var zero = new BodyVibration(); XInputSetState((uint)_outputSlot, ref zero); } } catch { } }
+        }
         _last = default;
     }
 }

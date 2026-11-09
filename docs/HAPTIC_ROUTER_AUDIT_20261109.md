@@ -1,6 +1,16 @@
 # Routing audit and diagnostic cleanup — 2026-11-09
 
 Review of current local source; API/software routing is distinct from physical acceptance.
+Follow-up on main: Native Xbox now has persisted PCM, rumble and L2/R2 levels (0 mutes
+the source) and per-side body priority. Defaults preserve the previous max mixer. Audio
+Xbox skips redundant idle zero writes while still stopping active output. This reduces
+idle interference but leaves active Audio/game impulse arbitration open.
+
+PadForge documents game impulse capture through virtual Xbox One/Elite/Series profiles:
+[Impulse Triggers](https://padforge.org/docs/features/impulse-triggers/). The RW3 adapter
+needs verified LT/RT callbacks from a compatible local profile and one four-motor writer
+before enabling this route. Physical acceptance requires separate body/LT/RT commands
+and simultaneous system audio on the Wolverine; the device was absent in this session.
 User's first diagram is stale for Native: genuine report rumble and adaptive-trigger paths
 already exist. The second diagram is a useful target, not a delivered general-purpose router.
 
