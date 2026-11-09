@@ -25,6 +25,21 @@ public sealed class GameInputRumble : IDisposable
     public string LastError { get; private set; } = "";
     public string LastEnumeration { get; private set; } = "";
     public long Writes { get; private set; }
+    public uint? SupportedMotorMask
+    {
+        get
+        {
+            lock (_gate)
+            {
+                if (!Connected()) return null;
+                // GameInput SDK v0: 32-byte prefix, two 32-byte device IDs, then three DWORDs.
+                const int motorMaskOffset = 108;
+                IntPtr info = Slot<InfoFn>(_device, 3)(_device);
+                return info != IntPtr.Zero && Marshal.ReadInt32(info) >= motorMaskOffset + sizeof(uint)
+                    ? (uint)Marshal.ReadInt32(info, motorMaskOffset) : null;
+            }
+        }
+    }
     [StructLayout(LayoutKind.Sequential)] private struct Rumble { public float Low, High, LeftTrigger, RightTrigger; }
     [StructLayout(LayoutKind.Sequential)] private struct PadState
     { public uint Buttons; public float LeftTrigger, RightTrigger, LX, LY, RX, RY; }

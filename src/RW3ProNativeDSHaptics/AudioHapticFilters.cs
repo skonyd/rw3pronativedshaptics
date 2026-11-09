@@ -16,11 +16,13 @@ public sealed class BiquadLowPass
     private readonly double _b0, _b1, _b2, _a1, _a2;
     private double _x1, _x2, _y1, _y2;
 
-    public BiquadLowPass(double cutoffHz, double sampleRate = 48000, double q = 0.7071)
+    public BiquadLowPass(double cutoffHz, double sampleRate = 48000, double q = 0.7071, bool highPass = false)
     {
         double w = 2 * Math.PI * cutoffHz / sampleRate, cos = Math.Cos(w), alpha = Math.Sin(w) / (2 * q);
         double a0 = 1 + alpha;
-        _b0 = (1 - cos) / 2 / a0; _b1 = (1 - cos) / a0; _b2 = _b0;
+        _b0 = (1 + (highPass ? cos : -cos)) / 2 / a0;
+        _b1 = (highPass ? -2 : 2) * _b0;
+        _b2 = _b0;
         _a1 = -2 * cos / a0; _a2 = (1 - alpha) / a0;
     }
 
@@ -32,6 +34,58 @@ public sealed class BiquadLowPass
     }
 
     public void Reset() { _x1 = _x2 = _y1 = _y2 = 0; }
+}
+
+public enum AudioHapticProfile { Existing, Controlled, Balanced, Dynamic }
+
+/// <summary>Local stereo EQ using the cue ranges and gains observed in Synapse.</summary>
+public sealed class AudioProfileFilter
+{
+    private sealed class Cue(double min, double max, float gain)
+    {
+        private readonly BiquadLowPass _leftHigh = new(min, highPass: true), _rightHigh = new(min, highPass: true);
+        private readonly BiquadLowPass _leftLow = new(max), _rightLow = new(max);
+        public float Left(float sample) => _leftLow.Process(_leftHigh.Process(sample)) * gain;
+        public float Right(float sample) => _rightLow.Process(_rightHigh.Process(sample)) * gain;
+        public void Reset()
+        {
+            _leftHigh.Reset(); _rightHigh.Reset();
+            _leftLow.Reset(); _rightLow.Reset();
+        }
+    }
+
+    private readonly Cue[] _cues;
+    private AudioProfileFilter(Cue[] cues) => _cues = cues;
+
+    public static AudioProfileFilter? Create(AudioHapticProfile profile) => profile switch
+    {
+        AudioHapticProfile.Controlled => new([new(30, 130, .70f)]),
+        AudioHapticProfile.Balanced => new([new(30, 150, .70f)]),
+        AudioHapticProfile.Dynamic => new([new(30, 100, .30f), new(100, 200, .10f)]),
+        _ => null
+    };
+
+    public void Process(Span<float> stereo)
+    {
+        for (int i = 0; i < stereo.Length; i += 2)
+        {
+            float l = float.IsFinite(stereo[i]) ? stereo[i] : 0;
+            float r = float.IsFinite(stereo[i + 1]) ? stereo[i + 1] : 0;
+            float left = 0, right = 0;
+            foreach (var cue in _cues)
+            {
+                left += cue.Left(l);
+                right += cue.Right(r);
+            }
+            stereo[i] = left;
+            stereo[i + 1] = right;
+        }
+    }
+
+    public void Reset()
+    {
+        foreach (var cue in _cues) cue.Reset();
+    }
 }
 
 /// <summary>Butterworth low-pass of order 2×sections as a cascade of RBJ biquads.</summary>

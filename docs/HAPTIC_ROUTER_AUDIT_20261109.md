@@ -1,5 +1,93 @@
 # Routing audit and diagnostic cleanup — 2026-11-09
 
+In Audio mode, enable audio body output and choose Xbox game body rumble and
+LT/RT independently. Either game source uses the same opt-in virtual Xbox
+bridge and physical four-motor writer. Audio plus LT/RT alone keeps game rumble
+out of the body mix. Enable the bridge before launching the game.
+
+The first Xbox option requests Windows elevation directly when needed. Approval
+restarts RW3 with the selected route. Cancellation leaves the bridge disabled.
+Native also offers ready-made DualSense source combinations. The updated
+[remaining work](NEXT_WORK_20261109.md) tracks live game, elevation and cleanup
+acceptance separately from decoder and mixer tests.
+
+## Test tab and DualSense fallback scenarios
+
+- **Ses + Xbox tetikleri** runs real default-endpoint WASAPI audio and synthetic
+  Xbox-format reports through the production decoder, mixer and physical
+  GameInput writer. Phases are body only, LT, RT, both with game rumble, trigger
+  release with continuing audio, LT after audio, and all off. The test caps
+  global level at 40%, uses no virtual device or HidHide, and accepts cancellation.
+  It does not exercise game-to-virtual Xbox callbacks.
+- **Normal rumble + adaptif tetik (PCM yok)** sends DualSense USB 0x02 reports
+  to the running virtual DualSense. The first half sends compatible rumble v1
+  and L2 feedback. The second sends v2 rumble and R2 weapon effect, then an
+  explicit all-off report. This scene and the trigger-only scene skip audio
+  endpoint playback entirely.
+- Native virtual DualSense receives HID and PCM independently. A game can send
+  normal rumble plus adaptive effects, PCM plus adaptive effects, trigger-only,
+  or ordinary rumble alone. A manual UAC capture supplies PCM only. Trigger
+  interpretation uses the physical Wolverine trigger's analog position plus
+  the game's authored position and force fields. The Xbox impulse motor conveys
+  a pulse or vibration; Wolverine does not generate counterforce. Classic
+  and PC modes route the approximation to the body. Xbox game's own LT/RT
+  amplitudes are already motor commands and do not enter the DualSense interpreter.
+
+Standalone run on connected wired Xbox Wolverine 1532:0A3F completed seven
+phases, decoded 65 synthetic reports and recorded 248 GameInput write calls.
+No controller concealment or virtual device creation was used. Physical motion,
+real game feedback and virtual Xbox callback acceptance are separate checks.
+
+Follow-up on the installed test path: the user felt the body motors and reported
+no trigger motion. Five UI runs decoded 65 reports each and recorded 238–247
+GameInput calls. The physical Xbox device advertised motor mask 0x0F, including
+both trigger bits. This is a physical trigger-test failure despite API activity.
+The added **Xbox tetik çıkış testi** isolates LT and RT at up to 65% using
+GameInput and then Windows.Gaming.Input. Its physical result is pending. The
+production writer remains GameInput until an alternative is validated.
+
+The user subsequently felt the isolated trigger test, while the combined test
+still felt like body output only. The original combined test applied a 40%
+master cap to 70% trigger commands (28% at the writer). The isolated test
+reaches 65%. The revised combined diagnostic uses the same trigger ceiling
+for trigger-only and audio-plus-trigger phases, with a lower audio-body ceiling
+to reduce masking. The user reported feeling both the body and the trigger
+motor separately in the revised test. This is subjective physical confirmation
+of distinct outputs in the synthetic test. It does not isolate the cause of the
+earlier failure or verify each side or phase individually. Live game gains use
+the existing output level. Game-to-virtual Xbox report reception remains open.
+
+## Experimental Xbox game feedback with system audio
+
+General → Sesten titreşim → Xbox oyun rumble ve tetiklerini birleştir starts
+an opt-in virtual Xbox Series BT profile with the installed HIDMaestro SDK.
+The physical Xbox-mode Wolverine is the sole motor target, bound by GameInput.
+RW3 forwards physical input to the virtual controller, reads game HID rumble
+callbacks, merges game and audio body levels by per-side maximum, and sends
+the game LT/RT levels in the same four-channel command. System audio contributes
+zero to LT/RT. The existing audio profile and global output level apply.
+
+The short all-motor Xbox HID format follows the HIDMaestro profile/driver and
+the [SDL packet layout](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_xboxone.c).
+[PadForge callback code](https://github.com/hifihedgehog/PadForge/blob/main/PadForge.App/Common/Input/HMaestroVirtualController.cs)
+provides independent evidence for LT/RT followed by the two body bytes. Other
+report formats, including separate legacy XUSB feedback, need verification.
+To avoid holding stale commands, audio expires after 250 ms and game feedback
+after one second without a new command. Long game effects may end early.
+
+The option starts unchecked on every launch. It requires an elevated RW3 process,
+installed HIDMaestro and HidHide, and one wired Xbox-mode Wolverine. Enabling it
+asks for consent to temporarily hide the physical game-facing nodes. Stop, failure
+and exit release the motor output and restore the saved HidHide transaction.
+Restart the game after the bridge starts so it opens the virtual controller.
+The app shows the number of decoded feedback reports for diagnosis.
+
+Software contracts passed for independent LT/RT, rejected malformed reports,
+combined output and trigger stop with continued audio. SDK-enabled publish and
+SDK-free Windows build passed. Hardware status is untested: the Xbox Wolverine
+enumerated over USB, but this session did not create the elevated virtual device,
+change HidHide state, capture game feedback or measure motor motion.
+
 ## Source selection below the mode cards
 
 The General screen now stores independent Native PCM, rumble and L2/R2 checkboxes.

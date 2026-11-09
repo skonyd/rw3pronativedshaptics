@@ -75,6 +75,22 @@ source/endpoint/intensity and negative controls; establish compact pitch semanti
 release, gains, multi-tone behavior and repeated variability; test bounded byte-identical
 reference replay separately from a general audio converter. Then add selectable/custom
 profiles while preserving existing Standard/Hybrid/Multiband and Audio/Xbox trigger ownership.
-**No production profile DSP/UI has been added by this setup milestone.** A guessed bandpass
-filter must not be presented as Synapse-equivalent conversion. No equivalence/readiness
-claim or M3/M4 acceptance follows from the capture permission and pilot.
+## Completed series and local presets
+
+Completion records confirm 306 cases each for Controlled and Balanced, plus 123 complex
+cases each for Controlled, Balanced and Dynamic. The Custom experiment stopped after seven
+cases. Dynamic finalization confirms capture stop and successful offline analysis.
+
+RW3 now offers Existing, Controlled, Balanced and Dynamic below the Audio mode card.
+Existing bypasses the new filter and is the default for older settings. The three presets
+apply the observed cue ranges and displayed gains from the table above as local stereo
+high-pass/low-pass cascades at 48 kHz. Dynamic sums its two weighted bands. Filtering runs
+on the audio delivery thread before the PC Sensa or XInput body mapping. The normal mode
+and Native DualSense source are separate. Standard/Hybrid/Multiband remain output methods.
+The Audio demo uses the selected profile on either Wolverine mode.
+
+Contracts cover 145 Hz Controlled/Balanced differentiation, Dynamic's second band and
+out-of-band rejection, stereo isolation, nonfinite samples and clearing filter history.
+The ranges/gains come from the observed cues. The profile filters do not implement the
+captured A1 pitch semantics or Synapse's onset/release behavior. The same-source physical
+comparison is pending. Custom editing is deferred by the user.

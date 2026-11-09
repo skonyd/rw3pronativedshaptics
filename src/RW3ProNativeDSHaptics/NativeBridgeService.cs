@@ -216,7 +216,7 @@ public sealed class NativeBridgeService : IDisposable
 
     /// <summary>Game audio (default playback device) → haptic low-pass → v2 Sensa engine.</summary>
     public async Task StartAudioToSensaAsync(CancellationToken token = default, string? deviceId = null, int? syncDelayOverrideMs = null,
-        bool applySensitivity = true)
+        bool applySensitivity = true, AudioHapticProfile profile = AudioHapticProfile.Existing)
     {
         await _gate.WaitAsync(token);
         try
@@ -228,7 +228,7 @@ public sealed class NativeBridgeService : IDisposable
             _audio = null;
             await EnsureSensaAsync(token);
             _sensa.Features.Reset();
-            _audio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features)) { DelayOverrideMs = syncDelayOverrideMs };
+            _audio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features)) { DelayOverrideMs = syncDelayOverrideMs, Profile = profile };
             _audio.Start(deviceId);
         }
         catch

@@ -44,10 +44,12 @@ public static class GameSignalSimulator
         new("rain", "Yağmur: rastgele tıkırtılar", "İki avuçta dağınık, hafif tıkırtılar.", 4.0),
         new("pan", "Sol → sağ → sol kayma", "120 Hz titreşim sol avuçtan sağa, sonra geri kayar.", 4.0),
         new("triggers", "Tetik motoru testi (ses yok)", "Yalnız tetik komutları, gövdede titreşim yok: L2 ve R2'yi yarıya kadar çekip tut, sonra sonuna kadar. Ne hissedersen tetiklerdedir.", 8.0),
+        new("legacy-trigger", "Normal rumble + adaptif tetik (PCM yok)", "L2'yi yavaşça çekip bırak, sonra R2'yi çek. Oyun biçimindeki normal gövde rumble ve tetik efektleri birlikte gelir.", 8.0),
         new("all", "Tam tur (hepsi art arda)", "Birleşik haptik/tetik testi ve diğer sahneler sırayla; aralarında kısa sessizlik.", 0),
     ];
 
     public static GameSimScene Scene(string id) => Scenes.First(s => s.Id == id);
+    public static bool UsesPcm(string id) => id is not ("triggers" or "legacy-trigger");
 
     // ───────────── haptic PCM (pure, deterministic) ─────────────
 
@@ -185,6 +187,8 @@ public static class GameSignalSimulator
             }
             return "Bitti · tetikler ve haptikler kapalı";
         }
+        if (id == "legacy-trigger") return seconds < 4 ? "Normal sol gövde rumble · L2'yi yavaşça çek ve bırak."
+            : seconds < 8 ? "Normal sağ gövde rumble · R2'yi yavaşça çek ve bırak." : "Bitti · motorlar kapalı.";
         if (id != "combined") return Scene(id).Hint;
         if (seconds >= 35) return "Bitti · tetikler ve haptikler kapalı";
         int phase = Math.Clamp((int)(seconds / 5), 0, CombinedPhases.Count - 1);
@@ -244,6 +248,13 @@ public static class GameSignalSimulator
             case "bow": steps.Add(new(0, OutputData(Zones(0x26, 4, 6, 30), Zones(0x21, 2, 5)))); break;
             case "engine": steps.Add(new(0, OutputData(Zones(0x26, 1, 4, 40), Off))); break;
             case "triggers": steps.Add(new(0, OutputData(Zones(0x26, 1, 8, 40), Zones(0x21, 1, 8)))); break;
+            case "legacy-trigger":
+                steps.Add(new(0, OutputData(Off, Zones(0x21, 2, 6), 100, 0)));
+                var v2 = OutputData(Weapon(3, 7, 6), Off, 0, 100);
+                v2[0] &= 0xFE;
+                v2[38] |= 0x04; // compatible vibration v2
+                steps.Add(new(4, v2));
+                break;
             case "explosion":
                 steps.Add(new(0, OutputData(Off, Off, 0, 0)));
                 steps.Add(new(0.4, OutputData(Off, Off, 255, 200)));
@@ -275,18 +286,23 @@ public static class GameSignalSimulator
         return found;
     }
 
-    public static async Task<GameSimResult> PlayAsync(string sceneId, string endpointId, string? hidPath, string? micId, CancellationToken token,
+    public static async Task<GameSimResult> PlayAsync(string sceneId, string? endpointId, string? hidPath, string? micId, CancellationToken token,
         IProgress<string>? progress = null)
     {
-        var (l, r) = Haptics(sceneId);
         var steps = Outputs(sceneId);
-        double seconds = l.Length / (double)Rate;
-
-        using var en = new MMDeviceEnumerator();
-        using var dev = en.GetDevice(endpointId);
-        var fmt = dev.AudioClient.MixFormat;
-        if (fmt.Channels != 4 || fmt.SampleRate != Rate) throw new InvalidOperationException("DualSense uç noktası 4 kanal / 48 kHz olmalı: " + fmt);
-        byte[] pcm = Interleave(l, r, fmt);
+        bool usePcm = UsesPcm(sceneId);
+        double seconds = Duration(sceneId);
+        using var en = usePcm ? new MMDeviceEnumerator() : null;
+        using var dev = en?.GetDevice(endpointId ?? throw new InvalidOperationException("DualSense ses uç noktası gerekli."));
+        var fmt = dev?.AudioClient.MixFormat;
+        byte[] pcm = [];
+        if (fmt != null)
+        {
+            if (fmt.Channels != 4 || fmt.SampleRate != Rate) throw new InvalidOperationException("DualSense uç noktası 4 kanal / 48 kHz olmalı: " + fmt);
+            var (l, r) = Haptics(sceneId);
+            seconds = l.Length / (double)Rate;
+            pcm = Interleave(l, r, fmt);
+        }
 
         using var mic = micId != null ? new MicLevel(micId) : null;
         double? baseline = null;
@@ -303,11 +319,11 @@ public static class GameSignalSimulator
         try
         {
             using var ms = new MemoryStream(pcm, false);
-            using var src = new RawSourceWaveStream(ms, fmt);
-            using var output = new WasapiOut(dev, AudioClientShareMode.Shared, true, 30);
-            output.Init(src);
+            using var src = fmt == null ? null : new RawSourceWaveStream(ms, fmt);
+            using var output = dev == null ? null : new WasapiOut(dev, AudioClientShareMode.Shared, true, 30);
+            if (src != null) output!.Init(src);
             var clock = Stopwatch.StartNew();
-            output.Play();
+            output?.Play();
             int next = 0; byte[]? current = null; double lastSend = -1;
             string? lastHint = null;
             if (mic != null) mic.Take();
@@ -331,10 +347,10 @@ public static class GameSignalSimulator
                 }
                 await Task.Delay(15, token);
             }
-            output.Stop();
+            output?.Stop();
             double? db = null;
             if (mic != null && baseline is > 0) db = 20 * Math.Log10(Math.Max(mic.Take(), 1e-9) / baseline.Value);
-            return new GameSimResult(true, written, hidError, db);
+            return new GameSimResult(usePcm, written, hidError, db);
         }
         finally
         {
@@ -422,11 +438,12 @@ public static class GameSimVerdict
     public const double FeltDb = 3.0;
 
     public static string Describe(long hapticBlocks, float peakL, float peakR, long sensaFrames,
-        int reportsWritten, long triggerReports, string? hidError, double? micDb, long? xboxWrites = null, string? xboxStatus = null)
+        int reportsWritten, long triggerReports, string? hidError, double? micDb, long? xboxWrites = null, string? xboxStatus = null, bool expectsPcm = true)
     {
         var lines = new System.Collections.Generic.List<string>();
         bool audio = hapticBlocks > 0 && Math.Max(peakL, peakR) >= SilentPeak;
-        if (hapticBlocks == 0) lines.Add("✗ Sanal DualSense titreşim sesini almadı (Windows ses yolu).");
+        if (!expectsPcm) lines.Add("Bu sahne yalnız HID raporu gönderir.");
+        else if (hapticBlocks == 0) lines.Add("✗ Sanal DualSense titreşim sesini almadı (Windows ses yolu).");
         else if (!audio) lines.Add($"✗ Titreşim sesi sessiz geldi (tepe L {peakL:F2} R {peakR:F2}).");
         else lines.Add($"✓ Titreşim sesi köprüde: {hapticBlocks} blok, tepe L {peakL:F2} R {peakR:F2}.");
         if (xboxWrites is long xw)

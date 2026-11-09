@@ -1157,7 +1157,7 @@ SpectralContracts.Run(Check);
         double sum = 0; for (int i = s; i < e; i++) sum += b[i] * b[i];
         return e > s ? Math.Sqrt(sum / (e - s)) : 0;
     }
-    bool audible = GameSignalSimulator.Scenes.Where(s => s.Id is not ("all" or "triggers")).All(s =>
+    bool audible = GameSignalSimulator.Scenes.Where(s => s.Id != "all" && GameSignalSimulator.UsesPcm(s.Id)).All(s =>
     {
         var (l, r) = GameSignalSimulator.Haptics(s.Id);
         return Math.Max(Rms(l, 0, s.Seconds), Rms(r, 0, s.Seconds)) > 0.02 && l.All(float.IsFinite) && r.All(float.IsFinite)
@@ -1473,8 +1473,79 @@ SpectralContracts.Run(Check);
         "Native Xbox Classic folds scaled triggers into the body and rejects invalid PCM");
 }
 
+// Profile bands are separate from the output method and preserve channel separation.
+{
+    var settings = new UserSettings { AudioProfile = AudioHapticProfile.Balanced, OutputMethod = (int)SensaOutputMethod.Hybrid };
+    var restored = System.Text.Json.JsonSerializer.Deserialize<UserSettings>(
+        System.Text.Json.JsonSerializer.Serialize(settings));
+    Check(restored?.AudioProfile == AudioHapticProfile.Balanced && restored.OutputMethod == (int)SensaOutputMethod.Hybrid,
+        "Audio profile and Sensa output method round-trip independently in saved settings");
+
+    static double ProfileRms(AudioHapticProfile profile, int hz)
+    {
+        var samples = new float[48000 * 2];
+        for (int i = 0; i < 48000; i++) samples[2 * i] = MathF.Sin(2 * MathF.PI * hz * i / 48000);
+        AudioProfileFilter.Create(profile)!.Process(samples);
+        return Math.Sqrt(samples.Skip(48000).Where((_, i) => i % 2 == 0).Average(x => x * x));
+    }
+    Check(AudioProfileFilter.Create(AudioHapticProfile.Existing) == null, "Existing audio profile keeps the unfiltered route");
+    Check(ProfileRms(AudioHapticProfile.Balanced, 145) > ProfileRms(AudioHapticProfile.Controlled, 145),
+        "Balanced retains more upper bass than Controlled");
+    Check(ProfileRms(AudioHapticProfile.Dynamic, 165) > ProfileRms(AudioHapticProfile.Dynamic, 550) * 4,
+        "Dynamic retains its second cue and suppresses out-of-band content");
+    foreach (var profile in new[] { AudioHapticProfile.Controlled, AudioHapticProfile.Balanced, AudioHapticProfile.Dynamic })
+    {
+        var filter = AudioProfileFilter.Create(profile)!;
+        float[] samples = [1, 0, float.NaN, 0, 0, 0];
+        filter.Process(samples);
+        Check(samples.All(float.IsFinite) && samples.Where((_, i) => i % 2 != 0).All(x => x == 0),
+            $"{profile} rejects invalid input and does not cross-feed the opposite channel");
+        filter.Reset();
+        Array.Clear(samples);
+        filter.Process(samples);
+        Check(samples.All(x => x == 0), $"{profile} reset discards previous filter history");
+    }
+}
+
+// Xbox short HID callback and the physical four-channel mixer.
+{
+    byte[] split = [25, 75, 10, 60, 255, 0, 235];
+    var expected = new BridgeMotorFrame(.1, .6, .25, .75);
+    Check(XboxGameFeedback.TryDecode(0x0F, split, out var game) && game == expected,
+        "Xbox HID callback decodes independent LT/RT and body values");
+    Check(XboxGameFeedback.TryDecode(0, [0x0F, .. split], out var unnumbered) && unnumbered == expected &&
+        XboxGameFeedback.TryDecode(3, [0x0F, .. split], out var numbered) && numbered == expected,
+        "Xbox feedback accepts the documented all-motor payload with either report prefix");
+    Check(!XboxGameFeedback.TryDecode(0x0F, split.AsSpan(0, 6), out _) &&
+        !XboxGameFeedback.TryDecode(3, [0x0E, .. split], out _) &&
+        !XboxGameFeedback.TryDecode(0x0F, [101, 0, 0, 0, 0, 0, 0], out _),
+        "Xbox feedback rejects truncated, partial-mask and out-of-range reports");
+    var audioFrame = new BridgeMotorFrame(.8, .2, 1, 1);
+    Check(XboxGameFeedback.Mix(audioFrame, game) == new BridgeMotorFrame(.8, .6, .25, .75),
+        "Audio body combines with game rumble while LT/RT remain exclusively game-authored");
+    Check(XboxGameFeedback.Mix(audioFrame, game, includeGameRumble: false) == new BridgeMotorFrame(.8, .2, .25, .75),
+        "Game triggers can be enabled without game body rumble");
+    Check(XboxGameFeedback.Mix(audioFrame, game, includeGameTriggers: false) == new BridgeMotorFrame(.8, .6, 0, 0),
+        "Game body rumble can be enabled without game triggers");
+    Check(XboxGameFeedback.Mix(audioFrame, game, includeGameRumble: false, includeGameTriggers: false) ==
+        new BridgeMotorFrame(.8, .2, 0, 0),
+        "Disabling both game sources leaves only audio body feedback");
+    Check(XboxGameFeedback.TryDecode(0x0F, [0, 0, 0, 0, 255, 0, 235], out var stop) &&
+        XboxGameFeedback.Mix(audioFrame, stop) == new BridgeMotorFrame(.8, .2, 0, 0),
+        "A game stop releases both trigger motors without silencing active audio body");
+}
+
 // Native legacy fallback: real report parsing to the production body/trigger router, no PCM.
 {
+    var legacyScene = GameSignalSimulator.Outputs("legacy-trigger");
+    Check(!GameSignalSimulator.UsesPcm("legacy-trigger") &&
+        DualSenseOutputReport.TryParse(legacyScene[0].Data, out var left) &&
+        left.RumbleValid && left.RumbleLeft == 100 && left.LeftTriggerValid && !left.LeftTrigger.IsOff && left.RightTrigger.IsOff &&
+        DualSenseOutputReport.TryParse(legacyScene[1].Data, out var right) &&
+        right.RumbleValid && right.RumbleRight == 100 && right.RightTriggerValid && !right.RightTrigger.IsOff && right.LeftTrigger.IsOff &&
+        DualSenseOutputReport.TryParse(legacyScene[^1].Data, out var off) &&
+        off.RumbleValid && off.RumbleLeft == 0 && off.RumbleRight == 0 && off.LeftTrigger.IsOff && off.RightTrigger.IsOff,
+        "HID-only Native scene carries compatible rumble v1/v2 plus separate adaptive effects and an explicit stop");
     byte[] wire=new byte[48];wire[0]=1;wire[2]=51;wire[3]=204;
     Check(DualSenseOutputReport.TryParse(wire,out var report) && report.RumbleValid,
         "Legacy-only game report is accepted without any haptic PCM");

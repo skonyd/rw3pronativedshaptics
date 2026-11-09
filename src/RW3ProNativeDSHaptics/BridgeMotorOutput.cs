@@ -4,6 +4,32 @@ namespace RW3ProNativeDSHaptics;
 
 public enum XboxBodyPriority { Strongest, GameRumble, HapticPcm }
 
+public static class XboxGameFeedback
+{
+    // Xbox Series all-motors short HID rumble. The unnumbered Windows descriptor
+    // can surface the enable byte as the SDK's ID, or retain it after a leading ID.
+    public static bool TryDecode(byte id, ReadOnlySpan<byte> data, out BridgeMotorFrame frame)
+    {
+        frame = default;
+        if ((id == 0 || id == 3) && data.Length == 8 && data[0] == 0x0F)
+        {
+            id = 0x0F;
+            data = data[1..];
+        }
+        if (id != 0x0F || data.Length != 7 || data[0] > 100 || data[1] > 100 ||
+            data[2] > 100 || data[3] > 100) return false;
+        frame = new(data[2] / 100.0, data[3] / 100.0, data[0] / 100.0, data[1] / 100.0);
+        return true;
+    }
+
+    public static BridgeMotorFrame Mix(BridgeMotorFrame audio, BridgeMotorFrame game,
+        bool includeGameRumble = true, bool includeGameTriggers = true) =>
+        new(includeGameRumble ? Math.Max(audio.BodyLeft, game.BodyLeft) : audio.BodyLeft,
+            includeGameRumble ? Math.Max(audio.BodyRight, game.BodyRight) : audio.BodyRight,
+            includeGameTriggers ? game.TriggerLeft : 0,
+            includeGameTriggers ? game.TriggerRight : 0);
+}
+
 public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100, int TriggerPercent = 100,
     XboxBodyPriority Priority = XboxBodyPriority.Strongest,
     bool PcmEnabled = true, bool RumbleEnabled = true, bool TriggersEnabled = true)

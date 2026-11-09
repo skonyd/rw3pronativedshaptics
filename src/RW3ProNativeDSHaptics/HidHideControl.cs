@@ -63,9 +63,10 @@ public static class HidHideControl
     /// <summary>Modern dc1-controller exposes Microsoft-ID XInput children below the Razer Xbox
     /// node. Include only game-facing descendants with BOTH verified ancestry and the same nonempty
     /// container; VID alone must never hide an unrelated Microsoft pad or Razer Sensa collection.</summary>
-    public static List<string> SelectPadGameNodes(IReadOnlyList<PadNode> nodes)
+    public static List<string> SelectPadGameNodes(IReadOnlyList<PadNode> nodes, bool xboxOnly = false)
     {
-        var selected = new HashSet<string>(nodes.Where(n => IsPadGameNode(n.Id, n.ClassGuid))
+        string deviceId = xboxOnly ? "VID_1532&PID_0A3F" : "VID_1532&";
+        var selected = new HashSet<string>(nodes.Where(n => IsPadGameNode(n.Id, n.ClassGuid, deviceId))
             .Select(n => n.Id), StringComparer.OrdinalIgnoreCase);
         foreach (var root in nodes.Where(n => n.Id.StartsWith(@"USB\VID_1532&PID_0A3F\", StringComparison.OrdinalIgnoreCase)
             && n.ClassGuid.Equals(XboxCompositeGuid, StringComparison.OrdinalIgnoreCase)
@@ -168,15 +169,20 @@ public static class HidHideControl
     // ── apply / restore (administrator) ──
 
     /// <summary>Hides the pad's game nodes and turns cloaking on. Returns a short result text.</summary>
-    public static string HidePad(string? virtualHidPath)
+    public static string HidePad(string? virtualHidPath, bool xboxOnly = false)
     {
         var cli = FindCli() ?? throw new InvalidOperationException("HidHide kurulu değil");
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("exe yolu bilinmiyor");
+        if (!Run(cli, "--inv-state").Contains("--inv-off", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("HidHide ters liste modu kapalı olmalı.");
         if (File.Exists(RestoreFile)) Restore();   // never stack two runs on top of each other
 
         bool cloakWasOn = Run(cli, "--cloak-state").Contains("--cloak-on");
         var hidden = ParseQuoted(Run(cli, "--dev-list"), "--dev-hide");
-        var pads = PadGameNodes();
+        var pads = PadGameNodes(xboxOnly);
+        if (xboxOnly && (!ClassFiltered(XboxCompositeGuid) || pads.Count(p =>
+            p.StartsWith(@"USB\VID_1532&PID_0A3F\", StringComparison.OrdinalIgnoreCase)) != 1))
+            throw new InvalidOperationException("HidHide Xbox filtresi ve tek Wolverine Xbox aygıtı gerekli.");
         if (pads.Count == 0) return "Xbox kolu (Wolverine) bulunamadı; gizlenmedi.";
         var add = pads.Where(p => !hidden.Contains(p, StringComparer.OrdinalIgnoreCase)).ToList();
         // A hidden entry that happens to be our virtual DualSense would hide it from the game.
@@ -184,13 +190,22 @@ public static class HidHideControl
         var remove = virt != null ? hidden.Where(h => h.Equals(virt, StringComparison.OrdinalIgnoreCase)).ToList() : new List<string>();
 
         Directory.CreateDirectory(Path.GetDirectoryName(RestoreFile)!);
-        File.WriteAllText(RestoreFile, JsonSerializer.Serialize(new RestoreState(cloakWasOn, add, remove)));
+        var apps = ParseQuoted(Run(cli, "--app-list"), "--app-reg");
+        var addedApps = apps.Contains(exe, StringComparer.OrdinalIgnoreCase) ? new List<string>() : new List<string> { exe };
+        File.WriteAllText(RestoreFile, JsonSerializer.Serialize(new RestoreState(cloakWasOn, add, remove, addedApps)));
 
         var args = new List<string> { "--app-reg", Quote(exe) };
         foreach (var p in add) { args.Add("--dev-hide"); args.Add(Quote(p)); }
         foreach (var r in remove) { args.Add("--dev-unhide"); args.Add(Quote(r)); }
         args.Add("--cloak-on");
         Run(cli, string.Join(' ', args));
+        if (xboxOnly)
+        {
+            var hiddenAfter = ParseQuoted(Run(cli, "--dev-list"), "--dev-hide");
+            if (!Run(cli, "--cloak-state").Contains("--cloak-on", StringComparison.OrdinalIgnoreCase) ||
+                pads.Any(p => !hiddenAfter.Contains(p, StringComparer.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Wolverine gizleme ayarları doğrulanamadı.");
+        }
         // No device restart: pnputil /restart-device blocks while the game (and our own XInput) hold the
         // pad open (hung 2026-11-08). HidHide applies to new opens, so a game already running keeps
         // seeing the pad until it is restarted.
@@ -259,7 +274,7 @@ public static class HidHideControl
 
     // ── device enumeration (SetupAPI, present devices of all classes) ──
 
-    public static List<string> PadGameNodes()
+    public static List<string> PadGameNodes(bool xboxOnly = false)
     {
         var nodes = new List<PadNode>();
         IntPtr set = SetupDiGetClassDevs(IntPtr.Zero, null, IntPtr.Zero, 0x2 | 0x4);   // PRESENT | ALLCLASSES
@@ -289,7 +304,7 @@ public static class HidHideControl
             }
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
-        return SelectPadGameNodes(nodes);
+        return SelectPadGameNodes(nodes, xboxOnly);
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct PropertyKey { public Guid Format; public uint Id; }

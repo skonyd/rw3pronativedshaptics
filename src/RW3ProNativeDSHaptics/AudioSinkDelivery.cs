@@ -11,6 +11,7 @@ public sealed class AudioSinkDelivery : IDisposable
     public const int MaximumQueuedSamples = 48000 * 2 * 2; // At most 2s of stereo; intentional delay <=1s.
     private readonly object _gate = new();
     private readonly IAudioHapticSink _sink;
+    private readonly AudioProfileFilter? _profile;
     private readonly Queue<(long Due, float[] Data, int Length)> _queue = new();
     private int _queuedSamples;
     private bool _stopped, _silent = true;
@@ -18,7 +19,11 @@ public sealed class AudioSinkDelivery : IDisposable
     public long DroppedSamples { get; private set; }
     public int QueuedSamples { get { lock (_gate) return _queuedSamples; } }
 
-    public AudioSinkDelivery(IAudioHapticSink sink) => _sink = sink;
+    public AudioSinkDelivery(IAudioHapticSink sink, AudioHapticProfile profile = AudioHapticProfile.Existing)
+    {
+        _sink = sink;
+        _profile = AudioProfileFilter.Create(profile);
+    }
 
     public void Configure(Action<IAudioHapticSink> update)
     {
@@ -28,6 +33,7 @@ public sealed class AudioSinkDelivery : IDisposable
             update(_sink);
             // Serialize with Accept and zero the previous command immediately.
             _sink.Silence();
+            _profile?.Reset();
             _silent = true;
         }
     }
@@ -63,7 +69,12 @@ public sealed class AudioSinkDelivery : IDisposable
                 {
                     var item = _queue.Dequeue();
                     _queuedSamples -= item.Length;
-                    try { _sink.Accept(item.Data.AsSpan(0, item.Length)); }
+                    try
+                    {
+                        var samples = item.Data.AsSpan(0, item.Length);
+                        _profile?.Process(samples);
+                        _sink.Accept(samples);
+                    }
                     finally { ArrayPool<float>.Shared.Return(item.Data, clearArray: true); }
                     _lastDeliveredAt = nowMs;
                     _silent = false;
@@ -72,6 +83,7 @@ public sealed class AudioSinkDelivery : IDisposable
                 if (_queue.Count == 0 && !_silent && nowMs - _lastDeliveredAt >= SilenceTimeoutMs)
                 {
                     _sink.Silence();
+                    _profile?.Reset();
                     _silent = true;
                 }
             }

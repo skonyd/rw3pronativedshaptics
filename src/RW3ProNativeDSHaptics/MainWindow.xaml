@@ -225,7 +225,7 @@
               <RadioButton x:Name="ModeNormal" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
                 <StackPanel>
                   <TextBlock Text="Normal" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Oyunun kendi titreşimi. Ek işlem yok." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+                  <TextBlock Text="Orijinal Xbox kolu gibi. Oyun titreşimi doğrudan gider." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
                 </StackPanel>
               </RadioButton>
               <RadioButton x:Name="ModeAudio" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
@@ -246,14 +246,36 @@
             </UniformGrid>
             <TextBlock Text="Titreşim kaynakları" Style="{StaticResource CardTitle}" Margin="0,14,0,4"/>
             <StackPanel x:Name="NormalSourceRows" Visibility="Collapsed">
-              <TextBlock Text="Normal rumble ve desteklenen tetik titreşimini oyun yönetir." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <TextBlock Text="Xbox kolu destekleyen oyunlarda seç. Wolverine Xbox modundayken standart gövde titreşimi ve oyun gönderiyorsa tetik içi titreşim doğrudan kola gider." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
             </StackPanel>
             <StackPanel x:Name="AudioSourceRows" Visibility="Collapsed">
               <CheckBox x:Name="RouteAudio" Content="Sesten gövde titreşimi" Foreground="#EEF3FF"
                         Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
-              <TextBlock Text="Oyun rumble ve tetikleri için ortak çıkış henüz kullanılamıyor." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <CheckBox x:Name="IncludeXboxGameRumble" Content="Oyunun Xbox gövde titreşimini ekle"
+                        IsEnabled="{Binding IsChecked, ElementName=RouteAudio}" Foreground="#EEF3FF"
+                        Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
+              <CheckBox x:Name="IncludeXboxGameTriggers" Content="Oyunun Xbox LT/RT tetik titreşimini ekle"
+                        IsEnabled="{Binding IsChecked, ElementName=RouteAudio}" Foreground="#EEF3FF"
+                        Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
+              <TextBlock Text="Gövde ve tetik seçenekleri bağımsızdır. Tetikler, oyun LT/RT titreşimi gönderdiğinde çalışır." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <TextBlock Text="Sanal Xbox köprüsü HIDMaestro ve HidHide kullanır. Windows izin isterse onayla. Köprü fiziksel kolu geçici olarak gizler. Oyunu köprüden sonra aç." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <TextBlock Text="Ses profili · giriş frekansları" Style="{StaticResource CardTitle}" Margin="0,10,0,4"/>
+              <RadioButton x:Name="AudioProfileExisting" GroupName="AudioProfile" Tag="Existing" Content="Mevcut ayar" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
+              <RadioButton x:Name="AudioProfileControlled" GroupName="AudioProfile" Tag="Controlled" Content="Controlled" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
+              <RadioButton x:Name="AudioProfileBalanced" GroupName="AudioProfile" Tag="Balanced" Content="Balanced" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
+              <RadioButton x:Name="AudioProfileDynamic" GroupName="AudioProfile" Tag="Dynamic" Content="Dynamic" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
+              <TextBlock x:Name="AudioProfileHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,5,0,0"/>
             </StackPanel>
             <StackPanel x:Name="NativeSourceRows" Visibility="Collapsed">
+              <TextBlock Text="Oyunun DualSense desteği" FontWeight="SemiBold" Margin="0,0,0,4"/>
+              <ComboBox x:Name="GameFeedbackPreset" MinHeight="30" SelectionChanged="GameFeedbackPreset_Changed"
+                        AutomationProperties.Name="Oyunun DualSense desteği">
+                <ComboBoxItem Content="Normal rumble + adaptif tetik · HD haptik yok" Tag="Triggers"/>
+                <ComboBoxItem Content="HD haptik + normal rumble + adaptif tetik" Tag="Full"/>
+                <ComboBoxItem Content="Yalnız normal rumble" Tag="Rumble"/>
+                <ComboBoxItem Content="Özel kaynak seçimi" Tag="Custom" IsEnabled="False"/>
+              </ComboBox>
+              <TextBlock x:Name="GameFeedbackPresetHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,8"/>
               <UniformGrid Columns="3">
                 <CheckBox x:Name="RoutePcm" Content="Haptik PCM" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
                 <CheckBox x:Name="RouteRumble" Content="Normal rumble" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
@@ -334,6 +356,11 @@
                     ToolTip="Ön, ön-sağ, sağ, arka-sağ, arka, arka-sol, sol, ön-sol." Click="AudioPan_Click"/>
             <Button x:Name="AudioFrontBackBtn" Content="🔊  Ön ↔ arka" Tag="FrontBack" Style="{StaticResource Btn}" Background="#1D3A4D"
                     ToolTip="Ön (keskin tıkırtı) ve arka (derin uğultu) sırayla, iki elde." Click="AudioPan_Click"/>
+            <Button x:Name="XboxCombinedTestBtn" Content="Ses + Xbox tetikleri" Style="{StaticResource Btn}"
+                    ToolTip="Xbox modu. Gerçek Windows sesi ve sentetik tetik raporlarıyla dört motor çıkışını dener." Click="XboxCombinedTest_Click"/>
+            <Button x:Name="XboxTriggerBackendBtn" Content="Xbox tetik çıkış testi" Style="{StaticResource Btn}"
+                    ToolTip="Yalnız LT/RT. GameInput ve Windows.Gaming.Input ayrı denenir." Click="XboxCombinedTest_Click"/>
+            <Button Content="Durdur" Style="{StaticResource SmallBtn}" Click="ChannelStop_Click"/>
           </WrapPanel>
           <StackPanel x:Name="SensaAskPanel" DockPanel.Dock="Top" Visibility="Collapsed" Margin="0,0,0,8">
             <TextBlock x:Name="SensaAskText" Margin="0,0,0,6" FontWeight="SemiBold"/>
@@ -490,7 +517,7 @@
 
           <!-- Gelişmiş -->
           <StackPanel x:Name="SettingsAdvancedPanel" Visibility="Collapsed">
-            <TextBlock Text="Wolverine çıkış yöntemi" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="Sensa çıkış yöntemi" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="Standart: hızlı, keskin vuruşlar. Hibrit (deneysel): karışık sürekli seslerde doğru frekanslar. Çok bantlı (deneysel): kısa vuruşlar zayıflar."
                        Style="{StaticResource Hint}" Margin="0,0,0,10"/>
             <WrapPanel Margin="0,0,0,8">

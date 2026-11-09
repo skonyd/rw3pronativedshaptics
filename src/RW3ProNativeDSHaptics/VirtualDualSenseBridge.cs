@@ -496,7 +496,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         }
     }
 
-    private static HMButton MapButtons(ushort b)
+    internal static HMButton MapButtons(ushort b)
     {
         HMButton r = HMButton.None;
         if ((b & 0x1000) != 0) r |= HMButton.A;
@@ -513,7 +513,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         return r;
     }
 
-    private static HMHat HatOf(byte hat) => hat switch
+    internal static HMHat HatOf(byte hat) => hat switch
     {
         0 => HMHat.North, 1 => HMHat.NorthEast, 2 => HMHat.East, 3 => HMHat.SouthEast,
         4 => HMHat.South, 5 => HMHat.SouthWest, 6 => HMHat.West, 7 => HMHat.NorthWest, _ => HMHat.None

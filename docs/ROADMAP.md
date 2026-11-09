@@ -1,5 +1,15 @@
 # Roadmap — 2026-11-08
 
+The opt-in Xbox audio/game bridge is implemented as a prototype. Verify live
+HID callbacks, real-game input ownership, physical LT/RT plus audio, and HidHide
+rollback before marking it ready. [Routing evidence](HAPTIC_ROUTER_AUDIT_20261109.md).
+Audio mode lets users enable Xbox game body rumble and LT/RT independently.
+Either game source activates the same opt-in virtual bridge.
+
+Audio mode now offers local Controlled, Balanced and Dynamic profiles based on measured
+Synapse cue ranges and gains. Custom editing and same-source physical comparison remain
+open. [Capture results and preset implementation](SYNAPSE_USB_PROFILE_STUDY_20261108.md).
+
 The General screen now has per-source Native checkboxes and an Xbox trigger
 destination switch. Remaining work includes capturing real Xbox game feedback
 for simultaneous Audio mode output and physical/real-game acceptance.

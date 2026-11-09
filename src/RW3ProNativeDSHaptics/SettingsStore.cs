@@ -32,6 +32,7 @@ public sealed class UserSettings
     public int TriggerFeel { get; set; } = 1;
     public XboxNativeMix XboxNativeMix { get; set; } = new();
     public bool AudioOutputEnabled { get; set; } = true;
+    public AudioHapticProfile AudioProfile { get; set; }
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
 }

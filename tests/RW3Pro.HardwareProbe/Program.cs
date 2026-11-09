@@ -6,6 +6,24 @@ using NAudio.CoreAudioApi;
 using RW3ProNativeDSHaptics;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+if (args.FirstOrDefault() == "inspect-xbox-motors")
+{
+    using var input = new GameInputRumble(allowOutput: false);
+    bool acquired = input.TryAcquire();
+    Console.WriteLine(JsonSerializer.Serialize(new { acquired, input.SupportedMotorMask, input.LastEnumeration, input.LastError }));
+    return;
+}
+if (args.FirstOrDefault() == "test-xbox-audio-combination")
+{
+    if (System.Diagnostics.Process.GetProcessesByName("RW3ProNativeDSHaptics").Length != 0)
+        throw new InvalidOperationException("Close RW3 from its tray before the standalone motor test.");
+    using var combinationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+    var result = await XboxAudioGameBridge.RunSyntheticTestAsync(AudioHapticProfile.Existing, 65,
+        new Progress<string>(Console.WriteLine), combinationTimeout.Token);
+    Console.WriteLine(JsonSerializer.Serialize(new { result.Reports, result.Writes, PhysicalMotionVerified = false }));
+    Environment.ExitCode = result.Reports > 0 && result.Writes > 0 ? 0 : 1;
+    return;
+}
 if(args.FirstOrDefault()=="inspect-hidhide-nodes")
 {
     Console.WriteLine(JsonSerializer.Serialize(HidHideControl.PadGameNodes(),jsonOptions));return;

@@ -8,6 +8,9 @@ namespace RW3ProNativeDSHaptics;
 
 public partial class App : System.Windows.Application
 {
+    internal const string StartVirtualDualSenseArg = "--start-virtual-dualsense";
+    internal const string StartXboxAudioBridgeArg = "--start-xbox-audio-bridge";
+
     private Mutex? _singleInstance;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -29,8 +32,9 @@ public partial class App : System.Windows.Application
         }
         const string mutexName = "Local\\RW3ProNativeDSHaptics-86c4b6ce-01e6-4f34-95aa-e9f43bd073fd";
         _singleInstance = new Mutex(true, mutexName, out bool created);
-        // Elevated restart for the virtual DualSense: the previous instance is still shutting down.
-        if (!created && e.Args.Contains("--start-virtual-dualsense", StringComparer.OrdinalIgnoreCase))
+        // The elevated instance waits while the original releases its motor outputs and mutex.
+        if (!created && (e.Args.Contains(StartVirtualDualSenseArg, StringComparer.OrdinalIgnoreCase) ||
+                         e.Args.Contains(StartXboxAudioBridgeArg, StringComparer.OrdinalIgnoreCase)))
         {
             try { created = _singleInstance.WaitOne(TimeSpan.FromSeconds(8)); }
             catch (AbandonedMutexException) { created = true; }

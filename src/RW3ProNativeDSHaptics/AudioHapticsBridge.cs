@@ -45,6 +45,7 @@ public sealed class AudioHapticsBridge : IDisposable
 
     /// <summary>Overrides the app-wide setting for this capture (the on-screen sound test uses 0).</summary>
     public int? DelayOverrideMs { get; set; }
+    public AudioHapticProfile Profile { get; init; }
     public bool OutputIsBluetooth { get; private set; }
 
     private readonly object _callbackGate = new();
@@ -158,7 +159,7 @@ public sealed class AudioHapticsBridge : IDisposable
                 _resampler.Process(_raw, ref _stereo); // Allocate/warm coefficients and history outside WASAPI callback.
                 _resampler.Reset();
             }
-            _delivery = new AudioSinkDelivery(_sink);
+            _delivery = new AudioSinkDelivery(_sink, Profile);
             Volatile.Write(ref _failure, null);
             Interlocked.Exchange(ref _lastSoundTick, 0);
             Interlocked.Exchange(ref _callbacks, 0);
