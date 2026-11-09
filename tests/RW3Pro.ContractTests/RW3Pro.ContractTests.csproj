@@ -31,6 +31,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseHidControl.cs" Link="DualSenseHidControl.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticFeatureExtractor.cs" Link="HapticFeatureExtractor.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioHapticFilters.cs" Link="AudioHapticFilters.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/XboxBodyEnvelope.cs" Link="XboxBodyEnvelope.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPanTest.cs" Link="AudioPanTest.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPathEquivalence.cs" Link="AudioPathEquivalence.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/SincResampler.cs" Link="SincResampler.cs" />

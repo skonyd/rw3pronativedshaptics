@@ -9,18 +9,16 @@ namespace RW3ProNativeDSHaptics;
 /// Does not request audio-derived trigger vibration. XInput can still generate four-channel GIP
 /// packets below this API; concurrent game impulse feedback is not guaranteed or mixed here.
 ///
-/// Mapping per 5 ms block:
-///   heavy (left) motor  ← bass  (&lt; 120 Hz) envelope, both channels
-///   light (right) motor ← low-mid (120–400 Hz) envelope
+/// Mapping per 5 ms block, by SIDE (the motors sit in the left and right grips):
+///   left (heavy) motor  ← left channel:  bass (&lt; 120 Hz) + 0.7 × low-mid (120–400 Hz) envelope
+///   right (light) motor ← right channel: the same
+/// The earlier mapping averaged both channels and split by frequency (bass → left, mids → right),
+/// which erased left/right: pans and the left↔right tests felt centred (2026-11-09).
 /// </summary>
 public sealed class XboxAudioSink : IAudioHapticSink
 {
     private const int Block = 240;                                 // 5 ms at 48 kHz
-    private static readonly float Attack = MathF.Exp(-1f / (0.002f * 48000));
-    private static readonly float Release = MathF.Exp(-1f / (0.060f * 48000));
-
-    private readonly BiquadLowPass _bassL = new(120), _bassR = new(120), _midL = new(400), _midR = new(400);
-    private float _envBassL, _envBassR, _envMid;
+    private readonly XboxBodyEnvelope _env = new();
     private int _inBlock;
     private int _outputSlot = -1;
     public int PreferredIndex { get; set; } = -1;
@@ -60,16 +58,10 @@ public sealed class XboxAudioSink : IAudioHapticSink
             float l = stereo48k[i], r = stereo48k[i + 1];
             if (!float.IsFinite(l)) { l = 0; NonFiniteSamples++; }
             if (!float.IsFinite(r)) { r = 0; NonFiniteSamples++; }
-            float bl = _bassL.Process(l), br = _bassR.Process(r);
-            float ml = _midL.Process(l) - bl, mr = _midR.Process(r) - br;
-            _envBassL = Follow(_envBassL, MathF.Abs(bl));
-            _envBassR = Follow(_envBassR, MathF.Abs(br));
-            _envMid = Follow(_envMid, 0.5f * (MathF.Abs(ml) + MathF.Abs(mr)));
+            _env.Process(l, r);
             if (++_inBlock == Block) EmitBlock();
         }
     }
-
-    private static float Follow(float env, float x) => x > env ? x + (env - x) * Attack : x + (env - x) * Release;
 
     private void EmitBlock()
     {
@@ -79,8 +71,8 @@ public sealed class XboxAudioSink : IAudioHapticSink
         double g = float.IsFinite(Gain) ? Math.Max(0, Gain) : 0;
         var v = new GamepadVibration
         {
-            LeftMotor = Clamp(0.5 * (_envBassL + _envBassR) * g) * level,
-            RightMotor = Clamp(_envMid * g * 0.8) * level,
+            LeftMotor = Clamp(_env.Left * g) * level,
+            RightMotor = Clamp(_env.Right * g) * level,
             LeftTrigger = 0,
             RightTrigger = 0
         };
@@ -113,8 +105,7 @@ public sealed class XboxAudioSink : IAudioHapticSink
 
     public void Silence()
     {
-        _envBassL = _envBassR = _envMid = 0;
-        _bassL.Reset(); _bassR.Reset(); _midL.Reset(); _midR.Reset();
+        _env.Reset();
         _inBlock = 0;
         if (_last.LeftMotor >= 1.0 / 65535 || _last.RightMotor >= 1.0 / 65535)
         {

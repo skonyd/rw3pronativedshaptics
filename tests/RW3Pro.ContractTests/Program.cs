@@ -1555,3 +1555,24 @@ SpectralContracts.Run(Check);
             "Legacy fallback preserves heavy/light body strengths without synthesizing trigger feedback");
     }
 }
+
+// Xbox audio → body motors keeps left/right: a left-only sound drives the left motor, right-only the right.
+{
+    (double L, double R) Drive(bool left, bool right)
+    {
+        double maxL = 0, maxR = 0;
+        var env = new XboxBodyEnvelope();
+        for (int i = 0; i < 4800; i++)
+        {
+            float v = 0.4f * MathF.Sin(2 * MathF.PI * 80 * i / 48000f);
+            env.Process(left ? v : 0, right ? v : 0);
+            maxL = Math.Max(maxL, env.Left); maxR = Math.Max(maxR, env.Right);
+        }
+        return (maxL, maxR);
+    }
+    var (ll, lr) = Drive(true, false);
+    var (rl, rr) = Drive(false, true);
+    var (bl, br) = Drive(true, true);
+    Check(ll > 0.2 && lr < 0.01 && rr > 0.2 && rl < 0.01 && Math.Abs(bl - br) < 0.05,
+        $"Xbox audio body motors are stereo: left-only {ll:F2}/{lr:F2}, right-only {rl:F2}/{rr:F2}, centre {bl:F2}/{br:F2}");
+}
