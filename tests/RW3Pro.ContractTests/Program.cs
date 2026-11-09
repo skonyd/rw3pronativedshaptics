@@ -1667,3 +1667,18 @@ SpectralContracts.Run(Check);
           && part.L - part.R > 2 * (0.6f - 0.4f) - 1e-6 && Math.Abs(part.L + part.R - 1.0f) < 1e-6,
         $"Xbox stereo widening: centre 0.50/0.50, hard {hard.L:F2}/{hard.R:F2}, partial 0.60/0.40 → {part.L:F2}/{part.R:F2}");
 }
+
+// Wolverine demos: routed by bridge/controller mode (they failed in Xbox mode and stopped a running bridge).
+{
+    bool route = DemoRoutePolicy.Choose(true, WolverineControllerMode.Xbox) == DemoRoute.VirtualBridge
+        && DemoRoutePolicy.Choose(true, WolverineControllerMode.Pc) == DemoRoute.VirtualBridge
+        && DemoRoutePolicy.Choose(false, WolverineControllerMode.Pc) == DemoRoute.Sensa
+        && DemoRoutePolicy.Choose(false, WolverineControllerMode.Xbox) == DemoRoute.XboxBody
+        && DemoRoutePolicy.Choose(false, WolverineControllerMode.NotFound) == DemoRoute.NoController;
+    var pcm = new byte[3 * 8];                                   // 3 frames, 4 ch PCM16: ch3 = left haptic, ch4 = right
+    BitConverter.TryWriteBytes(pcm.AsSpan(0 * 8 + 4), (short)16384); BitConverter.TryWriteBytes(pcm.AsSpan(1 * 8 + 6), (short)-32768);
+    BitConverter.TryWriteBytes(pcm.AsSpan(2 * 8 + 0), (short)32767);   // speaker channel must be ignored
+    var (dl, dr) = DemoRoutePolicy.HapticChannels(pcm);
+    bool channels = dl.Length == 3 && dl[0] == 0.5f && dr[0] == 0 && dl[1] == 0 && dr[1] == -1f && dl[2] == 0 && dr[2] == 0;
+    Check(route && channels, "Demo routing: bridge running → through the bridge; PC → Sensa; Xbox → body motors; haptic ch3/ch4 only");
+}

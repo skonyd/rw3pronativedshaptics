@@ -610,7 +610,7 @@
               <Button x:Name="HhRestoreBtn" Content="Gizlemeyi geri al" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="HhRestore_Click" Visibility="Collapsed"/>
             </WrapPanel>
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-              <Button x:Name="VcBridgeBtn" Content="Köprüyü başlat" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" Margin="0,0,10,0" Click="VcBridge_Click"/>
+              <TextBlock Text="Köprü, Genel → 'Oyunun DualSense titreşimi' seçilince kendiliğinden açılır." Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,10,0" TextWrapping="Wrap" MaxWidth="220"/>
               <TextBlock x:Name="VcBridgeText" Style="{StaticResource Hint}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
             </StackPanel>
           </StackPanel>

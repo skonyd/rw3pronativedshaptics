@@ -30,6 +30,12 @@ public sealed class HapticOrchestrator
     public Func<Task> StartVirtualBridge { get; init; } = () => Task.CompletedTask;
     /// <summary>State changed: redraw.</summary>
     public Action Changed { get; init; } = () => { };
+    /// <summary>Asked once when the user picks the native mode and nothing can start the bridge without a
+    /// prompt: explain, set up the UAC-free task (one UAC) and start through it. True = this process exits.</summary>
+    public Func<Task<bool>> OfferBridgeSetup { get; init; } = () => Task.FromResult(false);
+
+    /// <summary>The user just picked the native mode (not an app start): a one-time setup prompt is allowed.</summary>
+    public bool UserPickedNative { get; set; }
 
     // ── state ──
     public RunState Run { get; set; } = RunState.Off;
@@ -162,6 +168,11 @@ public sealed class HapticOrchestrator
         {
             if (RestartElevated(App.StartVirtualDualSenseArg)) return;
             note = "UAC'siz başlatma görevi çalıştırılamadı; köprüyü elle başlat.";
+        }
+        if (plan == NativeSourcePlan.WaitForClick && UserPickedNative)
+        {
+            UserPickedNative = false;   // ask at most once per selection; never on an app start
+            if (await OfferBridgeSetup()) return;
         }
         NextAutoStartTick = HapticModePolicy.Never;   // wait for the user; re-selecting the mode tries again
         if (note != NativeWaitNote) { NativeWaitNote = note; DiagnosticsService.Info("Native mode waiting: " + note); }

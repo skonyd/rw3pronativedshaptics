@@ -82,6 +82,7 @@ public partial class MainWindow : Window
             SetAudioPriority = SetAudioPriority,
             RestartElevated = RestartElevated,
             StartVirtualBridge = StartVirtualBridgeAsync,
+            OfferBridgeSetup = OfferBridgeSetupAsync,
             Changed = RefreshStatus
         };
         _settings.OutputLevelPercent = HapticOutputLevel.Limit(_settings.OutputLevelPercent);
@@ -284,6 +285,21 @@ public partial class MainWindow : Window
 
     private bool _vcBusy;
 
+    /// <summary>First pick of the native mode without the UAC-free task: one explanation, one UAC prompt,
+    /// then the bridge starts through the task (and does so without prompts from then on).</summary>
+    private async Task<bool> OfferBridgeSetupAsync()
+    {
+        var answer = System.Windows.MessageBox.Show(
+            "Oyunun DualSense titreşimi için sanal DualSense köprüsü yönetici izniyle çalışır." + Environment.NewLine + Environment.NewLine +
+            "Şimdi bir kez izin verirsen köprü bundan sonra bu modu seçtiğinde ve uygulama açıldığında sormadan başlar " +
+            "(Windows zamanlanmış görevi; Ayarlar → Sanal DualSense'ten kapatabilirsin).",
+            "Oyunun DualSense titreşimi", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (answer != MessageBoxResult.OK) return false;
+        var (_, msg) = await VirtualControllerSetup.RunElevatedAsync(ElevatedLaunchTask.InstallArg);
+        DiagnosticsService.Info("Bridge task setup from mode pick: " + msg);
+        return RestartElevated(App.StartVirtualDualSenseArg);
+    }
+
     private async Task RefreshBridgeTaskAsync()
     {
         if (VcTaskText == null) return;
@@ -334,7 +350,6 @@ public partial class MainWindow : Window
         VcInstallBtn.IsEnabled = st.SdkPresent && !_vcBusy;
         VcTestBtn.IsEnabled = st.Ready && !_vcBusy;
         VcUninstallBtn.IsEnabled = st.SdkPresent && (st.DriverInstalled || st.UsbipAvailable) && !_vcBusy;
-        VcBridgeBtn.IsEnabled = st.Ready && !_vcBusy;
         await RefreshHidHideAsync();
         await RefreshPadModeAsync();
         UpdateBridgeStatus();
@@ -619,9 +634,8 @@ public partial class MainWindow : Window
 
     private void UpdateBridgeStatus()
     {
-        if (VcBridgeBtn == null) return;
+        if (VcBridgeText == null) return;
         bool running = _bridge.IsVirtualDualSenseRunning;
-        VcBridgeBtn.Content = running ? "Köprüyü durdur" : VirtualDualSenseBridge.IsElevated ? "Köprüyü başlat" : "Yönetici olarak başlat";
         var (h, o, t) = _bridge.VirtualDualSenseCounters;
         VcBridgeText.Text = _bridge.VirtualDualSenseStatus + (running ? $" • titreşim blokları {h}, rapor {o}, tetik {t}\n" + _bridge.VirtualDualSenseInputCheck +
             (_bridge.VirtualDualSenseHidHideNote.Length > 0 ? "\n" + _bridge.VirtualDualSenseHidHideNote : "") : "");
@@ -743,6 +757,7 @@ public partial class MainWindow : Window
         _settings.Mode = mode;
         _settings.Route = HapticRouteCatalog.DefaultForMode(mode);
         _orch.ResetRetry();
+        _orch.UserPickedNative = _initialized && mode == HapticMode.Native;
         if (_initialized)
         {
             try { _store.Save(_settings); } catch (Exception ex) { NoteError("Settings save", ex); }
@@ -900,6 +915,15 @@ public partial class MainWindow : Window
     private void SensaLeft_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(HapticTestChannel.Left);
     private void SensaRight_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(HapticTestChannel.Right);
     private void SensaBoth_Click(object sender, RoutedEventArgs e) => _ = RunSensaTestAsync(null);
+
+    /// <summary>Like <see cref="BeginTest"/> but leaves the running mode alone (demo through the virtual bridge).</summary>
+    private CancellationToken BeginTestKeepingOutputs()
+    {
+        _testCancel?.Cancel();
+        _testCancel = new CancellationTokenSource();
+        SetTestButtons(false);
+        return _testCancel.Token;
+    }
 
     private CancellationToken BeginTest()
     {
@@ -1101,7 +1125,9 @@ public partial class MainWindow : Window
     {
         if (_busy || _starting || DemoSceneCombo.SelectedItem is not ChannelLabScene { Demo: { } demo }) return;
         _busy = true;
-        var token = BeginTest();
+        // A running virtual bridge stays up: the demo is played into it like a game.
+        bool throughBridge = DemoDevDualSense.IsChecked != true && _bridge.IsVirtualDualSenseRunning;
+        var token = throughBridge ? BeginTestKeepingOutputs() : BeginTest();
         DemoStatus.Text = NativeDemoSignals.Caption(demo, 0);
         try
         {
@@ -1113,12 +1139,29 @@ public partial class MainWindow : Window
             }
             else
             {
-                bool ok = await _bridge.PlayDemoAsync(demo, token, progress);
-                if (!ok) throw new InvalidOperationException(_bridge.SensaStatus);
-                DemoStatus.Text = NativeDemoSignals.Title(demo) + " bitti • Wolverine v2 " +
-                                  _bridge.EngineTickHz.ToString("F0") + " kare/sn";
+                var route = DemoRoutePolicy.Choose(throughBridge, throughBridge ? WolverineControllerMode.NotFound : await Task.Run(WolverineModeControl.Detect));
+                var pcm = DualSenseChannelFixtures.Build(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
+                var (l, r) = DemoRoutePolicy.HapticChannels(pcm);
+                switch (route)
+                {
+                    case DemoRoute.VirtualBridge:
+                        string endpoint = await Task.Run(GameSignalSimulator.FindEndpoint)
+                            ?? throw new InvalidOperationException("Sanal DualSense ses uç noktası bulunamadı.");
+                        await DemoRouting.PlayToEndpointAsync(endpoint, l, r, progress, token);
+                        break;
+                    case DemoRoute.XboxBody:
+                        await DemoRouting.PlayToXboxBodyAsync(l, r, _settings.PreferredXInputSlot, _settings.OutputLevelPercent, progress, token);
+                        break;
+                    case DemoRoute.Sensa:
+                        if (!await _bridge.PlayDemoAsync(demo, token, progress)) throw new InvalidOperationException(_bridge.SensaStatus);
+                        break;
+                    default:
+                        throw new InvalidOperationException("Wolverine bulunamadı (kablo ya da alıcıyla bağlı ve açık olmalı).");
+                }
+                DemoStatus.Text = NativeDemoSignals.Title(demo) + " bitti • " + DemoRoutePolicy.Describe(route);
+                DiagnosticsService.Info("Demo " + demo + " played via " + route + ".");
             }
-            DiagnosticsService.Info("Demo " + demo + " played on " + (DemoDevDualSense.IsChecked == true ? "DualSense" : "Wolverine v2") + ".");
+            if (DemoDevDualSense.IsChecked == true) DiagnosticsService.Info("Demo " + demo + " played on DualSense.");
         }
         catch (OperationCanceledException) { DemoStatus.Text = "Durduruldu."; }
         catch (Exception ex)
