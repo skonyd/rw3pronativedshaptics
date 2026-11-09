@@ -1,10 +1,8 @@
 using RW3ProNativeDSHaptics;
 
-static void Check(bool condition, string name)
-{
-    if (!condition) throw new Exception("FAILED: " + name);
-    Console.WriteLine("PASS: " + name);
-}
+// Every check runs; failures are collected and listed at the end (exit code 1). An exception still stops the run.
+AppDomain.CurrentDomain.ProcessExit += (_, _) => TestRun.PrintSummary();
+static void Check(bool condition, string name) => TestRun.Record(condition, name);
 
 var normal = HapticEvidence.Evaluate(HapticMode.Normal, false, false, false, false, false);
 Check(normal.Contains("izlemiyor"), "Normal game rumble is not claimed as observed");
