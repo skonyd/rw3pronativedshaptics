@@ -1159,6 +1159,11 @@ public partial class MainWindow : Window
                         throw new InvalidOperationException("Wolverine bulunamadı (kablo ya da alıcıyla bağlı ve açık olmalı).");
                 }
                 DemoStatus.Text = NativeDemoSignals.Title(demo) + " bitti • " + DemoRoutePolicy.Describe(route);
+                bool xboxBody = route == DemoRoute.XboxBody ||
+                    route == DemoRoute.VirtualBridge && _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox;
+                if (xboxBody)   // the demos' frequencies and left/right need Sensa (PC mode); say so instead of seeming broken
+                    DemoStatus.Text += Environment.NewLine + "Xbox modunda gövde motorları yalnız şiddet verir: frekans (30–400 Hz) ve net sol/sağ yoktur. " +
+                                       "Sensa'nın frekanslı, ayrık hissi için PC moduna geç: ○ + Menü + A (2 sn).";
                 DiagnosticsService.Info("Demo " + demo + " played via " + route + ".");
             }
             if (DemoDevDualSense.IsChecked == true) DiagnosticsService.Info("Demo " + demo + " played on DualSense.");

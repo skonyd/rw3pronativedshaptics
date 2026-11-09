@@ -392,7 +392,7 @@
                      Text="Sentetik PCM demoları; özgün oyun kaydı değildir. Wolverine kayıplı v2, DualSense Exclusive referans. Ön/arka yalnız algısal kodlamadır."/>
           <ComboBox x:Name="DemoSceneCombo" DisplayMemberPath="Title" DockPanel.Dock="Top" MinHeight="32" Margin="0,0,0,8"/>
           <Button x:Name="DemoPlayBtn" Content="Seçili demoyu çal" DockPanel.Dock="Top" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="DemoSelected_Click"/>
-          <TextBlock x:Name="DemoStatus" DockPanel.Dock="Top" FontWeight="SemiBold" FontSize="14" Margin="0,4,0,0"/>
+          <TextBlock x:Name="DemoStatus" DockPanel.Dock="Top" FontWeight="SemiBold" FontSize="14" Margin="0,4,0,0" TextWrapping="Wrap"/>
           <TextBlock DockPanel.Dock="Top" Text="Oyun simülasyonu (sanal DualSense)" FontWeight="SemiBold" Foreground="#EEF3FF" Margin="0,12,0,2"/>
           <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,6"
                      Text="Sentetik oyun sinyalleri: 4 kanallı haptik PCM + DualSense tetik raporları birlikte gönderilir. İlk demo sol/sağ/çapraz testidir; aşamaya göre tetikleri sen çekersin. Xbox modu ve tetik motorları açık olmalı."/>
