@@ -310,6 +310,11 @@ public sealed class SensaStereoPrototype : IDisposable
             double reopenAt = 0;
             var frame = new byte[SensaFrameEncoder.MaxFrameLength];
             byte[] silence = SensaFrameEncoder.Silence();
+            // Xbox mode: no Razer HID, but the same frames reach palms and trigger motors over GIP (XboxSensa).
+            var gip = GipSensaTransport.Shared;
+            bool gipMode = false;
+            var xframe = new byte[SensaXboxFrameEncoder.MaxFrameLength];
+            byte[] xsilence = SensaXboxFrameEncoder.Silence();
             var la = new double[4]; var ra = new double[4];
             var lHold = new PitchHold(); var rHold = new PitchHold();
             var method = OutputMethod;
@@ -325,7 +330,12 @@ public sealed class SensaStereoPrototype : IDisposable
             while (Volatile.Read(ref _stop) == 0)
             {
                 double now = clock.Elapsed.TotalSeconds;
-                if (!tx.IsOpen && now >= reopenAt)
+                if (gipMode && (!gip.IsOpen || !XboxSensa.Enabled))
+                {
+                    if (gip.IsOpen) { gip.Send(xsilence); gip.Send(xsilence); }
+                    gipMode = false; XboxSensa.Active = false; Volatile.Write(ref _providerActive, 0); reopenAt = now;
+                }
+                if (!tx.IsOpen && !gipMode && now >= reopenAt)
                 {
                     if (tx.Open())
                     {
@@ -334,7 +344,21 @@ public sealed class SensaStereoPrototype : IDisposable
                         Report("Doğrudan USB çalışıyor • kendi kodlayıcı, Synapse gerekmez • " + TickMs + " ms");
                         silenceToSend = 2;
                     }
-                    else { Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0; Report("Wolverine PC modunda bulunamadı (Xbox modunda Sensa yoktur); tekrar deneniyor"); }
+                    else if (XboxSensa.Enabled && gip.TryOpen())
+                    {
+                        gipMode = true; XboxSensa.Active = true;
+                        DirectDevicePath = "GIP (Xbox modu)";
+                        Volatile.Write(ref _providerActive, 1);
+                        Report("Xbox modu: Sensa avuçlar + tetik motorları (GIP) • " + TickMs + " ms");
+                        DiagnosticsService.Info("Sensa engine: Xbox mode over GIP (palms 216/116, trigger motors 249/149).");
+                        silenceToSend = 2;
+                    }
+                    else
+                    {
+                        Volatile.Write(ref _providerActive, 0); reopenAt = now + 1.0;
+                        Report(XboxSensa.Enabled ? "Wolverine bulunamadı (PC modunda USB, Xbox modunda GIP aranıyor); tekrar deneniyor"
+                                                 : "Wolverine PC modunda bulunamadı (Xbox modu Sensa ayarı kapalı); tekrar deneniyor");
+                    }
                 }
                 SideFeatures fl, fr;
                 double gain = SourceGainPercent / 100.0;
@@ -356,10 +380,31 @@ public sealed class SensaStereoPrototype : IDisposable
                 double level = HapticOutputLevel.Apply(gain, OutputLevelPercent);
                 bool records = DirectTransientRecords && SendTransients && !manual;
                 bool leftOn = DirectSensaMapping.Points(fl, level, la, records), rightOn = DirectSensaMapping.Points(fr, level, ra, records);
-                bool active = leftOn || rightOn;
+                var (trigL, trigR) = gipMode ? XboxSensa.Triggers() : (0, 0);
+                bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
                 bool sendFrame = active || silenceToSend > 0;
-                if (sendFrame && tx.IsOpen)
+                if (sendFrame && gipMode)
+                {
+                    bool ok;
+                    if (active)
+                    {
+                        HapticSpectrum ls = default, rs = default;
+                        bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
+                        int ln = leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
+                        int rn = rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
+                        int length = SensaXboxFrameEncoder.Encode(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn),
+                            records && leftOn ? DirectSensaMapping.Hit(fl, level) : null, records && rightOn ? DirectSensaMapping.Hit(fr, level) : null,
+                            trigL, trigR, xframe);
+                        ok = gip.Send(xframe.AsSpan(0, length));
+                        silenceToSend = 2;
+                        LastSentHz = (lHold.Last, rHold.Last);
+                    }
+                    else { ok = gip.Send(xsilence); silenceToSend--; }
+                    if (ok) { DirectFramesSent = gip.FramesSent; Interlocked.Increment(ref _renderTicks); }
+                    else Report("Xbox modu GIP gönderimi başarısız (" + gip.LastError + "); yeniden bağlanıyor");
+                }
+                else if (sendFrame && tx.IsOpen)
                 {
                     bool ok;
                     if (active)
@@ -391,6 +436,7 @@ public sealed class SensaStereoPrototype : IDisposable
                 if (wait > 0) WaitSeconds(timer, wait);
             }
             if (tx.IsOpen) for (int i = 0; i < 2; i++) { tx.Send(silence); Thread.Sleep(TickMs); }
+            if (gipMode) for (int i = 0; i < 2; i++) { gip.Send(xsilence); Thread.Sleep(TickMs); }
         }
         catch (Exception ex)
         {
@@ -399,6 +445,7 @@ public sealed class SensaStereoPrototype : IDisposable
         }
         finally
         {
+            XboxSensa.Active = false;
             Volatile.Write(ref _providerActive, 0);
             Volatile.Write(ref _leftAmplitudeBits, 0);
             Volatile.Write(ref _rightAmplitudeBits, 0);

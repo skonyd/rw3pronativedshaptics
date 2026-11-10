@@ -112,6 +112,8 @@ public partial class MainWindow : Window
         PalmTriggerFeel.IsChecked = _settings.PalmTriggerFeel;
         BodyMotorLimit.Enabled = _settings.BigMotorCeiling;
         BigMotorCeiling.IsChecked = _settings.BigMotorCeiling;
+        XboxSensa.Enabled = _settings.XboxSensa;
+        XboxSensaOutput.IsChecked = _settings.XboxSensa;
         RouteImpulse.IsChecked = _bridge.TriggerMotors;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
@@ -434,6 +436,15 @@ public partial class MainWindow : Window
         ApplyPadModeOptions(_padMode);
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox bas/tiz", ex); }
         DiagnosticsService.Info("Xbox bass/treble split: " + _settings.XboxBassTreble + " (effective " + XboxBodyEnvelope.Preferred + ").");
+    }
+
+    private void XboxSensa_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.XboxSensa = XboxSensaOutput.IsChecked == true;
+        XboxSensa.Enabled = _settings.XboxSensa;   // the engine drops or picks up the GIP route within ~1 s
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox modu Sensa", ex); }
+        DiagnosticsService.Info("Xbox-mode Sensa (palms + trigger motors over GIP): " + _settings.XboxSensa + ".");
     }
 
     private void BigMotorCeiling_Changed(object sender, RoutedEventArgs e)

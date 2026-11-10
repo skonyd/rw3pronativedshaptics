@@ -95,7 +95,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public long XboxMotorWrites => _xbox?.Writes ?? 0;
     public string XboxStatus => _mode != WolverineControllerMode.Xbox ? "" :
         !_inputHealthy ? "Xbox modu: fiziksel giriş yok; motorlar durduruldu (" + (_xbox?.LastError ?? "aygıt aranıyor") + ")" :
-        (TriggerMotors ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu, klasik: hepsi gövde motorlarında") +
+        (XboxSensa.Active ? (TriggerMotors ? "Xbox modu: Sensa avuçlar + tetik motorları (GIP), oyun titreşimi gövdede" : "Xbox modu: Sensa avuçlar (GIP), tetik efektleri gövdede") :
+         TriggerMotors ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu, klasik: hepsi gövde motorlarında") +
         (_triggerNote.Length > 0 ? "; " + _triggerNote : "");
     private volatile WolverineControllerMode _mode = WolverineControllerMode.NotFound;
     private GameInputRumble? _xbox;
@@ -296,8 +297,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         }
         Volatile.Write(ref _framesTick, Environment.TickCount64);
         if (_mode == WolverineControllerMode.Pc && PalmTriggerFeel && _palm.Active) PushWithPalm(span, XboxMix.PcmEnabled);
-        else if (_mode == WolverineControllerMode.Pc && XboxMix.PcmEnabled)
-            _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+        else if ((_mode == WolverineControllerMode.Pc || (_mode == WolverineControllerMode.Xbox && XboxSensa.Active)) && XboxMix.PcmEnabled)
+            _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);   // Xbox mode: palms through Sensa over GIP
         Interlocked.Increment(ref _hapticBlocks);
         }
     }
@@ -458,9 +459,17 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
                     double body = XboxHapticGain;
-                    var routed = XboxMix.Route(rl / 255.0, rr / 255.0, el * body, er * body, lt, rt, motors);
-                    _motors?.Submit(routed, Environment.TickCount64);
+                    // Sensa over GIP (XboxSensa): the haptic PCM goes to the palms through the engine, and trigger effects
+                    // ride in the same Sensa frame (body parts 249/149) instead of GameInput's impulse channels.
+                    bool sensa = XboxSensa.Active;
+                    var routed = XboxMix.Route(rl / 255.0, rr / 255.0, sensa ? 0 : el * body, sensa ? 0 : er * body, lt, rt, motors);
                     var (bl, br, tl, tr) = routed.Scale(OutputLevelPercent);
+                    if (sensa && motors)
+                    {
+                        XboxSensa.SetTriggers(tl, tr);
+                        routed = routed with { TriggerLeft = 0, TriggerRight = 0 };
+                    }
+                    _motors?.Submit(routed, Environment.TickCount64);
                     _wBodyL = Math.Max(_wBodyL, Math.Min(1, bl)); _wBodyR = Math.Max(_wBodyR, Math.Min(1, br));
                     _wTrigL = Math.Max(_wTrigL, tl); _wTrigR = Math.Max(_wTrigR, tr);
                 }

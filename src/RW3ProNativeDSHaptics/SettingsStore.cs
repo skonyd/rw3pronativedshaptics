@@ -42,6 +42,8 @@ public sealed class UserSettings
     public bool AudioAutoLevel { get; set; }
     /// <summary>Soft ceiling on the big body motor (rattles against a table at full power). See BodyMotorLimit.</summary>
     public bool BigMotorCeiling { get; set; }
+    /// <summary>Xbox mode: palms (Sensa) and trigger motors driven by Sensa frames over GIP (XboxSensa). Default on.</summary>
+    public bool XboxSensa { get; set; } = true;
     /// <summary>Audio mode: slowly reduce sustained drone so hits stand out (AudioLevelShaper).</summary>
     public bool AudioHumSuppression { get; set; }
     /// <summary>Direct USB: hits as real Sensa transient records (true) or folded into strength points (false).</summary>

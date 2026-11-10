@@ -1000,6 +1000,33 @@ SpectralContracts.Run(Check);
     Check(folded && silent, "Direct USB: transient folded into nearest point (pos .7 → point 2), silent features send nothing");
 }
 {
+    // Xbox-mode Sensa frame (4 body parts). Vectors are the exact frames sent in the 2026-11-11 hardware tests, which the
+    // emulated firmware decoder and the blind hand-held test confirmed (silence, left palm s32 @ P31, left trigger s32).
+    static string Hex(byte[] f, int n) => Convert.ToHexString(f, 0, n);
+    var xf = new byte[SensaXboxFrameEncoder.MaxFrameLength];
+    string silence = Convert.ToHexString(SensaXboxFrameEncoder.Silence());
+    int nPalm = SensaXboxFrameEncoder.Encode(new[] { new SensaBand(32.5 / 63, 32.5 / 63, 32.5 / 63, 32.5 / 63, 31.5 / 127) }, default, null, null, 0, 0, xf);
+    string palm = Hex(xf, nPalm);
+    int nTrig = SensaXboxFrameEncoder.Encode(default, default, null, null, 32.5 / 63, 0, xf);
+    string trig = Hex(xf, nTrig);
+    bool vectors = silence == "790030018801800C400C006200600300" && palm == "7980FC07C801800C400C006200600300"
+        && trig == "790030018801800C607903C200600300";
+    // Size limits: two bands per palm, both hits, both triggers stay within the GIP payload (47 frame bytes).
+    var band = new SensaBand(1, 1, 1, 1, 1);
+    int nMax = SensaXboxFrameEncoder.Encode(new[] { band, band, band }, new[] { band, band }, new SensaTransient(1, .5), new SensaTransient(1, 1), 1, 1, xf);
+    // Point folding keeps a short peak: [0, .9, 0, .2] -> points max(.0,.9), max(0,.2).
+    int nFold = SensaXboxFrameEncoder.Encode(new[] { new SensaBand(0, .9, 0, .2, .5) }, default, null, null, 0, 0, xf);
+    static int XBits(byte[] f, int start, int width) { int v = 0; for (int i = 0; i < width; i++) v = (v << 1) | ((f[(start + i) >> 3] >> (7 - ((start + i) & 7))) & 1); return v; }
+    bool folded = XBits(xf, 8, 6) == 56 && XBits(xf, 21, 6) == 12;
+    var pkt = new byte[SensaXboxFrameEncoder.GipPacketLength];
+    SensaXboxFrameEncoder.BuildGipPacket(Convert.FromHexString(silence), 0x20, pkt);
+    byte xor = 0; for (int i = 2; i < 58; i++) xor ^= pkt[i];
+    bool packet = pkt[1] == 0x20 && pkt[5] == 17 && pkt[6] == 0x16 && pkt[7] == 0x0E && pkt[8] == 1 && pkt[58] == xor && pkt[59] == 0;
+    // 7 + 2 palms x (2 bands x 27 + record 1+20 + end 1) + 2 triggers x (27 + 2) = 217 bits -> 28 bytes.
+    Check(vectors && nMax == 28 && folded && packet,
+        $"Xbox-mode Sensa frame: hardware-tested vectors {vectors}, fullest frame {nMax} bytes (28), fold {folded}, packet {packet}; 4 points fold to 2 by halves, GIP 0x0F packet with XOR at byte 58");
+}
+{
     // Transient record layout as the firmware 2.04.00 decoder reads it (emulated 2026-11-10): flag, s6, p7, t7 (ms), end flag.
     // The HAR-derived layout (t8 + tail 100) shifted the right hand by 3 bits when the left hand had a hit.
     static int Bits(ReadOnlySpan<byte> f, int start, int width)
