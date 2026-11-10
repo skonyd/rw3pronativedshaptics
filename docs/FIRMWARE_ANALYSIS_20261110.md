@@ -121,6 +121,27 @@ Work on copies in a scratch folder. Never run the updater or the extracted EXEs 
     [SENSA_USB_PROTOCOL.md](SENSA_USB_PROTOCOL.md).
   - A bug in RW3's PC transient record was found and fixed (docs/research/EXPERIMENTS.md, E-20261111-02).
 
+## Finding 5: are the images signed? (static, 2026-11-11)
+
+**Short answer:** most likely not. Nothing in the update package authenticates the code, only checksums.
+
+| Check | Result |
+| --- | --- |
+| `Dev1FW`, `Flash2FW` header | Not ARM: `B91m_driver_sdk` string, so a Telink B91 (RISC-V) SoC. The header is `[0x20009000, length − 0x1000, CRC, …]`. The CRC is the inverted CRC32 of bytes 0x1000..end, verified on both images: an integrity check, recomputable by anyone. |
+| `Dev2FW` header (NXP) | Ordinary Cortex-M vector table. The NXP signed-image fields at 0x20/0x24 are 0xFFFFFFFF / 0 (plain image). The image starts at 0x8000, so a vendor bootloader at 0x0000–0x7FFF is not part of the update. |
+| Crypto in the images | None of the SHA-1/SHA-256/MD5 constants, AES S-boxes, P-256/secp256k1/Ed25519 parameters, or crypto strings appear in any of the three images. Only a CRC32 table (`Dev1FW`). |
+| Signature block | No trailing high-entropy block or certificate in any image. |
+| Updater (`WolverineV3ProCFU.exe`, `FWUpdaterDLL.dll`) | Flow: `OpenBootloader` → `DFUErase` → `DFUProgram` → `DFUVerify` / `VerifyChecksum` (CRC16), with a `SkipVerification` flag. No signing or crypto strings; `isCFUInstallerCer` concerns the Windows driver certificate (`Driver\Cer\*.pfx`). Shared code with a PS4 product (`EnterPS4Bootloader`). |
+
+**Inference:**
+- The update carries raw code plus checksums, so a device-side signature check has nothing to verify.
+- Unknown, and not visible in the package:
+  - the resident bootloaders (NXP 0x0000–0x7FFF and the Telink boot area);
+  - eFuse / ROM secure-boot settings;
+  - the hardware crypto engines both chips have.
+- A modified image with corrected CRCs would therefore probably be accepted. This is not proven without the device.
+- Practical risks remain: bricking (recovery depends on the resident bootloader), two chips to change (audio on the Telink, haptics on the NXP), warranty and redistribution. Project rule: no flashing without the user's explicit consent and a rollback plan.
+
 ## Verified on hardware afterwards (2026-11-10)
 
 - The Xbox-mode controller serves the 4-body-part descriptor through Razer class 0x16, tunnelled in GIP 0x0F/0x10
