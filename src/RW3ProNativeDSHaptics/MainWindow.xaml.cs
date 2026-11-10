@@ -125,6 +125,10 @@ public partial class MainWindow : Window
             _ => AudioProfileExisting
         }).IsChecked = true;
         XboxBassTreble.IsChecked = _settings.XboxBassTreble;
+        AudioLevelShaper.AutoLevelEnabled = _settings.AudioAutoLevel;
+        AudioLevelShaper.HumSuppressionEnabled = _settings.AudioHumSuppression;
+        AudioAutoLevel.IsChecked = _settings.AudioAutoLevel;
+        AudioHumSuppression.IsChecked = _settings.AudioHumSuppression;
         SensaStereoPrototype.DirectTransientRecords = _settings.DirectTransientRecords;
         DirectTransientRecords.IsChecked = _settings.DirectTransientRecords;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
@@ -408,6 +412,17 @@ public partial class MainWindow : Window
         _settings.DirectTransientRecords = DirectTransientRecords.IsChecked == true;
         SensaStereoPrototype.DirectTransientRecords = _settings.DirectTransientRecords;   // read every frame: applies live
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Darbe kaydı", ex); }
+    }
+
+    private void AudioShaping_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.AudioAutoLevel = AudioAutoLevel.IsChecked == true;
+        _settings.AudioHumSuppression = AudioHumSuppression.IsChecked == true;
+        AudioLevelShaper.AutoLevelEnabled = _settings.AudioAutoLevel;          // read per block: applies live
+        AudioLevelShaper.HumSuppressionEnabled = _settings.AudioHumSuppression;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Ses seviyesi", ex); }
+        DiagnosticsService.Info($"Audio level shaping: auto level {_settings.AudioAutoLevel}, hum suppression {_settings.AudioHumSuppression}.");
     }
 
     private void XboxBassTreble_Changed(object sender, RoutedEventArgs e)
@@ -1408,7 +1423,7 @@ public partial class MainWindow : Window
             }
             else if (mode == WolverineMode.Xbox)
             {
-                xbox = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent, PreferredIndex = _settings.PreferredXInputSlot }) { DelayOverrideMs = 0, Profile = _settings.AudioProfile };
+                xbox = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent, PreferredIndex = _settings.PreferredXInputSlot }) { DelayOverrideMs = 0, Profile = _settings.AudioProfile, ApplyLevelShaping = false };
                 xbox.Start();
                 route = "Xbox modu → yalnız gövde motorları";
             }

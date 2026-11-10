@@ -270,6 +270,13 @@
               <RadioButton x:Name="AudioProfileBalanced" GroupName="AudioProfile" Tag="Balanced" Content="Balanced" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
               <RadioButton x:Name="AudioProfileDynamic" GroupName="AudioProfile" Tag="Dynamic" Content="Dynamic" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
               <TextBlock x:Name="AudioProfileHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+              <TextBlock Text="Seviye" Style="{StaticResource CardTitle}" Margin="0,10,0,4"/>
+              <CheckBox x:Name="AudioAutoLevel" Content="Otomatik seviye: titreşim ses düğmesine değil içeriğe bağlı" Foreground="#EEF3FF"
+                        Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
+              <TextBlock Text="Son ~3.5 saniyenin seviyesini sabit bir hedefe çeker (×0.5–×4). Kısık seste yükseltir, çok açıkta hızla düşürür; ani patlamayı şişirmez, sessizliği büyütmez." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <CheckBox x:Name="AudioHumSuppression" Content="Uğultu bastırma: sürekli titreşimi kıs, vuruşları öne çıkar" Foreground="#EEF3FF" Margin="0,6,0,0"
+                        Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
+              <TextBlock Text="Birkaç saniye süren sürekli titreşimi (müzik, motor sesi) yavaşça %40'a kadar kısar. Silah, adım gibi ani vuruşlar tam güçte geçer." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
             </StackPanel>
             <StackPanel x:Name="NativeSourceRows" Visibility="Collapsed">
               <TextBlock Text="Oyunun DualSense desteği" FontWeight="SemiBold" Margin="0,0,0,4"/>

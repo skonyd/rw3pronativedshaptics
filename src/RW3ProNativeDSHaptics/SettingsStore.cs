@@ -38,6 +38,10 @@ public sealed class UserSettings
     public bool XboxBassTreble { get; set; }
     /// <summary>PC mode, virtual DualSense: trigger effects as clicks/texture in the palms (Sensa) instead of body rumble.</summary>
     public bool PalmTriggerFeel { get; set; }
+    /// <summary>Audio mode: vibration level follows the content, not the volume knob (AudioLevelShaper).</summary>
+    public bool AudioAutoLevel { get; set; }
+    /// <summary>Audio mode: slowly reduce sustained drone so hits stand out (AudioLevelShaper).</summary>
+    public bool AudioHumSuppression { get; set; }
     /// <summary>Direct USB: hits as real Sensa transient records (true) or folded into strength points (false).</summary>
     public bool DirectTransientRecords { get; set; } = true;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>

@@ -23,6 +23,9 @@ public sealed class AudioHapticsBridge : IDisposable
     private float[] _stereo = new float[8192];
     private float[] _raw = new float[8192];
     private SincResampler? _resampler;
+    private readonly AudioLevelShaper _shaper = new();
+    /// <summary>False = this capture ignores the auto level / hum settings (on-screen sound tests).</summary>
+    public bool ApplyLevelShaping { get; init; } = true;
     private long _lastSoundTick, _callbacks;
 
     public AudioHapticsBridge(IAudioHapticSink sink) { _sink = sink; }
@@ -137,6 +140,7 @@ public sealed class AudioHapticsBridge : IDisposable
             DeviceName = device.FriendlyName;
             OutputIsBluetooth = IsBluetooth(device);
             _resampler = null;
+            _shaper.Reset();
             CompensatesVolume = !HasHardwareVolume(device);
             UpdateVolumeCompensation();
             if (CompensatesVolume) { try { device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification; } catch { } }
@@ -228,6 +232,7 @@ public sealed class AudioHapticsBridge : IDisposable
                 .Process(_raw.AsSpan(0, frames * 2), ref _stereo);
         }
         if (peak > 0.003f) System.Threading.Interlocked.Exchange(ref _lastSoundTick, Environment.TickCount64);
+        if (ApplyLevelShaping) _shaper.Process(_stereo.AsSpan(0, o));
         _delivery?.Enqueue(_stereo.AsSpan(0, o), Environment.TickCount64, EffectiveDelayMs);
         _wake.Set();
     }

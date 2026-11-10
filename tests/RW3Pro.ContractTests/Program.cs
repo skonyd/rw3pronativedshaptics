@@ -1701,6 +1701,57 @@ SpectralContracts.Run(Check);
 
 // Xbox body motors: stereo widening keeps centre, keeps hard pans one-sided, spreads partial pans.
 {
+    // Audio level shaper: auto level makes the vibration follow content, not volume; hum suppression lowers a steady
+    // drone and lets hits through; both off = bit-exact passthrough.
+    static float[] ShSine(double hz, double amp, double seconds, double phase0 = 0)
+    {
+        int n = (int)(seconds * 48000); var x = new float[2 * n];
+        for (int i = 0; i < n; i++) { float v = (float)(amp * Math.Sin(2 * Math.PI * hz * i / 48000 + phase0)); x[2 * i] = v; x[2 * i + 1] = v; }
+        return x;
+    }
+    static double ShRms(float[] x, int fromFrame, int toFrame)
+    {
+        double e = 0; for (int i = fromFrame; i < toFrame; i++) e += x[2 * i] * x[2 * i]; return Math.Sqrt(e / (toFrame - fromFrame));
+    }
+    double Settled(double amp)
+    {
+        var sh = new AudioLevelShaper(); var x = ShSine(60, amp, 10); sh.Process(x, true, false);
+        return ShRms(x, 8 * 48000, 10 * 48000);
+    }
+    double quietOut = Settled(0.08), loudOut = Settled(0.32), tinyOut = Settled(0.01);
+    double spreadDb = 20 * Math.Log10(loudOut / quietOut);          // input differs by 12 dB
+    bool follows = Math.Abs(spreadDb) < 2.0 && tinyOut <= 0.01 * 0.7072 * 4.05;   // tiny input capped at x4
+
+    // Fast down: 6 s quiet, then a 12x louder blast -> gain at least halved within 0.5 s, and never above where it was.
+    var down = new AudioLevelShaper(); var q1 = ShSine(60, 0.05, 6); down.Process(q1, true, false);
+    double gainBefore = down.LevelGain;
+    var blast = ShSine(60, 0.6, 0.5); down.Process(blast, true, false);
+    bool fastDown = down.LevelGain < gainBefore * 0.5;
+    // Slow up: from the blast back to quiet, 0.5 s later the gain has recovered less than a quarter of the way.
+    double gainLow = down.LevelGain; var q2 = ShSine(60, 0.05, 0.5); down.Process(q2, true, false);
+    bool slowUp = down.LevelGain - gainLow < (gainBefore - gainLow) * 0.25;
+    // Silence holds the gain (noise is not boosted).
+    double held = down.LevelGain; var sil = new float[2 * 48000 * 4]; down.Process(sil, true, false);
+    bool silenceHeld = Math.Abs(down.LevelGain - held) < 0.05 && sil.All(v => v == 0);
+
+    // Hum: 8 s steady 60 Hz -> hum gain near the floor; a 20 ms 120 Hz hit on top opens it again.
+    var hum = new AudioLevelShaper(); var drone = ShSine(60, 0.3, 8); hum.Process(drone, false, true);
+    double droneEarly = ShRms(drone, 0, 4800), droneLate = ShRms(drone, 7 * 48000, 8 * 48000);
+    bool humDown = hum.HumGain < AudioLevelShaper.HumFloor + 0.1 && droneLate < droneEarly * 0.6;
+    var hit = ShSine(60, 0.3, 0.06); var burst = ShSine(120, 0.6, 0.02);
+    for (int i = 0; i < burst.Length; i++) hit[i + 2 * 960] += burst[i];
+    double maxHum = 0; var probe = new float[2];
+    for (int i = 0; i < hit.Length / 2; i++) { probe[0] = hit[2 * i]; probe[1] = hit[2 * i + 1]; hum.Process(probe, false, true); hit[2 * i] = probe[0]; if (i > 960 && i < 1920) maxHum = Math.Max(maxHum, hum.HumGain); }
+    bool hitPasses = maxHum > 0.8;
+
+    var plain = ShSine(80, 0.4, 0.2); var copy = (float[])plain.Clone();
+    new AudioLevelShaper().Process(copy, false, false);
+    bool passthrough = plain.SequenceEqual(copy);
+    bool defaultsOff = !AudioLevelShaper.AutoLevelEnabled && !AudioLevelShaper.HumSuppressionEnabled;
+    Check(follows && fastDown && slowUp && silenceHeld && humDown && hitPasses && passthrough && defaultsOff,
+        $"Audio level shaper: 12 dB input spread -> {spreadDb:+0.0;-0.0} dB out, tiny input capped x4; blast gain {gainBefore:0.00}->{gainLow:0.00} fast, slow recovery, silence held; drone {20 * Math.Log10(droneLate / droneEarly):0.0} dB, hit opens hum gain to {maxHum:0.00}; off = passthrough");
+}
+{
     // PC-mode palm trigger feel: interpreter parts + synth. Weapon (zones 2..8, strength 8): tension inside,
     // click at the break; the synth puts a click as a decaying 180 Hz burst and tension as 70 Hz texture on that side only.
     var w = new TriggerEffectInterpreter();

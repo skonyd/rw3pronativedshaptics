@@ -228,7 +228,7 @@ public sealed class NativeBridgeService : IDisposable
             _audio = null;
             await EnsureSensaAsync(token);
             _sensa.Features.Reset();
-            _audio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features)) { DelayOverrideMs = syncDelayOverrideMs, Profile = profile };
+            _audio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features)) { DelayOverrideMs = syncDelayOverrideMs, Profile = profile, ApplyLevelShaping = applySensitivity };
             _audio.Start(deviceId);
         }
         catch
