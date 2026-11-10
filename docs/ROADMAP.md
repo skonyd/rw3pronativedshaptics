@@ -1,4 +1,14 @@
-# Roadmap — 2026-11-08
+# Roadmap — 2026-11-08 (top section updated 2026-11-11)
+
+**2026-11-11:**
+- Done: Xbox-mode Sensa (palms + trigger motors) over Razer's GIP route, in every mode (setting, default on).
+- Done: weapon/bow resistance rising to the break, stronger triggers, and the blind general calibration test.
+- Next:
+  - Real-game acceptance of Xbox-mode Native (palms + triggers together).
+  - Repeat the calibration after each tuning change and compare runs (docs/research/EXPERIMENTS.md).
+  - Repeat the transient-record mic A/B with the fixed encoder (OPEN_QUESTIONS Q4).
+  - Measure what the raw trigger pitch field does.
+- The sections below are the 2026-11-08 plan (history).
 
 The opt-in Xbox audio/game bridge is implemented as a prototype. Verify live
 HID callbacks, real-game input ownership, physical LT/RT plus audio, and HidHide

@@ -1,34 +1,41 @@
 # RW3 Pro Native DS Haptics
 
-Windows 11 desktop application and research project for game-authored DualSense body haptics on Wolverine V3 Pro.
+A Windows 11 desktop app that brings DualSense-style haptics to the Razer Wolverine V3 Pro.
 
-**Current state: [docs/STATUS.md](docs/STATUS.md)** (one page, kept up to date). Documentation index: [docs/README.md](docs/README.md). The dated notes below are history.
+**Current state: [docs/STATUS.md](docs/STATUS.md)** (one page, kept up to date). Documentation index: [docs/README.md](docs/README.md).
+Shared test and analysis log for every AI and person: [docs/research/](docs/research/README.md). Search it before you test
+anything, and add a row afterwards.
 
-2026-11-08: [Native Xbox trigger routing / Audio-mode separation](docs/XBOX_NATIVE_ROUTING_20261108.md). Native can approximate game trigger commands on impulse motors alongside haptic body output; Audio generates body output only. New routing is software-checked, not newly verified on physical hardware. See [standalone Direct USB status](docs/STANDALONE_STATUS_20261108.md) for later work beyond the historical milestones below.
+## What it does
 
-**2026-11-07: Native v2 is a lossy prototype. M3 remains open; M4 high-fidelity live output is not implemented.** A real game's authored source and end-to-end fidelity have not been validated. Prior user-felt Wolverine Hand Left/Right pulses are recorded in [hardware tests](docs/HARDWARE_TEST_LOG.md); they do not prove waveform fidelity.
+| Mode | Wolverine in PC mode (1532:0A4C) | Wolverine in Xbox mode (1532:0A3F) |
+| --- | --- | --- |
+| **Normal** | the game's own rumble | the game's own rumble and trigger motors |
+| **Sesten titreşim** (audio → vibration) | Sensa palms, stereo | Sensa palms over Razer's GIP route, stereo (setting off: body motors) |
+| **Oyunun DualSense titreşimi** (virtual DualSense) | haptic PCM → palms; trigger effects → body motors, or the palms ("avuçta tetik hissi") | haptic PCM → palms; trigger effects → **trigger motors** (Sensa + GameInput), in the same frame; game rumble → body motors |
 
-## Current application
+- **No Synapse, no Razer DLLs.** RW3 encodes the Sensa frames itself:
+  - PC mode: HID feature report 4 ("Direct USB"), over the cable and the HyperSpeed dongle.
+  - Xbox mode: the same Razer command tunnelled in GIP message 0x0F through `Windows.Gaming.Input.Custom`.
 
-One controller-driven window: **Genel / Test / Ayarlar**. Modes run when selected and at startup; missing sources/runtimes retry every 5 seconds. Tests pause the selected mode, which resumes afterwards. Close/minimize hides to tray; tray right-click changes mode or exits. Updates are in Ayarlar.
+  Synapse/HAR remains an optional legacy backend.
+- **Trigger effects** (DualSense resistance, weapon, bow, vibration) become vibration on the trigger motors. A weapon
+  trigger's vibration rises toward the break point, gives a strong click at the break, then stops. The Wolverine
+  has no resistive trigger motors, so this is never physical force.
+- **Tests:** motor test, 23 Native v2 demos, game simulator, and the blind **Genel kalibrasyon testi**, run from the
+  controller. The calibration covers palms, triggers and grips at varied strengths, pitches and mixes, plus
+  "1 or 2" comparisons. It saves raw data and a summary.
+- One window (**Genel / Test / Ayarlar**), fully controller-driven: LB/RB tabs, D-pad focus, A select, B back,
+  Menu changes the mode. Closing hides it to the tray.
 
-- **Normal Rumble:** the game manages ordinary XInput vibration.
-- **Audio-to-Haptics:** local PC-mode audio → shared lossy Sensa engine; Xbox-mode Windows.Gaming.Input body/trigger rumble prototype; generic XInput route remains separate. Hardware acceptance is incomplete.
-- **Native DualSense:** strict 4ch/48k PCM16 or Float32 source, rear channels 3/4 into a lossy v2 feature extractor and Interhaptics. The bridge requests a 10ms loopback buffer; Windows may grant more. The current engine paces output at 33ms to avoid provider backlog, with amplitude, frequency and transients. Its 1ms source features do not imply 1ms actuator output. This is not 48k waveform replay or proof of game provenance.
-
-Test includes side pulses and **23 synthetic demos** for Wolverine or USB DualSense. DualSense reference playback uses unchanged quad PCM16 in **WASAPI Exclusive only**; unsupported/busy endpoints fail explicitly, with no Shared fallback. RW3 gain affects Wolverine only. Software playback does not establish physical response or physical bit-perfect output.
-
-Ayarlar includes output level, Native gain 140/200/300%, XInput slot, startup, updates and diagnostics. LB/RB switches tabs, D-pad moves focus, A selects, B goes back; input is ignored while the app is not foreground.
-
-2026-11-08 scenario audit: audio input now uses unity instead of clipping-prone 2.2 gain; Wolverine output gain remains separate. Comparator tail/missing-pitch/transient regressions and software stop safety are tested. 4,452 tone cases pass feature tolerances, but nine of 240 pulse/complex cases remain outside them. Sixty-eight additional one-mic cases show time-dependent repeat variation and output saturation at 140% gain. This is **not physical DualSense equivalence**. See [full results and remaining gates](docs/SCENARIO_AUDIT_20261108.md).
-
-Settings also offers **Deneysel çok bantlı Wolverine çıkışı** (default off) for Native, PC audio and Wolverine demos. Original-sample FFT→documented multi-melody `.haps` carries up to three separated components; repeatable provider payloads and real Windows loopback are tested.85ms history, unresolved nearby tones, phase/short-transient loss and unverified physical spectra remain. The42.7ms shortcut failed low-frequency tests and is not enabled. [Multiband results](docs/MULTIBAND_RESULTS_20261108.md).
-
-The right-motor finder, expert bridge window, separate Test Lab and A/B rating window were removed. Their fixture/evidence, source-only recording/WAV and raw transport library code remains contract-tested; these are **not current UI features**. The old nine-route catalog is retained library code, not a visible selector.
+How the Xbox-mode route was found (firmware analysis, USB captures, emulated firmware decoder, blind tests):
+- [docs/research/XBOX_MODE_HAPTICS_ROUTE.md](docs/research/XBOX_MODE_HAPTICS_ROUTE.md)
+- [docs/FIRMWARE_ANALYSIS_20261110.md](docs/FIRMWARE_ANALYSIS_20261110.md)
+- [docs/SENSA_USB_PROTOCOL.md](docs/SENSA_USB_PROTOCOL.md)
 
 ## Build and verification (Windows x64)
 
-Requires .NET 10 SDK:
+Requires the .NET 10 SDK:
 
 ```powershell
 dotnet build src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj -c Release -warnaserror
@@ -36,15 +43,28 @@ dotnet run --project tests/RW3Pro.ContractTests/RW3Pro.ContractTests.csproj -c R
 dotnet run --project src/RW3ProNativeDSHaptics/RW3ProNativeDSHaptics.csproj
 ```
 
-Main baseline `2d59f2d` passed [Windows CI 42232498582](https://github.com/skonyd/rw3pronativedshaptics/actions/runs/42232498582). Uncommitted v2/UX changes are not covered by that run. CI builds portable ZIP/installer and hashes; it cannot validate physical controllers. See [Windows app](docs/WINDOWS_APP.md).
+CI builds the portable ZIP, the installer and their hashes. It cannot exercise a physical controller; hardware
+results are in [docs/STATUS.md](docs/STATUS.md) and [docs/research/EXPERIMENTS.md](docs/research/EXPERIMENTS.md).
+The virtual DualSense uses HIDMaestro ([tools/get-hidmaestro.ps1](tools/get-hidmaestro.ps1)) and needs administrator
+rights once. See [docs/WINDOWS_APP.md](docs/WINDOWS_APP.md).
 
-## Setup and remaining work
+## Limits
 
-Sensa requires the compatible Wolverine PC mode, Synapse/Chroma and legally user-supplied HAR.dll / Interhaptics.RazerProvider.dll; proprietary binaries are not distributed. Local tests observed wired PC identity `1532:0A4C`; Xbox/dongle `1532:0A3F` had trigger response but no Sensa SDK device. See [pipeline analysis](docs/SENSA_PIPELINE_ANALYSIS.md).
+- **Not physical DualSense equivalence.** Sensa is a parametric actuator: bands, points and transients per 33 ms
+  frame, not a 48 kHz waveform.
+- **Xbox mode is a lower-resolution stream:** 2 bands × 2 points per palm (PC mode: 3 × 4).
+- **No trigger motors in PC mode:** the firmware exposes them only in Xbox mode.
+- **Not yet confirmed in real games:** the Xbox-mode Sensa route was verified with blind hand-held tests, the
+  calibration and the game simulator, not yet in a real game.
 
-Native automatically picks a compatible endpoint named DualSense/Wireless Controller. Its name and active rear PCM cannot establish authorship or physical identity. A game needs a compatible physical or user-installed virtual DualSense input/audio association. Local Settings code includes explicit HIDMaestro setup/self-test actions; it does not prove game input mapping. No driver was installed in this audit. Audio-to-Sensa and Xbox WGI backends exist locally as prototypes; game-rumble-to-Sensa remains unimplemented.
+## History
 
-See [implementation status](docs/IMPLEMENTATION_STATUS.md), [roadmap](docs/ROADMAP.md), [validation](docs/VALIDATION_PLAN.md), [research references](docs/RESEARCH_AND_REFERENCES.md), [ADR-002](docs/ADR-002-NATIVE-BRIDGE-ROUTE.md) and [AGENTS.md](AGENTS.md).
+The dated notes below describe earlier stages. Some of their statements (for example "Sensa needs Synapse/HAR" or
+"no Sensa in Xbox mode") are superseded; [docs/STATUS.md](docs/STATUS.md) is authoritative.
+
+2026-11-08: [Native Xbox trigger routing / Audio-mode separation](docs/XBOX_NATIVE_ROUTING_20261108.md). Native can approximate game trigger commands on impulse motors alongside haptic body output; Audio generates body output only. New routing is software-checked, not newly verified on physical hardware. See [standalone Direct USB status](docs/STANDALONE_STATUS_20261108.md) for later work beyond the historical milestones below.
+
+**2026-11-07: Native v2 is a lossy prototype. M3 remains open; M4 high-fidelity live output is not implemented.** A real game's authored source and end-to-end fidelity have not been validated. Prior user-felt Wolverine Hand Left/Right pulses are recorded in [hardware tests](docs/HARDWARE_TEST_LOG.md); they do not prove waveform fidelity.
 
 ## Channel conversion lab increment — 2026-11-07
 

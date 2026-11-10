@@ -2,6 +2,16 @@
 
 Current state lives in `docs/STATUS.md` (single source of truth): read it first and update it in the same commit when behaviour changes. Dated reports are history.
 
+**Hardware facts as of 2026-11-11 (supersede older statements below):**
+- Sensa works in **both** controller modes without Synapse or Razer DLLs:
+  - PC mode: Direct USB HID.
+  - Xbox mode: the Razer packet in GIP 0x0F via `Windows.Gaming.Input.Custom`, interface `{AAE22FB7-…}`.
+- The Xbox-mode frame has 4 body parts: palms 216/116 and trigger motors 249/149. See `docs/SENSA_USB_PROTOCOL.md`.
+- Trigger motors exist only in Xbox mode.
+- The PC transient record is flag + s6 + p7 + t7 + next flag. The old t8 + tail `100` was a bug.
+- Before changing haptic tuning, run or read the blind general calibration (Test tab) and compare with earlier
+  runs.
+
 **Shared research log (all AIs: Claude, Codex, Gemini/Antigravity).** Before running any hardware test, probe or analysis, search `docs/research/EXPERIMENTS.md`. If it was already done, reuse the result instead of repeating it. After you finish, add a row there and update `docs/research/OPEN_QUESTIONS.md`. Rules: `docs/research/README.md`. Firmware facts: `docs/FIRMWARE_ANALYSIS_20261110.md`.
 
 Latest conversation reconciliation: read `docs/CURRENT_PLAN_20261108.md`. User subsequently reports trigger-only works and combined left/right/together feels apparently correct; retain this limited subjective physical feedback alongside the earlier unavailable-device probes. Do not claim every phase, Classic, real-game haptic fidelity or Audio/game impulse coexistence passed. Review found a separate open code gap: live global level changes do not propagate to running XboxAudioSink (`Level_Checked` updates only `_rumble`/`_bridge`); do not confuse this with the fixed Native bridge level. (Fixed since: `Level_Checked` now also updates `_xboxAudio` and `_combinedXbox`.) Sensa SDK DLLs belong beside RW3 only for its optional vendor backend, never in game folders; Direct USB needs none. Local installed copy/Start Menu/icon now exist; future source edits require republishing/copying to update it.

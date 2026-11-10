@@ -10,8 +10,10 @@ Start with **[STATUS.md](STATUS.md)**: the current state on one page.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components and data paths |
 | [WINDOWS_APP.md](WINDOWS_APP.md) | Build, install, packaged-app redirection, UAC-free bridge |
 | [research/EXPERIMENTS.md](research/EXPERIMENTS.md) | **Shared test/analysis log for every AI and person: search it before testing, add a row after** ([rules](research/README.md), [open questions](research/OPEN_QUESTIONS.md)) |
-| [FIRMWARE_ANALYSIS_20261110.md](FIRMWARE_ANALYSIS_20261110.md) | Static reading of firmware 2.04.00: Sensa descriptors per mode, GIP metadata |
-| [SENSA_USB_PROTOCOL.md](SENSA_USB_PROTOCOL.md) | Sensa USB transport and frame format (Direct USB) |
+| [research/XBOX_MODE_HAPTICS_ROUTE.md](research/XBOX_MODE_HAPTICS_ROUTE.md) | Xbox mode: Sensa palms + trigger motors over Razer's GIP route (how it was found, verified) |
+| [FIRMWARE_ANALYSIS_20261110.md](FIRMWARE_ANALYSIS_20261110.md) | Static reading of firmware 2.04.00: Sensa descriptors per mode, GIP metadata, emulated frame decoders |
+| [SENSA_USB_PROTOCOL.md](SENSA_USB_PROTOCOL.md) | Sensa transport and frame formats: PC mode (Direct USB) and Xbox mode (4 body parts) |
+| [../tools/gip/README.md](../tools/gip/README.md), [../tools/firmware/](../tools/firmware/) | GIP probes and firmware analysis / decoder emulation tools |
 | [HARDWARE_TEST_LOG.md](HARDWARE_TEST_LOG.md) | Physical test record |
 | [DEVICE_TEST_RUNBOOK.md](DEVICE_TEST_RUNBOOK.md), [VALIDATION_PLAN.md](VALIDATION_PLAN.md) | How to test |
 | [ROADMAP.md](ROADMAP.md) | Plans |
