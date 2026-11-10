@@ -1000,6 +1000,45 @@ SpectralContracts.Run(Check);
     Check(folded && silent, "Direct USB: transient folded into nearest point (pos .7 → point 2), silent features send nothing");
 }
 {
+    // Transient record layout vs HAR offline renders (2026-11-09 sweep: trAmp 0.2 at 10 ms -> s12 p24 t20 tail 100).
+    static int Bits(ReadOnlySpan<byte> f, int start, int width)
+    {
+        int v = 0;
+        for (int i = 0; i < width; i++) v = (v << 1) | ((f[(start + i) >> 3] >> (7 - ((start + i) & 7))) & 1);
+        return v;
+    }
+    double P(double hz) => SensaFrameEncoder.PitchOf(hz);
+    var l = new[] { new SensaBand(.3, .3, .3, .3, P(80)) }; var r = new[] { new SensaBand(.2, .2, .2, .2, P(150)) };
+    var plain = new byte[SensaFrameEncoder.MaxFrameLength]; var one = new byte[SensaFrameEncoder.MaxFrameLength];
+    var two = new byte[SensaFrameEncoder.MaxFrameLength]; var none = new byte[SensaFrameEncoder.MaxFrameLength];
+    SensaFrameEncoder.EncodeBands(l, r, plain);
+    int lenOne = SensaFrameEncoder.EncodeBands(l, r, one, new SensaTransient(.2, 10 / 33.0), null);
+    int lenTwo = SensaFrameEncoder.EncodeBands(l, r, two, new SensaTransient(.5, .3), new SensaTransient(1, 1));
+    int lenNone = SensaFrameEncoder.EncodeBands(l, r, none, new SensaTransient(.01, .5), null);   // quantizes to 0 -> no record
+    const int hand = 159;
+    bool leftRecord = Bits(one, 7 + hand, 1) == 1 && Bits(one, 8 + hand, 6) == 12 && Bits(one, 14 + hand, 7) == 24
+        && Bits(one, 21 + hand, 8) == 20 && Bits(one, 29 + hand, 3) == 0b100 && Bits(one, 32 + 2 * hand, 1) == 0;
+    // The right hand's bands are shifted by the 24-bit left record but otherwise identical to the plain frame.
+    bool rightShifted = Enumerable.Range(0, hand).All(i => Bits(one, 32 + hand + i, 1) == Bits(plain, 8 + hand + i, 1));
+    int rr = 7 + hand + 1 + 24 + hand + 1;   // start of the right record in the two-record frame
+    bool rightRecord = Bits(two, rr - 1, 1) == 1 && Bits(two, rr, 6) == 63 && Bits(two, rr + 6, 7) == 24 && Bits(two, rr + 13, 8) == 66 && Bits(two, rr + 21, 3) == 0b100
+        && Bits(two, 8 + hand, 6) == 31 && Bits(two, 21 + hand, 8) == 20;
+    bool lengths = lenOne == 44 && lenTwo == 47 && lenNone == 41 && none.AsSpan(0, 41).SequenceEqual(plain.AsSpan(0, 41));
+    bool times = SensaFrameEncoder.TransientTime(0) == 0 && SensaFrameEncoder.TransientTime(1) == 66 && SensaFrameEncoder.TransientTime(-1) == 0
+        && SensaFrameEncoder.TransientTime(double.NaN) == 0 && SensaFrameEncoder.TransientTime(.5) == 34;
+    var report = new byte[SensaHidTransport.FeatureLength];
+    SensaHidTransport.BuildReport(two.AsSpan(0, lenTwo), 1, report);
+    bool sized = report[6] == 48;   // data size = frame + 1 (report[6], see the captured packet above)
+    // With records on, the first hit leaves the points alone; a hit over silence still sends a frame.
+    var a = new double[4];
+    var f = new SideFeatures { P0 = .2f, P1 = .2f, P2 = .2f, P3 = .2f, TransientCount = 1, T0Position = .7f, T0Amplitude = .9f };
+    bool notFolded = DirectSensaMapping.Points(f, 1, a, recordFirstHit: true) && a[2] < .21 && DirectSensaMapping.Hit(f, 1) is { Position: > .69 and < .71 };
+    var hitOnly = new SideFeatures { TransientCount = 1, T0Position = .1f, T0Amplitude = .6f };
+    bool hitAlone = DirectSensaMapping.Points(hitOnly, 1, a, recordFirstHit: true);   // folded path: the hit raises point 0
+    Check(leftRecord && rightShifted && rightRecord && lengths && times && sized && notFolded && hitAlone,
+        $"Direct USB transient records: s6/24/t8/100 per hand, 41/44/47 bytes ({lenNone}/{lenOne}/{lenTwo}), report size byte {report[6]}, first hit not folded when recorded");
+}
+{
     // Synapse attachment check from Razer's log lines (2026-11-08 states).
     string S(string t) => "[2026-11-08 04:00:00.000][1] [RzInterHaptics.FFI] [info] " + t;
     bool attached = SynapseSensaCheck.Evaluate(new[] { S("Starting the RPC server"), S("New sender registered, ID: 1"), S("SenderGetMetadata device \"2636-{x}\"") }, out _);
@@ -1661,6 +1700,31 @@ SpectralContracts.Run(Check);
 }
 
 // Xbox body motors: stereo widening keeps centre, keeps hard pans one-sided, spreads partial pans.
+{
+    // Xbox-mode bass/treble split: centred 60 Hz drives the heavy (left) motor, 2 kHz the light (right) one;
+    // the default stays the left/right mapping, and the app-wide default is Stereo.
+    (float L, float R) Drive(XboxMotorSplit split, double hz, double panL = 1, double panR = 1)
+    {
+        var env = new XboxBodyEnvelope { SplitOverride = split };
+        float l = 0, r = 0;
+        for (int i = 0; i < 48000 / 2; i++)
+        {
+            float x = 0.4f * (float)Math.Sin(2 * Math.PI * hz * i / 48000);
+            env.Process(x * (float)panL, x * (float)panR);
+            if (i > 48000 / 4) { l = Math.Max(l, env.Left); r = Math.Max(r, env.Right); }
+        }
+        return (l, r);
+    }
+    var bass = Drive(XboxMotorSplit.BassTreble, 60);
+    var treble = Drive(XboxMotorSplit.BassTreble, 2000);
+    var bassPanned = Drive(XboxMotorSplit.BassTreble, 60, 1, 0);
+    var stereoPanned = Drive(XboxMotorSplit.Stereo, 60, 1, 0);
+    bool split = bass.L > 0.2f && bass.R < bass.L * 0.15f && treble.R > 0.2f && treble.L < treble.R * 0.15f;
+    bool noSides = Math.Abs(bassPanned.L - bass.L * 0.5f) < bass.L * 0.1f && bassPanned.R < bassPanned.L * 0.15f;
+    bool stereoKept = stereoPanned.L > 0.2f && stereoPanned.R < 0.01f && new XboxBodyEnvelope().Split == XboxMotorSplit.Stereo;
+    Check(split && noSides && stereoKept,
+        $"Xbox bass/treble split: 60 Hz → heavy {bass.L:0.00}/{bass.R:0.00}, 2 kHz → light {treble.L:0.00}/{treble.R:0.00}; mono (pan ignored); default stays left/right");
+}
 {
     var c = XboxBodyEnvelope.Widen(0.5f, 0.5f);
     var hard = XboxBodyEnvelope.Widen(0.6f, 0f);

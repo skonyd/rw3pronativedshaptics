@@ -122,6 +122,7 @@ public partial class MainWindow : Window
             AudioHapticProfile.Dynamic => AudioProfileDynamic,
             _ => AudioProfileExisting
         }).IsChecked = true;
+        XboxBassTreble.IsChecked = _settings.XboxBassTreble;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
         XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
         XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
@@ -362,6 +363,7 @@ public partial class MainWindow : Window
     {
         if (PadModeText == null) return;
         var m = await Task.Run(WolverineModeControl.Detect);
+        ApplyPadModeOptions(m);
         PadModeText.Text = (note != null ? note + Environment.NewLine : "") + m switch
         {
             WolverineControllerMode.Pc => "PC modu: avuçlarda Sensa HD titreşim; DualSense tetik efektleri gövde motorlarında. Tetiklerin içinde hissetmek için Xbox moduna geç.",
@@ -372,6 +374,38 @@ public partial class MainWindow : Window
     }
 
     private async void PadModeRefresh_Click(object sender, RoutedEventArgs e) => await RefreshPadModeAsync();
+
+    // Xbox-only audio option: bass → heavy motor, treble → light motor. Usable and effective only while the
+    // controller is detected in Xbox mode, so a saved choice can never act in PC mode (Sensa palms there).
+    private WolverineControllerMode _padMode = WolverineControllerMode.NotFound;
+
+    private void ApplyPadModeOptions(WolverineControllerMode m)
+    {
+        _padMode = m;
+        bool xbox = m == WolverineControllerMode.Xbox;
+        XboxBassTreble.IsEnabled = xbox;
+        XboxBodyEnvelope.Preferred = xbox && _settings.XboxBassTreble ? XboxMotorSplit.BassTreble : XboxMotorSplit.Stereo;
+        XboxBassTrebleHint.Text = xbox
+            ? (_settings.XboxBassTreble
+                ? "Açık: bas (< 120 Hz) büyük/ağır motorda, tiz (> 300 Hz) küçük motorda. Sol/sağ yön yok."
+                : "Kapalı: sol motor sol kanalı, sağ motor sağ kanalı izler (sol/sağ yön).")
+            : "Yalnız kol Xbox modundayken seçilebilir" + (_settings.XboxBassTreble ? " (kayıtlı seçim PC modunda uygulanmaz)." : ".");
+    }
+
+    private async Task RefreshPadOptionsAsync()
+    {
+        try { ApplyPadModeOptions(await Task.Run(WolverineModeControl.Detect)); }
+        catch (Exception ex) { NoteError("Kol modu", ex); }
+    }
+
+    private void XboxBassTreble_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.XboxBassTreble = XboxBassTreble.IsChecked == true;
+        ApplyPadModeOptions(_padMode);
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox bas/tiz", ex); }
+        DiagnosticsService.Info("Xbox bass/treble split: " + _settings.XboxBassTreble + " (effective " + XboxBodyEnvelope.Preferred + ").");
+    }
 
     private void TriggerFeel_Checked(object sender, RoutedEventArgs e)
     {
@@ -673,6 +707,7 @@ public partial class MainWindow : Window
             return new CheckResult(mode, sensa, synapse, virtualStatus, endpoint);
         });
 
+        ApplyPadModeOptions(r.Mode);
         // PC mode works over the cable AND the HyperSpeed dongle (both 1532:0A4C); Xbox mode is a valid mode too.
         switch (r.Mode)
         {
@@ -792,6 +827,8 @@ public partial class MainWindow : Window
         {
             _tickCount++;
             _orch.Tick(_performance, _tickCount);   // CPU guard, liveness watchdog, auto-run
+            // The mode can change by key combo at any time; recheck every 3 s while audio mode is shown.
+            if (_tickCount % 12 == 0 && SelectedMode == HapticMode.Audio && !_padModeBusy) _ = RefreshPadOptionsAsync();
             if (TabSettings.IsChecked == true && _bridge.IsVirtualDualSenseRunning) UpdateBridgeStatus();
             RefreshStatus();
         }

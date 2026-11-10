@@ -258,6 +258,11 @@
                         IsEnabled="{Binding IsChecked, ElementName=RouteAudio}" Foreground="#EEF3FF"
                         Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
               <TextBlock Text="Gövde ve tetik seçenekleri bağımsızdır. Tetikler, oyun LT/RT titreşimi gönderdiğinde çalışır." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <CheckBox x:Name="XboxBassTreble" Content="Xbox modu: bas büyük motora, tiz küçük motora" Foreground="#EEF3FF" Margin="0,6,0,0"
+                        IsEnabled="False" Checked="XboxBassTreble_Changed" Unchecked="XboxBassTreble_Changed"
+                        AutomationProperties.Name="Xbox modunda bas büyük motora, tiz küçük motora"/>
+              <TextBlock x:Name="XboxBassTrebleHint" Style="{StaticResource Hint}" TextWrapping="Wrap"
+                         Text="Yalnız kol Xbox modundayken seçilebilir."/>
               <TextBlock Text="Sanal Xbox köprüsü HIDMaestro ve HidHide kullanır. Windows izin isterse onayla. Köprü fiziksel kolu geçici olarak gizler. Oyunu köprüden sonra aç." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
               <TextBlock Text="Ses profili · giriş frekansları" Style="{StaticResource CardTitle}" Margin="0,10,0,4"/>
               <RadioButton x:Name="AudioProfileExisting" GroupName="AudioProfile" Tag="Existing" Content="Mevcut ayar" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>

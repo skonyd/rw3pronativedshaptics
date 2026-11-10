@@ -308,7 +308,7 @@ public sealed class SensaStereoPrototype : IDisposable
             if (timer == IntPtr.Zero) periodSet = Timing.timeBeginPeriod(1) == 0;
             Report("Doğrudan USB: Wolverine aranıyor (PC modunda, kablo ya da alıcıyla)");
             double reopenAt = 0;
-            var frame = new byte[SensaFrameEncoder.FrameLength];
+            var frame = new byte[SensaFrameEncoder.MaxFrameLength];
             byte[] silence = SensaFrameEncoder.Silence();
             var la = new double[4]; var ra = new double[4];
             var lHold = new PitchHold(); var rHold = new PitchHold();
@@ -354,7 +354,8 @@ public sealed class SensaStereoPrototype : IDisposable
                     else { fl = default; fr = default; }
                 }
                 double level = HapticOutputLevel.Apply(gain, OutputLevelPercent);
-                bool leftOn = DirectSensaMapping.Points(fl, level, la), rightOn = DirectSensaMapping.Points(fr, level, ra);
+                bool records = DirectTransientRecords && SendTransients && !manual;
+                bool leftOn = DirectSensaMapping.Points(fl, level, la, records), rightOn = DirectSensaMapping.Points(fr, level, ra, records);
                 bool active = leftOn || rightOn;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
                 bool sendFrame = active || silenceToSend > 0;
@@ -367,8 +368,9 @@ public sealed class SensaStereoPrototype : IDisposable
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
                         int ln = DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
                         int rn = DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
-                        SensaFrameEncoder.EncodeBands(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn), frame);
-                        ok = tx.Send(frame);
+                        int length = SensaFrameEncoder.EncodeBands(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn), frame,
+                            records ? DirectSensaMapping.Hit(fl, level) : null, records ? DirectSensaMapping.Hit(fr, level) : null);
+                        ok = tx.Send(frame.AsSpan(0, length));
                         silenceToSend = 2;
                         LastSentHz = (lHold.Last, rHold.Last);
                     }
@@ -770,6 +772,9 @@ public sealed class SensaStereoPrototype : IDisposable
 
     /// <summary>Diagnostics switch: false drops transient (onset) points from the stream.</summary>
     public static volatile bool SendTransients = true;
+    /// <summary>Direct USB: the first hit of a frame becomes a real transient record (decoded 2026-11-09);
+    /// false = the older behaviour, folded into the nearest strength point (A/B measurements).</summary>
+    public static volatile bool DirectTransientRecords = true;
 
     /// <summary>Diagnostics: called on the engine thread for every rendered frame (left, right, gain, idle).</summary>
     public Action<SideFeatures, SideFeatures, double, bool>? FrameProbe { get; set; }
