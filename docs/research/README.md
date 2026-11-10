@@ -21,6 +21,19 @@ records **how we know it** and **what we still want to find out**.
 3. Check [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). If your work is on that list, follow the next step it gives
    and keep the "already ruled out" items ruled out.
 
+## The general calibration test (user runs, any AI analyses)
+
+The app has a blind, controller-driven calibration (Test → "Genel kalibrasyon testi"). Each run writes:
+- `%LOCALAPPDATA%\RW3ProNativeDSHaptics\calibration\calibration-<time>.jsonl`: one JSON object per trial. It holds the
+  stimulus (actuator / path / strength / pitch / texture), the options shown, the right answer, the user's answer,
+  the response time and the replays.
+- `calibration-<time>-ozet.txt`: the summary.
+
+To analyse a run, read the `.jsonl` (ask the user for it, or read it through an `explorer.exe`-started copy, because
+agent shells see a redirected AppData). Add one row per run to [EXPERIMENTS.md](EXPERIMENTS.md), and compare with
+earlier runs before you change anything. Plan and scoring: `src/RW3ProNativeDSHaptics/CalibrationPlan.cs`; devices:
+`CalibrationRig.cs`.
+
 ## After you test or analyse anything
 
 1. Add a row to the top of [EXPERIMENTS.md](EXPERIMENTS.md). Fill in every column, including negative and
