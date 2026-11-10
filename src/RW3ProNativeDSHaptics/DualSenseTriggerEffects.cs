@@ -111,7 +111,10 @@ public sealed class TriggerEffectInterpreter
                 double strength = Math.Clamp((e.P2 & 0x07) + 1, 1, 8) / 8.0;
                 if (start >= 0 && Crossed(start / 10.0)) Click(strength * .3);
                 if (end > start && Crossed(end / 10.0)) Click(strength);
-                if (start >= 0 && end > start && pull > 0 && pull >= start / 10.0 && pull < end / 10.0) tension = strength;
+                // A DualSense weapon trigger stiffens until it breaks. As vibration: rise from 40 % at the start of the
+                // zone to full strength at the break point, a strong click at the break, then nothing.
+                if (start >= 0 && end > start && pull > 0 && pull >= start / 10.0 && pull < end / 10.0)
+                    tension = strength * RampToBreak(pull, start, end);
                 break;
             }
             case 0x22: // bow: two zone endpoints, packed resistance and snap-back strengths
@@ -122,7 +125,7 @@ public sealed class TriggerEffectInterpreter
                 {
                     if (Crossed(start / 10.0)) Click(strength * .3);
                     if (Crossed(end / 10.0) || (_lastPull >= end / 10.0 && pull < end / 10.0)) Click(snap);
-                    if (pull > 0 && pull >= start / 10.0 && pull < end / 10.0) tension = strength;
+                    if (pull > 0 && pull >= start / 10.0 && pull < end / 10.0) tension = strength * RampToBreak(pull, start, end);
                 }
                 break;
             }
@@ -167,6 +170,10 @@ public sealed class TriggerEffectInterpreter
         LastClick = click;
         return Math.Clamp(Math.Max(steady, click), 0, 1);
     }
+
+    /// <summary>Weapon / bow resistance as vibration: 40 % at the zone start rising to 100 % at the break point.</summary>
+    private static double RampToBreak(double pull, int startZone, int endZone) =>
+        0.4 + 0.6 * Math.Clamp((pull - startZone / 10.0) / Math.Max(0.05, (endZone - startZone) / 10.0), 0, 1);
 
     // An impulse motor is amplitude-controlled, not a DualSense force actuator. Low-rate cycling is
     // represented as a vibration envelope. Above 30 Hz retain intensity, never alias an unknown carrier.

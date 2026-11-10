@@ -449,7 +449,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_gate)
                         foreach (var it in new[] { _left, _right })
                         // Sensa trigger motors: 90 ms clicks were barely felt, 165 ms clearly (threshold test 2026-11-11).
-                        { it.ClickSeconds = tuning == 2 ? 0.16 : motors ? 0.09 : TriggerEffectInterpreter.DefaultClickSeconds; it.TensionScale = motors ? 0.45 : 0; }
+                        // Sensa + GameInput trigger motors: resistance at 85 % (user: "too weak" at 45 %, 2026-11-11).
+                        { it.ClickSeconds = tuning == 2 ? 0.16 : motors ? 0.09 : TriggerEffectInterpreter.DefaultClickSeconds; it.TensionScale = tuning == 2 ? 0.85 : motors ? 0.45 : 0; }
                     _interpreterTuning = tuning;
                 }
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }

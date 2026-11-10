@@ -1349,12 +1349,13 @@ SpectralContracts.Run(Check);
     var left = new TriggerEffectInterpreter { TensionScale = .45 }; left.SetEffect(report.LeftTrigger);
     left.Update(.5, .1); left.Update(.5, .1);
     double tension = left.Update(.5, .004), broken = left.Update(.8, .004);
-    Check(Math.Abs(tension - .45) < 1e-9 && broken == 1,
-        "Raw weapon report uses actual force and break endpoint (zone 8, not zone 9)");
+    // Zones 2..8 at pull .5 = halfway to the break: ramp 0.4 + 0.6 * 0.5 = 0.7 of the force.
+    Check(Math.Abs(tension - .45 * .7) < 1e-9 && broken == 1,
+        "Raw weapon report uses actual force and break endpoint (zone 8, not zone 9), resistance rising toward the break");
     var simultaneous = BridgeMotorFrame.Route(0, 0, .2, .7, tension, .45 / 8, true);
-    Check(simultaneous == new BridgeMotorFrame(.2, .7, .45, .45 / 8), "Native haptic stereo and two real-report trigger effects coexist on all four motors");
+    Check(simultaneous == new BridgeMotorFrame(.2, .7, tension, .45 / 8), "Native haptic stereo and two real-report trigger effects coexist on all four motors");
     var classic = BridgeMotorFrame.Route(0, 0, .2, .7, tension, .45 / 8, false);
-    Check(classic == new BridgeMotorFrame(.45, .7, 0, 0), "Existing trigger setting disables impulse channels while preserving body haptics");
+    Check(classic == new BridgeMotorFrame(Math.Max(.2, tension), .7, 0, 0), "Existing trigger setting disables impulse channels while preserving body haptics");
     right.SetEffect(GameSignalSimulator.Off);
     Check(right.Update(.9, .004) == 0 && BridgeMotorFrame.Route(0, 0, .2, .7, 0, 0, true).BodyRight == .7,
         "Game trigger-off silences triggers without interrupting haptic PCM");
@@ -1824,14 +1825,17 @@ SpectralContracts.Run(Check);
     // click at the break; the synth puts a click as a decaying 180 Hz burst and tension as 70 Hz texture on that side only.
     var w = new TriggerEffectInterpreter();
     w.SetEffect(new TriggerEffect(0x25, 0x04, 0x01, 0x07, 0, 0, 0, 0, 0, 0, 0));
-    double tensionMid = 0, clickAtBreak = 0, clickMid = 0;
+    double tensionMid = 0, clickAtBreak = 0, clickMid = 0, tensionEarly = 0, tensionLate = 0;
     for (int i = 0; i <= 100; i++)
     {
         double pull = i / 100.0; w.Update(pull, 0.004);
         if (pull > .4 && pull < .6) { tensionMid = Math.Max(tensionMid, w.LastTension); clickMid = Math.Max(clickMid, w.LastClick); }
+        if (pull >= .25 && pull < .27) tensionEarly = w.LastTension;
+        if (pull >= .76 && pull < .78) tensionLate = w.LastTension;
         if (pull >= .8 && pull < .84) clickAtBreak = Math.Max(clickAtBreak, w.LastClick);
     }
-    bool parts = tensionMid > .9 && clickMid == 0 && clickAtBreak > .9;
+    // The resistance rises toward the break (40 % at the zone start, 100 % at the break), like a stiffening trigger.
+    bool parts = tensionMid > .6 && tensionLate > tensionEarly + .3 && tensionLate > .9 && clickMid == 0 && clickAtBreak > .9;
 
     static (double l, double r) Rms(float[] st, int from, int to)
     {
