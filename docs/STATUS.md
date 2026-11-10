@@ -51,6 +51,12 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
     - All channels were restored to 100 % afterwards.
   - The controller's GIP headset audio (endpoint "Kulaklıklar (Xbox Controller)") does not drive Sensa. Tested 2026-11-10: tones at 40–1000 Hz, with and without a headset in the 3.5 mm jack. The audio reached the headset, but the controller did not vibrate (felt by the user, and no tone peak at the mic without a headset).
 - Virtual DualSense input matched the Xbox pad in every readback report.
+- Sensa overdrive check (2026-11-10, mic, both palms, steady drive):
+  - Sweep: 30/50/80/120/190/300 Hz at strengths 16/32/48/63. Strength 63 is the top of the encoder scale, the same maximum Synapse/HAR uses.
+  - No tick or bottoming anywhere: the 1.5-6 kHz band stayed within ±2.4 dB of the room.
+  - The top end compresses gently instead: at 120-300 Hz, 48 → 63 adds 0 to +5 dB.
+  - Below ~50 Hz little reaches the mic at any strength.
+  - So RW3 cannot push Sensa past its range. An extra limiter is not needed for steady signals.
 - Trigger motor frequency (Xbox mode, GameInput, 2026-11-10, mic; 4 good runs, 2 orientations). The pitch follows the strength:
   - Left trigger: ~130 Hz at 25 %, ~176 Hz at 50 %, ~234 Hz at 100 %.
   - Right trigger: ~108 / ~150 / ~234 Hz.
