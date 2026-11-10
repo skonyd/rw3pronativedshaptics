@@ -44,7 +44,11 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
     - Synapse does not show the controller in Xbox mode at all (user, 2026-11-10). The 2026-11-10 capture has no Xbox-mode traffic from it.
   - Vibration strength command (PC mode, captured 2026-11-10, not yet sent by RW3): class 0x0C cmd 0x06, arguments [03, channel, percent].
     - Synapse writes channels 5, 6, 7 and 8 together from one slider (100/83/67/50/33/17/0 %).
-    - Which motor each channel is has not been checked.
+    - Channel map (mic, PC mode, 2026-11-10, 2 repeats). Setting a channel to 0 % cut the matching actuators by 15-19 dB, down to the room floor; the other channels changed nothing (within ±1 dB):
+      - Channel 5 = left side: big body motor and the left Sensa palm.
+      - Channel 6 = right side: small body motor and the right Sensa palm.
+      - Channels 7 and 8: no effect on the body motors or Sensa. Most likely the trigger motors, which are unreachable in PC mode.
+    - All channels were restored to 100 % afterwards.
   - The controller's GIP headset audio (endpoint "Kulaklıklar (Xbox Controller)") does not drive Sensa. Tested 2026-11-10: tones at 40–1000 Hz, with and without a headset in the 3.5 mm jack. The audio reached the headset, but the controller did not vibrate (felt by the user, and no tone peak at the mic without a headset).
 - Virtual DualSense input matched the Xbox pad in every readback report.
 - Trigger motor frequency (Xbox mode, GameInput, 2026-11-10, mic; 4 good runs, 2 orientations). The pitch follows the strength:
