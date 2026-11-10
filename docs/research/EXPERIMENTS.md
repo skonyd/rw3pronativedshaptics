@@ -1,0 +1,30 @@
+# Experiment log
+
+Newest first. Read [README.md](README.md) before adding a row. Before running a test, search this file for it.
+
+- **ID** `E-YYYYMMDD-NN`.
+- **Mode:** PC = 1532:0A4C (wired, Razer HID present); Xbox = 1532:0A3F (GIP only).
+- **Evidence:** `measured` / `felt` / `static` / `doc` / `inferred`.
+- **Verdict:** `confirmed` / `ruled out` / `inconclusive` / `partial`.
+
+Rows before 2026-11-10 were seeded from [STATUS.md](../STATUS.md) and the dated reports.
+
+| ID | Question | Mode | Method | Result | Evidence | Verdict | Details |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| E-20261110-12 | Does any Xbox-mode audio endpoint carry haptics (GameInput haptic endpoint)? | Xbox (stored) | Read MMDevices endpoint formats from the registry; read `HKLM\SOFTWARE\Microsoft\GameInput\Devices` | Only `Kulaklıklar (Xbox Controller)`: 2 ch 48 kHz, mask 0x3. No GameInput device registration | measured | ruled out (as shipped) | [XBOX_MODE_HAPTICS_ROUTE.md](XBOX_MODE_HAPTICS_ROUTE.md) |
+| E-20261110-11 | What GIP interfaces and messages does the controller declare in Xbox mode? | — | Static: GIP metadata in firmware 2.04.00 | Gamepad + Navigation + console function map + 2 unknown GUIDs (`{AAE22FB7-…}` probably Razer, `{9776FF56-…}`). Extra messages 0x0F and 0x10 | static | partial | [FIRMWARE_ANALYSIS_20261110.md](../FIRMWARE_ANALYSIS_20261110.md) |
+| E-20261110-10 | Does the firmware know haptic zones besides the palms? | — | Static: Razer updater v2.04.00, Intel HEX in .NET resources, Thumb-2 disassembly | Two "Sage T1" descriptors. PC mode: 2 body parts (palms, 3 bands / 4 points). Xbox mode: 4 (palms + 249/149, probably the triggers; 2 bands / 2 points). Chosen by a boot-time mode flag. Read via Razer 0x16/0x90 + 0x91 | static + measured (PC capture) | confirmed (zones); inferred (249/149 = triggers) | [FIRMWARE_ANALYSIS_20261110.md](../FIRMWARE_ANALYSIS_20261110.md) |
+| E-20261110-09 | Do GameInput's trigger channels reach the trigger motors in PC mode? | PC | `gispec` probe: GameInput v0 `SetRumbleState` per channel, mic peak frequency, 2 runs | L and R identical at every strength (+5.5 / +6.8 / +12 dB at 25 / 50 / 100 %), peak 68–100 Hz, no pitch rise. Real trigger motors: 130–234 Hz | measured | ruled out (emulated on body motors) | STATUS.md "PC mode trigger motors" |
+| E-20261110-08 | Where do the body-motor ticks come from? | Xbox + PC | XInput patterns, 2–8 kHz spikes in 5 ms bins, on the desk and held in the hand | Desk: big motor at 1.0 gives 22–30 ticks/s. Hand: 1 tick in 15 runs | measured | confirmed: the pad rattles on the desk | STATUS.md; `TestResults/body-motor-ticks-20261110` |
+| E-20261110-07 | Can Sensa be overdriven (ticks at max strength)? | PC | Sensa sweep: 30–300 Hz × strengths 16–63, mic 1.5–6 kHz band | No ticks; the top end compresses gently | measured | ruled out | STATUS.md |
+| E-20261110-06 | Trigger motor frequency vs strength | Xbox | GameInput, mic peak, 4 runs, 2 orientations | Left 130 / 176 / 234 Hz, right 108 / 150 / 234 Hz at 25 / 50 / 100 %. Body motors: 76 / 188 Hz | measured | confirmed | STATUS.md |
+| E-20261110-05 | Synapse vibration strength channels 5–8 | PC | Replayed Synapse's own 0x0C/0x06 [03, ch, %]; mic | ch5 = left (big motor + left palm), ch6 = right. ch7/8: no effect on body or Sensa (probably triggers) | measured | partial | STATUS.md |
+| E-20261110-04 | Does the PC→Xbox switch send a "Sensa off" command? | PC→Xbox | USBPcap of Synapse during the switch, re-read | Only reads, then the switch. After re-enumeration only Windows GIP traffic | measured | ruled out | STATUS.md; `TestResults/usb-capture-xbox-20261110` |
+| E-20261110-03 | Does the GIP headset audio drive Sensa? | Xbox | Tones 40–1000 Hz to `Kulaklıklar (Xbox Controller)`, with and without a headset | Audio reaches the headset; no vibration (felt, mic) | measured + felt | ruled out | STATUS.md |
+| E-20261110-02 | Can Synapse be made to see the pad in Xbox mode? | Xbox | User check + capture | Synapse does not show it; no Razer HID exists in Xbox mode | felt + measured | ruled out | STATUS.md |
+| E-20261110-01 | Transient records vs folding | PC | Mic A/B, 5 repeats per scene | Same peak and width, crisper (energy 120→190 Hz); first hit after silence ~4.5 dB weaker | measured | partial (setting) | `TestResults/transient-records-20261110` |
+| E-20261110-00 | Audio auto level / hum suppression | PC | Real shaper → Direct USB, 3 volumes, 2 repeats | Auto level: spread 6.4 → 1.4 dB. Hum suppression helps at -6/0 dB and hurts at -12 dB (unexplained) | measured | partial | `TestResults/level-shaper-20261110` |
+| E-20261109-02 | GameInput output from the background | Xbox | GameInput vs WGI, foreground and background | GameInput works in the background (+27 / +19 dB). WGI only in the foreground. Drops while Opera or another gamepad app is in front | measured | confirmed | STATUS.md |
+| E-20261108-03 | PC-mode trigger motors via XInput / WGI | PC | Mic | XInput has no trigger channel; WGI trigger 0 dB | measured | ruled out | [STANDALONE_STATUS_20261108.md](../STANDALONE_STATUS_20261108.md) |
+| E-20261108-02 | Sensa frame format (Direct USB) | PC | HAR renders + USB capture; encoder byte-exact on 1696 frames | 7-bit header, 3 bands × 4 points per hand, transient records | measured | confirmed | [SENSA_USB_PROTOCOL.md](../SENSA_USB_PROTOCOL.md) |
+| E-20261108-01 | Is there a PCM/audio path to the Sensa actuators? | PC | USB descriptors | IF2–4 are headset audio only | measured | ruled out | [SENSA_PIPELINE_ANALYSIS.md](../SENSA_PIPELINE_ANALYSIS.md) |
