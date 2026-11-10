@@ -38,6 +38,13 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 - Sensa in Xbox mode: no route.
   - The controller exposes only a GIP device: no Razer HID, and Razer's haptics service sees no device.
   - GIP vendor messaging (`GipGameControllerProvider.SendMessage`) is reported not to work and Razer's GIP commands are undocumented, so we did not probe the firmware blindly.
+  - USB captures, read-only:
+    - PC → Xbox switch (2026-11-08, re-read 2026-11-10): Synapse sends only reads, then the switch command. No Sensa-off command.
+    - After re-enumeration only the Windows GIP driver talks to the controller (ack, power, auth, LED, rumble stop), nothing Razer-specific.
+    - Synapse does not show the controller in Xbox mode at all (user, 2026-11-10). The 2026-11-10 capture has no Xbox-mode traffic from it.
+  - Vibration strength command (PC mode, captured 2026-11-10, not yet sent by RW3): class 0x0C cmd 0x06, arguments [03, channel, percent].
+    - Synapse writes channels 5, 6, 7 and 8 together from one slider (100/83/67/50/33/17/0 %).
+    - Which motor each channel is has not been checked.
   - The controller's GIP headset audio (endpoint "Kulaklıklar (Xbox Controller)") does not drive Sensa. Tested 2026-11-10: tones at 40–1000 Hz, with and without a headset in the 3.5 mm jack. The audio reached the headset, but the controller did not vibrate (felt by the user, and no tone peak at the mic without a headset).
 - Virtual DualSense input matched the Xbox pad in every readback report.
 - Trigger motor frequency (Xbox mode, GameInput, 2026-11-10, mic; 4 good runs, 2 orientations). The pitch follows the strength:
