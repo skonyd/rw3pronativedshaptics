@@ -95,7 +95,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public long XboxMotorWrites => _xbox?.Writes ?? 0;
     public string XboxStatus => _mode != WolverineControllerMode.Xbox ? "" :
         !_inputHealthy ? "Xbox modu: fiziksel giriş yok; motorlar durduruldu (" + (_xbox?.LastError ?? "aygıt aranıyor") + ")" :
-        (XboxSensa.Active ? (TriggerMotors ? "Xbox modu: Sensa avuçlar + tetik motorları (GIP), oyun titreşimi gövdede" : "Xbox modu: Sensa avuçlar (GIP), tetik efektleri gövdede") :
+        (XboxSensa.Active ? (TriggerMotors ? "Xbox modu: Sensa avuçlar + tetik motorları (GIP + GameInput), oyun titreşimi gövdede" : "Xbox modu: Sensa avuçlar (GIP), tetik efektleri gövdede") :
          TriggerMotors ? "Xbox modu: tetik motorları + gövde motorları" : "Xbox modu, klasik: hepsi gövde motorlarında") +
         (_triggerNote.Length > 0 ? "; " + _triggerNote : "");
     private volatile WolverineControllerMode _mode = WolverineControllerMode.NotFound;
@@ -461,15 +461,15 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     lock (_peakGate) { el = _envL; er = _envR; et = _envTick; }
                     if (Environment.TickCount64 - et > 60) el = er = 0;   // no haptic audio arriving
                     double body = XboxHapticGain;
-                    // Sensa over GIP (XboxSensa): the haptic PCM goes to the palms through the engine, and trigger effects
-                    // ride in the same Sensa frame (body parts 249/149) instead of GameInput's impulse channels.
+                    // Sensa over GIP (XboxSensa): the haptic PCM goes to the palms through the engine. Trigger effects go to the
+                    // trigger motors twice: in the Sensa frame (body parts 249/149) and on GameInput's impulse channels. The blind
+                    // calibration (2026-11-11) rated both together better than Sensa alone (2/2, both orders); they coexist.
                     bool sensa = XboxSensa.Active;
                     var routed = XboxMix.Route(rl / 255.0, rr / 255.0, sensa ? 0 : el * body, sensa ? 0 : er * body, lt, rt, motors);
                     var (bl, br, tl, tr) = routed.Scale(OutputLevelPercent);
                     if (sensa && motors)
                     {
                         XboxSensa.SetTriggers(tl, tr);
-                        routed = routed with { TriggerLeft = 0, TriggerRight = 0 };
                     }
                     _motors?.Submit(routed, Environment.TickCount64);
                     _wBodyL = Math.Max(_wBodyL, Math.Min(1, bl)); _wBodyR = Math.Max(_wBodyR, Math.Min(1, br));
