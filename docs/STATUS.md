@@ -88,6 +88,11 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
   - Auto level: follows the haptic band (< 250 Hz) over ~3.5 s toward -20 dBFS, gain ×0.5..×4. It turns down in 0.4 s and up in 3.5 s, and holds the gain in silence. A 12 dB input spread leaves 1.7 dB.
   - Hum suppression: a steady sound fades to 40 % over a few seconds (-6.4 dB on an 8 s drone). A hit 1.5× above the drone baseline opens it fully in 2 ms.
   - On-screen sound tests bypass both.
+  - Mic, 2026-11-10 (TestResults/level-shaper-20261110). Real shaper → SensaAudioSink → Direct USB path. Scene: 60 Hz drone + 120 Hz hit every 0.5 s, at source -12/-6/0 dB, 2 repeats, medians:
+    - Auto level works. The spread across the three volumes fell from 6.4 dB (off) to 1.4 dB. Hit contrast is unchanged (+15.9 vs +15.4 dB).
+    - Auto + hum at -6/0 dB gave the best hit contrast: +18..23 dB, against +15..20 off.
+    - At -12 dB, hum lowered the contrast: hum alone +6.5/+8.5 dB, auto+hum +11/+11.5, against +13/+14 off. Not explained yet.
+    - The repeats differ by up to 5 dB, so the hum result is only indicative.
 - YouTube seek recovery (audio mode) unresolved; see the dated reports.
 - GameInput output dropouts (2026-11-10): explained. They happen while another GameInput/gamepad app (e.g. Opera) is in the foreground: GameInput then gives output focus to that window. The user has seen this before. Not a probe or app bug. It matters for the bridge only if a browser is in front during play.
 
