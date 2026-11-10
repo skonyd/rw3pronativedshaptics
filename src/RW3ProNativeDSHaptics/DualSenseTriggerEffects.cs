@@ -51,11 +51,16 @@ public sealed class TriggerEffectInterpreter
     /// body-motor default). For the impulse-trigger motors the resistance itself becomes a light vibration,
     /// so holding a drawn bow or a half-pulled weapon trigger is felt in the trigger, not only its edges.</summary>
     public double TensionScale { get; set; }
+    /// <summary>Parts of the last <see cref="Update"/>: click level (while a click lasts), raw tension of the
+    /// resistance zone (before <see cref="TensionScale"/>), and the vibration-effect level. Used by the palm feel.</summary>
+    public double LastClick { get; private set; }
+    public double LastTension { get; private set; }
+    public double LastVibration { get; private set; }
     private TriggerEffect _effect;
     private double _lastPull, _clickLeft, _clickStrength, _phase, _amplitudePhase;
     public byte Mode => _effect.Mode;
     public bool Supported => _effect.Mode is 0 or 5 or 1 or 2 or 6 or 0x11 or 0x12 or 0x21 or 0x22 or 0x23 or 0x25 or 0x26 or 0x27;
-    public void Reset() { _effect = default; _lastPull = _clickLeft = _clickStrength = _phase = _amplitudePhase = 0; }
+    public void Reset() { _effect = default; LastClick = LastTension = LastVibration = 0; _lastPull = _clickLeft = _clickStrength = _phase = _amplitudePhase = 0; }
 
     public void SetEffect(in TriggerEffect effect)
     {
@@ -155,9 +160,11 @@ public sealed class TriggerEffectInterpreter
             }
         }
         _lastPull = pull;
+        LastTension = tension; LastVibration = steady;
         steady = Math.Max(steady, tension * TensionScale);
         double click = 0;
         if (_clickLeft > 0) { click = _clickStrength; _clickLeft -= dt; }
+        LastClick = click;
         return Math.Clamp(Math.Max(steady, click), 0, 1);
     }
 

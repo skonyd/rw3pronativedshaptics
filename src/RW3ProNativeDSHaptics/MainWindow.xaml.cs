@@ -108,6 +108,8 @@ public partial class MainWindow : Window
         _bridge.HidePadInGames = _settings.HidePadInGames;
         _settings.TriggerFeel = Math.Clamp(_settings.TriggerFeel, 0, 1);
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
+        _bridge.PalmTriggerFeel = _settings.PalmTriggerFeel;
+        PalmTriggerFeel.IsChecked = _settings.PalmTriggerFeel;
         RouteImpulse.IsChecked = _bridge.TriggerMotors;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
@@ -415,6 +417,15 @@ public partial class MainWindow : Window
         ApplyPadModeOptions(_padMode);
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox bas/tiz", ex); }
         DiagnosticsService.Info("Xbox bass/treble split: " + _settings.XboxBassTreble + " (effective " + XboxBodyEnvelope.Preferred + ").");
+    }
+
+    private void PalmTriggerFeel_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.PalmTriggerFeel = PalmTriggerFeel.IsChecked == true;
+        _bridge.PalmTriggerFeel = _settings.PalmTriggerFeel;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Avuç tetik hissi", ex); }
+        DiagnosticsService.Info("Trigger effects in PC mode: " + (_settings.PalmTriggerFeel ? "palms (Sensa)" : "body motors") + ".");
     }
 
     private void TriggerFeel_Checked(object sender, RoutedEventArgs e)

@@ -54,6 +54,13 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public static double XboxHapticGain = 1.6;
     /// <summary>Xbox mode: trigger effects on the impulse-trigger motors (true) or, classic, on the body motors.</summary>
     public bool TriggerMotors { get; set; } = true;
+    /// <summary>PC mode: trigger effects are felt in the palms (Sensa) through <see cref="TriggerPalmSynth"/>
+    /// instead of as body rumble. Xbox mode is unaffected.</summary>
+    public bool PalmTriggerFeel { get; set; }
+    private readonly TriggerPalmSynth _palm = new();
+    private long _framesTick;
+    private byte[] _mixBuffer = Array.Empty<byte>();
+    private float[] _palmScratch = Array.Empty<float>();
     private volatile XboxNativeMix _xboxMix = new();
     public XboxNativeMix XboxMix
     {
@@ -287,12 +294,50 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _markL = Math.Max(_markL, pl); _markR = Math.Max(_markR, pr); _logL = Math.Max(_logL, pl); _logR = Math.Max(_logR, pr);
             _envL = el; _envR = er; _envTick = Environment.TickCount64;
         }
-        if (_mode == WolverineControllerMode.Pc && XboxMix.PcmEnabled)
+        Volatile.Write(ref _framesTick, Environment.TickCount64);
+        if (_mode == WolverineControllerMode.Pc && PalmTriggerFeel && _palm.Active) PushWithPalm(span, XboxMix.PcmEnabled);
+        else if (_mode == WolverineControllerMode.Pc && XboxMix.PcmEnabled)
             _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
         Interlocked.Increment(ref _hapticBlocks);
         }
     }
 
+#endif
+
+    /// <summary>Copies a 4-channel PCM16 block, adds the palm trigger feel to the haptic channels (2/3) and pushes it.
+    /// <paramref name="keepGame"/> false = the game's haptics are muted (mix), only the trigger feel plays.
+    /// Caller holds _framesGate.</summary>
+    private void PushWithPalm(ReadOnlySpan<byte> span, bool keepGame)
+    {
+        int frames = span.Length / 8;
+        if (_mixBuffer.Length < span.Length) _mixBuffer = new byte[span.Length];
+        if (_palmScratch.Length < frames * 2) _palmScratch = new float[frames * 2];
+        var buf = _mixBuffer.AsSpan(0, span.Length); span.CopyTo(buf);
+        var st = _palmScratch.AsSpan(0, frames * 2);
+        for (int i = 0; i < frames; i++)
+        {
+            st[2 * i] = keepGame ? (short)(buf[8 * i + 4] | (buf[8 * i + 5] << 8)) / 32768f : 0;
+            st[2 * i + 1] = keepGame ? (short)(buf[8 * i + 6] | (buf[8 * i + 7] << 8)) / 32768f : 0;
+        }
+        _palm.Render(st);
+        for (int i = 0; i < frames; i++)
+        {
+            short a = (short)Math.Clamp(st[2 * i] * 32767f, -32768f, 32767f), b = (short)Math.Clamp(st[2 * i + 1] * 32767f, -32768f, 32767f);
+            buf[8 * i + 4] = (byte)a; buf[8 * i + 5] = (byte)(a >> 8);
+            buf[8 * i + 6] = (byte)b; buf[8 * i + 7] = (byte)(b >> 8);
+        }
+        _target?.Push(buf, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);
+    }
+
+    /// <summary>PC mode palm feel while the game sends no haptic audio: push a synth-only block for this tick.</summary>
+    private void PushPalmOnly(double dt)
+    {
+        int frames = (int)Math.Clamp(dt * TriggerPalmSynth.Rate, 1, TriggerPalmSynth.Rate / 20);
+        var zero = new byte[frames * 8];
+        lock (_framesGate) { if (!_stop) PushWithPalm(zero, false); }
+    }
+
+#if HAS_HIDMAESTRO
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
         if (_stop) return;
@@ -422,11 +467,23 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 else if (_outputMode == WolverineControllerMode.Pc)
                 {
                     if (_xbox?.HasDevice == true) _xbox.Forget();
-                    // PC mode: no trigger motors reachable (XUSB): trigger effects become body rumble on that side.
+                    // PC mode: no trigger motors reachable (XUSB). Trigger effects become body rumble on that side,
+                    // or, with the palm feel, Sensa in that palm (then not also body rumble).
                     var mix = XboxMix;
+                    bool palm = PalmTriggerFeel && mix.TriggersEnabled;
+                    if (palm)
+                    {
+                        lock (_gate)
+                        {
+                            _palm.Set(true, _left.LastClick, _left.LastTension, _left.LastVibration);
+                            _palm.Set(false, _right.LastClick, _right.LastTension, _right.LastVibration);
+                        }
+                        if (_palm.Active && Environment.TickCount64 - Volatile.Read(ref _framesTick) > 40) PushPalmOnly(dt);
+                    }
+                    else _palm.Reset();
                     _motors?.Submit(BridgeMotorFrame.Route(
                         mix.RumbleEnabled ? rl / 255.0 : 0, mix.RumbleEnabled ? rr / 255.0 : 0,
-                        0, 0, mix.TriggersEnabled ? lt : 0, mix.TriggersEnabled ? rt : 0, false),
+                        0, 0, mix.TriggersEnabled && !palm ? lt : 0, mix.TriggersEnabled && !palm ? rt : 0, false),
                         Environment.TickCount64);
                 }
             }
@@ -495,6 +552,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private void ClearGameState()
     {
         lock (_gate) { _left.Reset(); _right.Reset(); _rumbleLeft = _rumbleRight = 0; }
+        _palm.Reset();
         lock (_framesGate)
         {
             lock (_peakGate) { _envStateL = _envStateR = _envL = _envR = 0; _envTick = 0; }

@@ -247,6 +247,13 @@ public sealed class NativeBridgeService : IDisposable
     public string VirtualDualSenseHidHideNote => _virtual?.HidHideNote ?? "";
     public bool HidePadInGames { get; set; } = true;
     private bool _triggerMotors = true;
+    private bool _palmTriggerFeel;
+    /// <summary>PC mode: DualSense trigger effects felt in the palms (Sensa) instead of body rumble. Applies live.</summary>
+    public bool PalmTriggerFeel
+    {
+        get => _palmTriggerFeel;
+        set { _palmTriggerFeel = value; if (_virtual != null) _virtual.PalmTriggerFeel = value; }
+    }
     private XboxNativeMix _xboxMix = new();
     public XboxNativeMix XboxMix
     {
@@ -295,6 +302,7 @@ public sealed class NativeBridgeService : IDisposable
             _virtual ??= new VirtualDualSenseBridge();
             _virtual.HidePhysicalPad = HidePadInGames;
             _virtual.TriggerMotors = _triggerMotors;
+            _virtual.PalmTriggerFeel = _palmTriggerFeel;
             _virtual.XboxMix = _xboxMix;
             _virtual.OutputLevelPercent = OutputLevelPercent;
             _virtual.EngineProbe = () => SensaEngineSummary;

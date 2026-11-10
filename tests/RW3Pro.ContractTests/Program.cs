@@ -1701,6 +1701,59 @@ SpectralContracts.Run(Check);
 
 // Xbox body motors: stereo widening keeps centre, keeps hard pans one-sided, spreads partial pans.
 {
+    // PC-mode palm trigger feel: interpreter parts + synth. Weapon (zones 2..8, strength 8): tension inside,
+    // click at the break; the synth puts a click as a decaying 180 Hz burst and tension as 70 Hz texture on that side only.
+    var w = new TriggerEffectInterpreter();
+    w.SetEffect(new TriggerEffect(0x25, 0x04, 0x01, 0x07, 0, 0, 0, 0, 0, 0, 0));
+    double tensionMid = 0, clickAtBreak = 0, clickMid = 0;
+    for (int i = 0; i <= 100; i++)
+    {
+        double pull = i / 100.0; w.Update(pull, 0.004);
+        if (pull > .4 && pull < .6) { tensionMid = Math.Max(tensionMid, w.LastTension); clickMid = Math.Max(clickMid, w.LastClick); }
+        if (pull >= .8 && pull < .84) clickAtBreak = Math.Max(clickAtBreak, w.LastClick);
+    }
+    bool parts = tensionMid > .9 && clickMid == 0 && clickAtBreak > .9;
+
+    static (double l, double r) Rms(float[] st, int from, int to)
+    {
+        double l = 0, r = 0; int n = 0;
+        for (int i = from; i < to; i++) { l += st[2 * i] * st[2 * i]; r += st[2 * i + 1] * st[2 * i + 1]; n++; }
+        return (Math.Sqrt(l / n), Math.Sqrt(r / n));
+    }
+    static double Tone(float[] st, int ch, int from, int to, double hz)
+    {
+        double re = 0, im = 0;
+        for (int i = from; i < to; i++) { double ph = 2 * Math.PI * hz * i / 48000; re += st[2 * i + ch] * Math.Cos(ph); im += st[2 * i + ch] * Math.Sin(ph); }
+        return 2 * Math.Sqrt(re * re + im * im) / (to - from);
+    }
+    var synth = new TriggerPalmSynth();
+    synth.Set(true, 0.9, 0, 0);
+    var click = new float[2 * 4800];   // 100 ms
+    synth.Render(click);
+    var (cl, cr) = Rms(click, 0, 960);
+    var (tailL, _) = Rms(click, 3840, 4800);
+    bool clickShape = cl > .2 && cr == 0 && tailL < cl * .05 && Tone(click, 0, 0, 960, 180) > Tone(click, 0, 0, 960, 70) * 3;
+    synth.Set(true, 0, 0, 0);
+    var quiet = new float[2 * 4800]; synth.Render(quiet);
+    bool ends = !synth.Active;
+
+    double TensionLevel(double t)
+    {
+        var s2 = new TriggerPalmSynth(); s2.Set(false, 0, t, 0);
+        var buf = new float[2 * 9600]; s2.Render(buf);
+        return Tone(buf, 1, 2400, 9600, 70);
+    }
+    var tens = new TriggerPalmSynth(); tens.Set(false, 0, 1, 0);
+    var tb = new float[2 * 9600]; tens.Render(tb);
+    var (tl, tr) = Rms(tb, 2400, 9600);
+    bool tension = tl == 0 && tr > .1 && tens.Active && TensionLevel(1) > TensionLevel(.5) * 1.8 && TensionLevel(.5) > TensionLevel(.25) * 1.8;
+    var mixed = new float[2 * 480]; for (int i = 0; i < mixed.Length; i++) mixed[i] = .99f;
+    var loud = new TriggerPalmSynth(); loud.Set(true, 1, 1, 1); loud.Render(mixed);
+    bool clamped = mixed.All(v => v <= 1 && v >= -1);
+    Check(parts && clickShape && ends && tension && clamped,
+        $"Palm trigger feel: weapon tension {tensionMid:0.00} / break click {clickAtBreak:0.00}; click burst L {cl:0.00} R {cr:0.00} decays, tension texture on its side scales with strength, output clamped");
+}
+{
     // Xbox-mode bass/treble split: centred 60 Hz drives the heavy (left) motor, 2 kHz the light (right) one;
     // the default stays the left/right mapping, and the app-wide default is Stereo.
     (float L, float R) Drive(XboxMotorSplit split, double hz, double panL = 1, double panR = 1)
