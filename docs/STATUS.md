@@ -51,6 +51,12 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
     - All channels were restored to 100 % afterwards.
   - The controller's GIP headset audio (endpoint "Kulaklıklar (Xbox Controller)") does not drive Sensa. Tested 2026-11-10: tones at 40–1000 Hz, with and without a headset in the 3.5 mm jack. The audio reached the headset, but the controller did not vibrate (felt by the user, and no tone peak at the mic without a headset).
 - Virtual DualSense input matched the Xbox pad in every readback report.
+- Body motor ticks (2026-11-10, mic, 2-8 kHz spikes in 5 ms bins, XInput; TestResults/body-motor-ticks-20261110):
+  - The source is the big (heavy, left) body motor at full power. In Xbox mode, steady 1.0 gave 24-29 ticks/s with the high band +15..17 dB, in all 3 runs. The same motor in PC mode at 1.0 ticked in 1 of 2 runs (6.5/s).
+  - At 0.35-0.8: sporadic, not repeatable (0-4/s, once 8.7/s at 0.8).
+  - The small motor, low levels (start threshold), the update rate (re-sent at 20 Hz or 200 Hz) and audio-like envelopes: no ticks.
+  - Capping at 0.75-0.8 costs about 3-4 dB of the big motor's maximum (overall mic level -20 vs -23.4 dBFS).
+  - Why the user hears it only in Xbox mode: there, audio mode drives the body motors with gain 2.5, which often reaches 1.0. In PC mode the audio goes to Sensa instead.
 - Sensa overdrive check (2026-11-10, mic, both palms, steady drive):
   - Sweep: 30/50/80/120/190/300 Hz at strengths 16/32/48/63. Strength 63 is the top of the encoder scale, the same maximum Synapse/HAR uses.
   - No tick or bottoming anywhere: the 1.5-6 kHz band stayed within ±2.4 dB of the room.
