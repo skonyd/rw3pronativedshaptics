@@ -67,7 +67,7 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 - Mode orchestration is in `HapticOrchestrator` (decisions in `HapticModePolicy`, contract-tested).
   `MainWindow.xaml.cs` is still large (~1,860 lines). The next split candidates are the test/simulator page and the settings page.
 - YouTube seek recovery (audio mode) unresolved; see the dated reports.
-- GameInput output dropouts (2026-11-10): in the standalone probe, some 1.5 s windows had no trigger or body vibration at all, then output recovered. One run went silent for the rest. Xbox Game Bar was running. Not seen in the app yet. Cause unknown (focus policy suspected).
+- GameInput output dropouts (2026-11-10): explained. They happen while another GameInput/gamepad app (e.g. Opera) is in the foreground: GameInput then gives output focus to that window. The user has seen this before. Not a probe or app bug. It matters for the bridge only if a browser is in front during play.
 
 ## Code map
 
