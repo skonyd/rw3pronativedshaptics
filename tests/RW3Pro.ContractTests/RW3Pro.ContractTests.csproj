@@ -58,6 +58,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioLevelShaper.cs" Link="AudioLevelShaper.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/BodyMotorLimit.cs" Link="BodyMotorLimit.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/SensaXboxFrameEncoder.cs" Link="SensaXboxFrameEncoder.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/CalibrationPlan.cs" Link="CalibrationPlan.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/DualSenseInputMapping.cs" Link="DualSenseInputMapping.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/HidHideControl.cs" Link="HidHideControl.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/GameSignalSimulator.cs" Link="GameSignalSimulator.cs" />

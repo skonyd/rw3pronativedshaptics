@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        PreviewKeyDown += CalibKeyDown;
         var demoChoices = new List<ChannelLabScene>();
         foreach (var demo in NativeDemoSignals.All)
             demoChoices.Add(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
@@ -1040,6 +1042,7 @@ public partial class MainWindow : Window
         SensaResetBtn.IsEnabled = enabled;
         XboxCombinedTestBtn.IsEnabled = enabled;
         XboxTriggerBackendBtn.IsEnabled = enabled;
+        CalibBtn.IsEnabled = enabled;
     }
 
     private string? _channelReportPath;
@@ -1597,6 +1600,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 0) General calibration owns the controller while its panel is up.
+        if (CalibPanel.Visibility == Visibility.Visible)
+        {
+            int answer = Has(p, XInputHaptics.ButtonX) ? 0 : Has(p, XInputHaptics.ButtonA) ? 1 : Has(p, XInputHaptics.ButtonB) ? 2
+                : Has(p, XInputHaptics.ButtonY) ? CalibReplay : Has(p, XInputHaptics.ButtonMenu) ? CalibQuit : int.MinValue;
+            if (answer != int.MinValue) _calibAnswer?.TrySetResult(answer);
+            return;
+        }
+
         // 1) Test prompts waiting for an answer.
         if (TestPage.Visibility == Visibility.Visible)
         {
@@ -1700,6 +1712,159 @@ public partial class MainWindow : Window
             Has(p, XInputHaptics.ButtonDpadDown) ? "{TAB}" : null;
         if (keys != null) Forms.SendKeys.SendWait(keys);
     }
+
+    // ───────────────────────── Test: general calibration (blind, controller-driven) ─────────────────────────
+
+    private const int CalibReplay = -1, CalibQuit = -2;
+    private TaskCompletionSource<int>? _calibAnswer;
+    private static string CalibrationFolder => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3ProNativeDSHaptics", "calibration");
+
+    private void Calibration_Click(object sender, RoutedEventArgs e) => _ = RunCalibrationAsync();
+
+    private void CalibrationFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try { Directory.CreateDirectory(CalibrationFolder); Process.Start(new ProcessStartInfo("explorer.exe", CalibrationFolder) { UseShellExecute = true }); }
+        catch (Exception ex) { NoteError("Kalibrasyon klasörü", ex); }
+    }
+
+    private void CalibOption_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int i)) _calibAnswer?.TrySetResult(i);
+    }
+
+    private void CalibKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (CalibPanel.Visibility != Visibility.Visible) return;
+        int answer = e.Key switch
+        {
+            Key.D1 or Key.NumPad1 => 0, Key.D2 or Key.NumPad2 => 1, Key.D3 or Key.NumPad3 => 2,
+            Key.R => CalibReplay, Key.Escape => CalibQuit, Key.Enter or Key.Space => 1, _ => int.MinValue
+        };
+        if (answer == int.MinValue) return;
+        _calibAnswer?.TrySetResult(answer);
+        e.Handled = true;
+    }
+
+    private async Task<int> AwaitCalibAnswerAsync(CancellationToken token)
+    {
+        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _calibAnswer = tcs;
+        using (token.Register(() => tcs.TrySetCanceled()))
+        {
+            try { return await tcs.Task; }
+            finally { _calibAnswer = null; }
+        }
+    }
+
+    private void ShowCalibOptions(IReadOnlyList<string>? options)
+    {
+        CalibOptions.Visibility = options == null ? Visibility.Hidden : Visibility.Visible;
+        if (options == null) return;
+        CalibOptText0.Text = options[0]; CalibOptText1.Text = options[1]; CalibOptText2.Text = options[2];
+    }
+
+    private async Task PlayCalibTrialAsync(CalibrationRig rig, CalTrial t, string progress, CancellationToken token)
+    {
+        ShowCalibOptions(null);
+        CalibProgress.Text = progress;
+        if (t.Second == null)
+        {
+            CalibQuestion.Text = "Dikkat…"; await Task.Delay(700, token);
+            CalibQuestion.Text = "● ÇALIYOR"; await rig.PlayAsync(t.First, token);
+        }
+        else
+        {
+            CalibQuestion.Text = "Dikkat…  (iki titreşim gelecek)"; await Task.Delay(700, token);
+            CalibQuestion.Text = "1"; await rig.PlayAsync(t.First, token);
+            CalibQuestion.Text = "…"; await Task.Delay(800, token);
+            CalibQuestion.Text = "2"; await rig.PlayAsync(t.Second, token);
+        }
+    }
+
+    /// <summary>Blind general calibration: shuffled locate and 1-or-2 trials, answered with X/A/B on the controller.
+    /// Raw data (JSON lines) and a summary are saved under %LOCALAPPDATA%\RW3ProNativeDSHaptics\calibration.</summary>
+    private async Task RunCalibrationAsync()
+    {
+        if (_busy || _starting) return;
+        _busy = true;
+        var token = BeginTest();
+        CalibPanel.Visibility = Visibility.Visible;
+        CalibSummary.Text = ""; ShowCalibOptions(null);
+        CalibrationRig? rig = null;
+        var results = new List<CalResult>();
+        CalCapabilities? caps = null;
+        bool saved = false;
+        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        void Save()
+        {
+            if (saved || results.Count == 0 || caps == null) return;
+            saved = true;
+            Directory.CreateDirectory(CalibrationFolder);
+            string raw = Path.Combine(CalibrationFolder, $"calibration-{stamp}.jsonl"), sum = Path.Combine(CalibrationFolder, $"calibration-{stamp}-ozet.txt");
+            File.WriteAllLines(raw, results.Select((r, i) => CalibrationScoring.ToJsonLine(i + 1, r)));
+            string text = CalibrationScoring.Summarize(results, caps);
+            File.WriteAllText(sum, text);
+            CalibSummary.Text = text;
+            CalibStatus.Text = $"Son kalibrasyon: {results.Count} deneme, {caps.Mode} modu → {sum}";
+            DiagnosticsService.Info("General calibration saved: " + raw + Environment.NewLine + text);
+        }
+        try
+        {
+            CalibProgress.Text = "Genel kalibrasyon testi";
+            CalibQuestion.Text = "Kol hazırlanıyor…";
+            await Task.Delay(500, token);                 // let the stopped modes release the devices
+            rig = await CalibrationRig.OpenAsync(token);
+            caps = rig.Caps;
+            if (!caps.Any)
+            {
+                CalibQuestion.Text = "Wolverine bulunamadı (PC ya da Xbox modunda bağlı olmalı). Çıkmak için Ⓐ.";
+                await AwaitCalibAnswerAsync(token);
+                return;
+            }
+            var plan = CalibrationPlan.Build(caps, Environment.TickCount);
+            string parts = string.Join(", ", new[] { caps.SensaPalms ? "avuçlar" : null, caps.SensaTriggers || caps.RumbleTriggers ? "tetikler" : null, caps.Body ? "saplar" : null }.Where(x => x != null));
+            CalibQuestion.Text = $"{caps.Mode} modu · {parts}\n{plan.Count} deneme, yaklaşık {Math.Ceiling(plan.Count * 8 / 60.0)} dakika.\n" +
+                                 "Kolu oyun oynar gibi iki elinle tut. Her denemede 3 seçenek değişir; bazen iki yer birden titrer.\nHazır olunca Ⓐ";
+            if (await AwaitCalibAnswerAsync(token) == CalibQuit) return;
+            for (int i = 0; i < plan.Count; i++)
+            {
+                var t = plan[i];
+                int replays = 0, answer;
+                double ms;
+                while (true)
+                {
+                    await PlayCalibTrialAsync(rig, t, $"Deneme {i + 1}/{plan.Count}", token);
+                    CalibQuestion.Text = t.Question;
+                    ShowCalibOptions(t.Options);
+                    var sw = Stopwatch.StartNew();
+                    answer = await AwaitCalibAnswerAsync(token);
+                    ms = sw.Elapsed.TotalMilliseconds;
+                    if (answer != CalibReplay) break;
+                    replays++;
+                }
+                if (answer == CalibQuit) break;
+                results.Add(new CalResult(t, answer, ms, replays));
+                ShowCalibOptions(null);
+                await Task.Delay(400, token);
+            }
+            Save();
+            CalibProgress.Text = "Bitti";
+            CalibQuestion.Text = results.Count > 0 ? "Sonuçlar kaydedildi. Kapatmak için Ⓐ" : "Hiç cevap yok. Kapatmak için Ⓐ";
+            await AwaitCalibAnswerAsync(token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { NoteError("Kalibrasyon", ex); CalibStatus.Text = "Kalibrasyon hatası: " + ex.Message; }
+        finally
+        {
+            try { Save(); } catch (Exception ex) { NoteError("Kalibrasyon kaydı", ex); }
+            rig?.Dispose();
+            CalibPanel.Visibility = Visibility.Collapsed;
+            _busy = false;
+            SetTestButtons(true);
+        }
+    }
+
 
     // ───────────────────────── Test: XInput (classic) + A/B ─────────────────────────
 

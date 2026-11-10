@@ -1000,6 +1000,31 @@ SpectralContracts.Run(Check);
     Check(folded && silent, "Direct USB: transient folded into nearest point (pos .7 → point 2), silent features send nothing");
 }
 {
+    // General calibration plan: blind, shuffled, 3 changing options, mixes, every locate stimulus twice, pairs in both orders.
+    var xbox = new CalCapabilities("Xbox", true, true, true, true);
+    var pc = new CalCapabilities("PC", true, false, false, true);
+    var px = CalibrationPlan.Build(xbox, 7); var pp = CalibrationPlan.Build(pc, 7);
+    var locX = px.Where(t => t.Kind == CalTrialKind.Locate).ToList();
+    bool optionsOk = px.All(t => t.Options.Count == 3 && t.Options.Distinct().Count() == 3)
+        && locX.All(t => t.Correct >= 0 && t.Options[t.Correct] == CalibrationPlan.Label(t.First));
+    bool twice = locX.GroupBy(t => t.Group).All(g => g.Count() == 2);
+    var cmp = px.Where(t => t.Kind != CalTrialKind.Locate).ToList();
+    bool bothOrders = cmp.GroupBy(t => t.Group).All(g => g.Count() == 2 && g.Count(t => t.FirstIsA) == 1);
+    bool mixes = locX.Any(t => t.First.Tones.Select(x => x.Actuator).Distinct().Count() == 2)
+        && locX.Any(t => t.Options[t.Correct].Contains(" + ")) && px.Any(t => t.Options.Contains(CalibrationPlan.Nothing) && t.Options[t.Correct] != CalibrationPlan.Nothing);
+    bool varied = locX.Select(t => string.Join("|", t.Options.OrderBy(o => o))).Distinct().Count() > locX.Count / 3;
+    bool pcNoTriggers = pp.All(t => !t.First.Tones.Concat(t.Second?.Tones ?? Array.Empty<CalTone>())
+        .Any(x => x.Actuator is CalActuator.TriggerLeft or CalActuator.TriggerRight));
+    bool shuffled = !px.Select(t => t.Group).SequenceEqual(CalibrationPlan.Build(xbox, 8).Select(t => t.Group));
+    // Scoring: a perfect locate run scores 100 %, a pair answered "A" in both orders resolves to A.
+    var answers = px.Select(t => new CalResult(t, t.Kind == CalTrialKind.Locate ? t.Correct : (t.FirstIsA ? 0 : 1), 900, 0)).ToList();
+    string calSummary = CalibrationScoring.Summarize(answers, xbox);
+    bool scoring = calSummary.Contains($"KONUM: {locX.Count}/{locX.Count} doğru (%100)") && calSummary.Contains("→ Sensa tetik") && calSummary.Contains("NEREDEN → NEREYE");
+    bool json = CalibrationScoring.ToJsonLine(1, answers[0]).Contains("\"responseMs\":900");
+    Check(optionsOk && twice && bothOrders && mixes && varied && pcNoTriggers && shuffled && scoring && json,
+        $"General calibration plan: Xbox {px.Count} / PC {pp.Count} trials; options {optionsOk}, locate twice {twice}, pairs both orders {bothOrders}, mixes {mixes}, varied {varied}, PC no triggers {pcNoTriggers}, shuffled {shuffled}, scoring {scoring}, json {json}");
+}
+{
     // Xbox-mode Sensa frame (4 body parts). Vectors are the exact frames sent in the 2026-11-11 hardware tests, which the
     // emulated firmware decoder and the blind hand-held test confirmed (silence, left palm s32 @ P31, left trigger s32).
     static string Hex(byte[] f, int n) => Convert.ToHexString(f, 0, n);

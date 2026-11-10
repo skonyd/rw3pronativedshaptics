@@ -31,7 +31,7 @@ public static class SensaXboxFrameEncoder
     /// <summary>Encodes one frame; returns its length in bytes. Palms take up to 2 bands each; a PC band's 4 points
     /// fold into 2 (the larger of each half), so short peaks keep their strength.</summary>
     public static int Encode(ReadOnlySpan<SensaBand> left, ReadOnlySpan<SensaBand> right, SensaTransient? leftHit,
-        SensaTransient? rightHit, double triggerLeft, double triggerRight, Span<byte> frame)
+        SensaTransient? rightHit, double triggerLeft, double triggerRight, Span<byte> frame, int triggerPitch = TriggerPitch)
     {
         if (frame.Length < MaxFrameLength) throw new ArgumentException("frame buffer too small");
         frame.Slice(0, MaxFrameLength).Clear();
@@ -39,8 +39,8 @@ public static class SensaXboxFrameEncoder
         Put(frame, ref bit, Header, 7);
         Palm(frame, ref bit, left, leftHit);
         Palm(frame, ref bit, right, rightHit);
-        Trigger(frame, ref bit, triggerLeft);
-        Trigger(frame, ref bit, triggerRight);
+        Trigger(frame, ref bit, triggerLeft, triggerPitch);
+        Trigger(frame, ref bit, triggerRight, triggerPitch);
         return (bit + 7) / 8;
     }
 
@@ -101,10 +101,10 @@ public static class SensaXboxFrameEncoder
         return (int)Math.Round(TriggerFloor + Math.Clamp(strength, 0, 1) * (63 - TriggerFloor));
     }
 
-    private static void Trigger(Span<byte> f, ref int bit, double strength)
+    private static void Trigger(Span<byte> f, ref int bit, double strength, int pitch)
     {
         int s = TriggerLevel(strength);
-        Band(f, ref bit, s, s, s > 0 ? TriggerPitch : SilentPitch);
+        Band(f, ref bit, s, s, s > 0 ? Math.Clamp(pitch, 0, 127) : SilentPitch);
         Put(f, ref bit, 0, 1);   // end of the band list
         Put(f, ref bit, 0, 1);   // no transient
     }
