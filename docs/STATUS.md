@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-09. This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-10. This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## What the app does
@@ -39,12 +39,26 @@ Updated 2026-11-09. This page replaces reading the dated reports in order; they 
   - The controller exposes only a GIP device: no Razer HID, and Razer's haptics service sees no device.
   - GIP vendor messaging (`GipGameControllerProvider.SendMessage`) is reported not to work and Razer's GIP commands are undocumented, so we did not probe the firmware blindly.
 - Virtual DualSense input matched the Xbox pad in every readback report.
+- Trigger motor frequency (Xbox mode, GameInput, 2026-11-10, mic; 4 good runs, 2 orientations). The pitch follows the strength:
+  - Left trigger: ~130 Hz at 25 %, ~176 Hz at 50 %, ~234 Hz at 100 %.
+  - Right trigger: ~108 / ~150 / ~234 Hz.
+  - So the right motor turns slower at low and mid strength, and the two are equal at full.
+  - Level differences flipped with the pad's orientation, so they are mic placement. Averaged, the levels are equal except the right trigger at 25 % (~2.5 dB weaker).
+  - Body motors: big 76 Hz, small 188 Hz.
+  - A DualSense trigger frequency cannot be reproduced: only strength is commandable.
+- Xbox-mode audio option (2026-11-10): bass (< 120 Hz) → heavy motor, treble (> 300 Hz) → light motor. Mono, no left/right. Selectable and effective only while the controller is detected in Xbox mode. Unit-tested, not yet felt.
 
 ## Open / not verified
 
 - Xbox-mode trigger effects in the bridge after the GameInput input fix: software-checked, not yet felt by the user.
 - Xbox audio stereo fix (0346115): unit-tested, not yet felt by the user.
-- Transient record (last 3 bits) not decoded: hits are folded into strength points.
+- Transient records (2026-11-10): Direct USB now writes the decoded record (strength, 24, time, tail 100) for the first hit of a frame instead of folding it into the points. This is a setting, on by default.
+  Mic A/B (TestResults/transient-records-20261110, Standard, 5 repeats per scene, medians):
+  - Repeated hits: same peak (+24.3 dB) and same -6 dB width (80 ms). Better contrast between hits (p90/p50 +17.9 vs +15.6 dB).
+  - Character: energy moves from 120 Hz (×21 vs ×27) to 190 Hz (×5.3 vs ×2.0), a crisper click.
+  - First hit after silence: ~4.5 dB weaker and ~10 ms later.
+  - Mixed and stereo scenes: unchanged.
+  - Not a clear mic win, so the feel decides (Ayarlar → "vuruşları darbe kaydı olarak gönder"). The `101` tail is still not reproduced.
 - Spectral history: multi-resolution since 2026-11-09. Components >= 60 Hz come from a 42.7 ms window, the bass from 85.3 ms. The 240-case audit passes 240/240 (max 0.36 Hz error); the plain 2048 window failed 55 cases. Hybrid enters multiband after 21.3 ms + 2 steady frames. Mic comparison 2026-11-09, Direct USB, 45 cases (TestResults/multires-physical-20261109), medians:
   - Mixed 80+190 Hz, Hybrid: 80 Hz ×13.6, 190 Hz ×10.9, wrong band ×2.2.
   - Multiband: onset in the first 300 ms +4.1 dB (old run ≈0); short hits +9.8 dB (old run +6 dB).
@@ -53,6 +67,7 @@ Updated 2026-11-09. This page replaces reading the dated reports in order; they 
 - Mode orchestration is in `HapticOrchestrator` (decisions in `HapticModePolicy`, contract-tested).
   `MainWindow.xaml.cs` is still large (~1,860 lines). The next split candidates are the test/simulator page and the settings page.
 - YouTube seek recovery (audio mode) unresolved; see the dated reports.
+- GameInput output dropouts (2026-11-10): in the standalone probe, some 1.5 s windows had no trigger or body vibration at all, then output recovered. One run went silent for the rest. Xbox Game Bar was running. Not seen in the app yet. Cause unknown (focus policy suspected).
 
 ## Code map
 

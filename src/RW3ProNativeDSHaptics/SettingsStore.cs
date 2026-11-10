@@ -36,6 +36,8 @@ public sealed class UserSettings
     /// <summary>Audio mode, Xbox mode only: bass → heavy motor, treble → light motor (instead of left/right).
     /// Ignored while the controller is in PC mode.</summary>
     public bool XboxBassTreble { get; set; }
+    /// <summary>Direct USB: hits as real Sensa transient records (true) or folded into strength points (false).</summary>
+    public bool DirectTransientRecords { get; set; } = true;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
 }

@@ -76,8 +76,8 @@ pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two reco
 - Silence frame = all strengths 0, band-1 pitch P 6 (50 Hz). Synapse sends nothing at rest, but
   the controller keeps playing the last frame, so a direct sender must end with silence frames.
 - Transient record (24 bit): strength 6 = floor(a*63), pitch 7, time 8 (0.5 ms units within the
-  frame), then 3 bits `10x` whose last bit is not understood yet. RW3 does not write records;
-  it folds hits into the nearest strength point instead (measured as strong as Synapse's hits).
+  frame), then 3 bits `10x` whose last bit is not understood yet. Since 2026-11-10 RW3 writes one
+  record per hand for the frame's first hit (setting; off = folded into the nearest strength point).
 
 ## What this enables
 

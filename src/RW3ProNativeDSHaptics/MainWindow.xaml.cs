@@ -123,6 +123,8 @@ public partial class MainWindow : Window
             _ => AudioProfileExisting
         }).IsChecked = true;
         XboxBassTreble.IsChecked = _settings.XboxBassTreble;
+        SensaStereoPrototype.DirectTransientRecords = _settings.DirectTransientRecords;
+        DirectTransientRecords.IsChecked = _settings.DirectTransientRecords;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
         XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
         XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
@@ -396,6 +398,14 @@ public partial class MainWindow : Window
     {
         try { ApplyPadModeOptions(await Task.Run(WolverineModeControl.Detect)); }
         catch (Exception ex) { NoteError("Kol modu", ex); }
+    }
+
+    private void DirectTransientRecords_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.DirectTransientRecords = DirectTransientRecords.IsChecked == true;
+        SensaStereoPrototype.DirectTransientRecords = _settings.DirectTransientRecords;   // read every frame: applies live
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Darbe kaydı", ex); }
     }
 
     private void XboxBassTreble_Changed(object sender, RoutedEventArgs e)
