@@ -517,10 +517,10 @@
               <RadioButton x:Name="TriggerFeelClassic" Content="Klasik (yalnız haptik)" Tag="0" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="170" Checked="TriggerFeel_Checked"
                            ToolTip="Tetik motorları kullanılmaz; tetik hissi de gövde titreşimiyle verilir (PC modundaki gibi)."/>
             </WrapPanel>
-            <CheckBox x:Name="XboxSensaOutput" Content="Xbox modu: haptiği avuçlarda (Sensa), tetik efektlerini aynı karede tetik motorlarında çal" Foreground="#EEF3FF"
+            <CheckBox x:Name="XboxSensaOutput" Content="Xbox modunda Sensa: avuçlar + tetik motorları (tüm modlar)" Foreground="#EEF3FF"
                       Checked="XboxSensa_Changed" Unchecked="XboxSensa_Changed"
                       AutomationProperties.Name="Xbox modunda Sensa"/>
-            <TextBlock Text="Razer'ın Xbox kanalı (GIP) üzerinden: oyunun DualSense haptiği avuçlara, tetik efektleri tetik motorlarına gider; oyunun normal titreşimi gövde motorlarında kalır. Kör testle doğrulandı (avuç + tetik). Kapalıyken eski davranış: haptik gövde motorlarında, tetikler GameInput ile." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
+            <TextBlock Text="Razer'ın Xbox kanalı (GIP) üzerinden, kol Xbox modundayken PC modundaki gibi avuçlarda Sensa: Oyunun DualSense titreşimi → haptik avuçlara, tetik efektleri tetik motorlarına (Sensa + GameInput birlikte, silahta kırılmaya kadar artan titreşim). Sesten titreşim → avuçlar. Demolar ve motor testi → avuçlar. Oyunun normal titreşimi gövde motorlarında kalır. Kör test ve kalibrasyonla doğrulandı. Kapalıyken eski davranış: haptik ve ses gövde motorlarında, tetikler yalnız GameInput ile." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
             <CheckBox x:Name="BigMotorCeiling" Content="Kol masadayken büyük motoru tıklamadan sınırla (en fazla %75)" Foreground="#EEF3FF"
                       Checked="BigMotorCeiling_Changed" Unchecked="BigMotorCeiling_Changed"
                       AutomationProperties.Name="Büyük gövde motorunu sınırla"/>

@@ -8,7 +8,7 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 | Mode (main window) | Source | Wolverine in PC mode (1532:0A4C) | Wolverine in Xbox mode (1532:0A3F) |
 | --- | --- | --- | --- |
 | Normal | game's own Xbox rumble | game → body motors | game → body + trigger motors |
-| Sesten titreşim | PC audio (WASAPI loopback) | Sensa palms, stereo | body motors, stereo (left motor ← left channel) |
+| Sesten titreşim | PC audio (WASAPI loopback) | Sensa palms, stereo | Sensa palms over GIP, stereo (setting "Xbox modunda Sensa", default on; off: body motors, left motor ← left channel) |
 | Oyunun DualSense titreşimi | game's DualSense output via the virtual DualSense (HIDMaestro) or a USB DualSense | haptic PCM → Sensa palms; trigger effects → body motors | haptic PCM → Sensa palms and trigger effects → trigger motors, in one Sensa frame over GIP (setting; off: body motors + GameInput impulse) |
 
 - **Sensa without Synapse:** own frame encoder + HID feature report 4 ("Direct USB"), over the cable and the HyperSpeed dongle.
@@ -44,7 +44,9 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
   - Firmware 2.04.00 (read from Razer's updater without running it, 2026-11-10): the haptics MCU has two Sensa descriptors. In PC mode it reports 2 body parts (palms 216/116, 3 bands, 4 points, 30–400 Hz); otherwise (Xbox mode) 4 body parts (palms with 2 bands / 2 points, 20–300 Hz, plus 249 and 149, 0–300 Hz, resonance 20 Hz, probably the trigger motors). Selected by one config flag at boot. The descriptor is read with Razer class 0x16 cmd 0x90 (length) / 0x91 (offset, 0x4D-byte chunks). So the firmware supports palms + triggers as one haptic stream in Xbox mode, but no Windows route to that stream is known.
 - Sensa in Xbox mode: **in the app since 2026-11-11 (dba5a26), setting on by default; not yet felt through a game or the simulator** (docs/research/XBOX_MODE_HAPTICS_ROUTE.md).
   - "Oyunun DualSense titreşimi" in Xbox mode: the game's haptic PCM → palms. Trigger effects → trigger motors, both in the Sensa frame over GIP and on GameInput's impulse channels (the calibration rated both together better, E-20261111-07). The game's normal rumble stays on the body motors (GameInput). Setting off = previous routing.
-  - Trigger strength: values above 0 start at 16/63 (felt threshold), and clicks last 160 ms (E-20261111-06).
+  - Trigger strength: values above 0 start at 16/63 (felt threshold), and clicks last 160 ms (E-20261111-06). Resistance runs at 85 % (user: 45 % too weak).
+  - Weapon and bow effects (all modes): the vibration rises from 40 % at the zone start to 100 % at the break point, then a strong click, then nothing, like a stiffening trigger that breaks. No physical resistance: the Wolverine's triggers only vibrate.
+  - The same setting also sends Xbox-mode Native v2 demos and the Wolverine motor test to the palms through Sensa (2026-11-11).
   - One Sensa frame drives **palms and trigger motors together**: body parts 216/116 = left/right palm, 249/149 = left/right trigger motor. Confirmed by a blind hand-held test (E-20261111-04).
   - The route: Razer packets tunnelled in GIP message 0x0F, answers in 0x10. Our app can send them through `Windows.Gaming.Input.Custom` (interface `{AAE22FB7-…}`).
   - Read-only so far: in Xbox mode the controller answers Sensa class 0x16 and serves a 4-body-part descriptor (palms + 249/149, probably the triggers; 2 bands / 2 points).

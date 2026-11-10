@@ -138,8 +138,10 @@ public sealed class HapticOrchestrator
             combined.IncludeGameRumble = IncludeXboxGameRumble();
             combined.IncludeGameTriggers = IncludeXboxGameTriggers();
         }
-        else if (AudioRoute == WolverineMode.Pc)
+        else if (AudioRoute == WolverineMode.Pc || (AudioRoute == WolverineMode.Xbox && XboxSensa.Enabled && profile == AudioHapticProfile.Existing))
         {
+            // PC mode: Sensa over USB. Xbox mode (XboxSensa): the same engine reaches the palms over GIP, and the
+            // calibration rated palms better than body rumble (E-20261111-07). The game's own rumble/triggers stay its own.
             await _bridge.StartAudioToSensaAsync(profile: profile);
             if (Superseded(mode) || !_settings.AudioOutputEnabled || profile != _settings.AudioProfile) { _bridge.Stop(); return false; }
         }
@@ -223,7 +225,7 @@ public sealed class HapticOrchestrator
         bool audioAlive = AudioRoute switch
         {
             WolverineMode.Pc => _bridge.IsAudioToSensaRunning,
-            WolverineMode.Xbox => CombinedXbox?.IsRunning ?? (XboxAudio?.IsCapturing == true),
+            WolverineMode.Xbox => CombinedXbox?.IsRunning ?? XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
             _ => XboxAudio?.IsCapturing ?? _rumble.Snapshot().IsCapturing
         };
         if (Run == RunState.Audio && !audioAlive)
@@ -231,7 +233,7 @@ public sealed class HapticOrchestrator
             LastError = (AudioRoute switch
             {
                 WolverineMode.Pc => _bridge.AudioFailure,
-                WolverineMode.Xbox => CombinedXbox?.Failure ?? XboxAudio?.Failure,
+                WolverineMode.Xbox => CombinedXbox?.Failure ?? XboxAudio?.Failure ?? _bridge.AudioFailure,
                 _ => XboxAudio?.Failure ?? _rumble.Snapshot().LastError
             }) ?? "Ses yakalama beklenmedik biçimde durdu.";
             StopOutputs();

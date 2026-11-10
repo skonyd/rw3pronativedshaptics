@@ -381,7 +381,9 @@ public partial class MainWindow : Window
         PadModeText.Text = (note != null ? note + Environment.NewLine : "") + m switch
         {
             WolverineControllerMode.Pc => "PC modu: avuçlarda Sensa HD titreşim; DualSense tetik efektleri gövde motorlarında. Tetiklerin içinde hissetmek için Xbox moduna geç.",
-            WolverineControllerMode.Xbox => "Xbox modu: DualSense tetik efektleri tetik motorlarında, titreşim sesi gövde motorlarında (bu modda Sensa yok). " + WolverineModeControl.PcComboHint,
+            WolverineControllerMode.Xbox => XboxSensa.Enabled
+                ? "Xbox modu: avuçlarda Sensa (Razer GIP kanalı) + tetik motorları; DualSense tetik efektleri tetiklerin içinde, titreşim sesi avuçlarda. " + WolverineModeControl.PcComboHint
+                : "Xbox modu ('Xbox modunda Sensa' kapalı): tetik efektleri tetik motorlarında, titreşim sesi gövde motorlarında. " + WolverineModeControl.PcComboHint,
             _ => "Kol bulunamadı (kablo ya da alıcıyla bağlı ve açık olmalı)."
         };
         PadModeXboxBtn.IsEnabled = m == WolverineControllerMode.Pc && !_padModeBusy;
@@ -397,9 +399,11 @@ public partial class MainWindow : Window
     {
         _padMode = m;
         bool xbox = m == WolverineControllerMode.Xbox;
-        XboxBassTreble.IsEnabled = xbox;
+        XboxBassTreble.IsEnabled = xbox && !XboxSensa.Enabled;
         XboxBodyEnvelope.Preferred = xbox && _settings.XboxBassTreble ? XboxMotorSplit.BassTreble : XboxMotorSplit.Stereo;
-        XboxBassTrebleHint.Text = xbox
+        XboxBassTrebleHint.Text = xbox && XboxSensa.Enabled
+            ? "Xbox modunda ses avuçlara (Sensa) gidiyor; bu seçenek yalnız 'Xbox modunda Sensa' kapalıyken gövde motorlarını böler."
+            : xbox
             ? (_settings.XboxBassTreble
                 ? "Açık: bas (< 120 Hz) büyük/ağır motorda, tiz (> 300 Hz) küçük motorda. Sol/sağ yön yok."
                 : "Kapalı: sol motor sol kanalı, sağ motor sağ kanalı izler (sol/sağ yön).")
@@ -446,6 +450,9 @@ public partial class MainWindow : Window
         _settings.XboxSensa = XboxSensaOutput.IsChecked == true;
         XboxSensa.Enabled = _settings.XboxSensa;   // the engine drops or picks up the GIP route within ~1 s
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox modu Sensa", ex); }
+        ApplyPadModeOptions(_padMode);
+        // Audio mode picks its output (palms or body) when it starts: restart it so the new choice applies.
+        if (ModeAudio.IsChecked == true && _run == RunState.Audio) { _orch.StopOutputs(); _orch.ResetRetry(); _ = EnsureModeRunningAsync(); }
         DiagnosticsService.Info("Xbox-mode Sensa (palms + trigger motors over GIP): " + _settings.XboxSensa + ".");
     }
 
@@ -772,7 +779,9 @@ public partial class MainWindow : Window
         switch (r.Mode)
         {
             case WolverineControllerMode.Pc: SetState(DotWolverine, HintWolverine, GoodBrush, "PC modunda: avuçta Sensa HD titreşim."); break;
-            case WolverineControllerMode.Xbox: SetState(DotWolverine, HintWolverine, GoodBrush, "Xbox modunda: tetik motorları var, Sensa yok. " + WolverineModeControl.PcComboHint); break;
+            case WolverineControllerMode.Xbox: SetState(DotWolverine, HintWolverine, GoodBrush, XboxSensa.Enabled
+                ? "Xbox modunda: avuçta Sensa (GIP) + tetik motorları."
+                : "Xbox modunda: tetik motorları var; Sensa ayarı kapalı. " + WolverineModeControl.PcComboHint); break;
             default: SetState(DotWolverine, HintWolverine, BadBrush, "Bulunamadı. Kolu kablo ya da kendi alıcısıyla bağla ve aç."); break;
         }
         if (r.Mode == WolverineControllerMode.Pc)
@@ -937,20 +946,21 @@ public partial class MainWindow : Window
                 string route = _audioRoute switch
                 {
                     WolverineMode.Pc => "PC modu → Sensa motorları (sol/sağ, v2)",
-                    WolverineMode.Xbox => _combinedXbox != null ? $"Sanal Xbox · oyun geri bildirim raporu: {_combinedXbox.FeedbackReports}" : "Xbox modu → yalnız gövde motorları",
+                    WolverineMode.Xbox => _combinedXbox != null ? $"Sanal Xbox · oyun geri bildirim raporu: {_combinedXbox.FeedbackReports}"
+                        : _xboxAudio != null ? "Xbox modu → gövde motorları" : "Xbox modu → Sensa avuçlar (GIP, sol/sağ)",
                     _ => "Klasik Xbox titreşimi"
                 };
                 bool sound = _audioRoute switch
                 {
                     WolverineMode.Pc => _bridge.AudioHasRecentSound,
-                    WolverineMode.Xbox => _combinedXbox?.HasRecentSound ?? (_xboxAudio?.HasRecentSound == true),
+                    WolverineMode.Xbox => _combinedXbox?.HasRecentSound ?? _xboxAudio?.HasRecentSound ?? _bridge.AudioHasRecentSound,
                     _ => _xboxAudio?.HasRecentSound ?? (snap.LastActiveSoundTick > 0 && Environment.TickCount64 - snap.LastActiveSoundTick < 3000)
                 };
                 StatusTitle.Text = running ? "Sesten titreşim çalışıyor" : "Sesten titreşim";
                 StatusDetail.Text = running
                     ? route + " • " + (sound ? "ses algılanıyor." : "şu an ses yok veya çok sessiz. Ses kaydedilmez.")
                     : waitText;
-                ModeNote.Text = "Ses yalnız gövde titreşimi üretir: PC modunda Sensa, Xbox modunda ana motorlar. Tetiklere ses komutu gönderilmez. " +
+                ModeNote.Text = "Ses yalnız avuç/gövde titreşimi üretir: PC modunda Sensa, Xbox modunda da Sensa ('Xbox modunda Sensa' kapalıysa ana motorlar). Tetiklere ses komutu gönderilmez. " +
                                 "Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.";
                 SetBadge(running ? GoodBrush : WarnBrush, running ? "Çalışıyor" : "Bekliyor");
                 break;
@@ -1237,7 +1247,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                var route = DemoRoutePolicy.Choose(throughBridge, throughBridge ? WolverineControllerMode.NotFound : await Task.Run(WolverineModeControl.Detect));
+                var route = DemoRoutePolicy.Choose(throughBridge, throughBridge ? WolverineControllerMode.NotFound : await Task.Run(WolverineModeControl.Detect), XboxSensa.Enabled);
                 var pcm = DualSenseChannelFixtures.Build(new ChannelLabScene("demo:" + demo, NativeDemoSignals.Title(demo), demo));
                 var (l, r) = DemoRoutePolicy.HapticChannels(pcm);
                 switch (route)
@@ -1315,12 +1325,12 @@ public partial class MainWindow : Window
     private async Task RunSensaTestAsync(HapticTestChannel? side)
     {
         if (DevXbox.IsChecked == true) { await RunXInputTestAsync(side); return; }
-        // Xbox mode has no Sensa: test what the controller does have instead of failing with a USB error.
-        if (DevWolverine.IsChecked == true && !_busy && !_starting &&
+        // Xbox mode without the XboxSensa setting has no Sensa route: test the body motors instead of failing.
+        if (DevWolverine.IsChecked == true && !_busy && !_starting && !XboxSensa.Enabled &&
             await Task.Run(WolverineModeControl.Detect) == WolverineControllerMode.Xbox)
         {
             await RunXInputTestAsync(side);
-            SensaTestStatus.Text = "Kol Xbox modunda: bu modda Sensa yok, gövde motorları test edildi. " + WolverineModeControl.PcComboHint;
+            SensaTestStatus.Text = "Kol Xbox modunda ve 'Xbox modunda Sensa' ayarı kapalı: gövde motorları test edildi.";
             return;
         }
         if (_busy || _starting) return;

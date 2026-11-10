@@ -17,16 +17,17 @@ public enum DemoRoute
 
 public static class DemoRoutePolicy
 {
-    public static DemoRoute Choose(bool bridgeRunning, WolverineControllerMode mode) =>
+    /// <param name="xboxSensa">Xbox mode can reach the palms through Sensa over GIP (setting XboxSensa).</param>
+    public static DemoRoute Choose(bool bridgeRunning, WolverineControllerMode mode, bool xboxSensa = false) =>
         bridgeRunning ? DemoRoute.VirtualBridge
         : mode == WolverineControllerMode.Pc ? DemoRoute.Sensa
-        : mode == WolverineControllerMode.Xbox ? DemoRoute.XboxBody
+        : mode == WolverineControllerMode.Xbox ? (xboxSensa ? DemoRoute.Sensa : DemoRoute.XboxBody)
         : DemoRoute.NoController;
 
     public static string Describe(DemoRoute route) => route switch
     {
         DemoRoute.VirtualBridge => "sanal köprü üzerinden (oyun gibi)",
-        DemoRoute.Sensa => "Sensa (PC modu)",
+        DemoRoute.Sensa => "Sensa avuçlar",
         DemoRoute.XboxBody => "gövde motorları (Xbox modu)",
         _ => "kol bulunamadı"
     };

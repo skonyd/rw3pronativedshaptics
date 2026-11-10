@@ -1916,6 +1916,7 @@ SpectralContracts.Run(Check);
         && DemoRoutePolicy.Choose(true, WolverineControllerMode.Pc) == DemoRoute.VirtualBridge
         && DemoRoutePolicy.Choose(false, WolverineControllerMode.Pc) == DemoRoute.Sensa
         && DemoRoutePolicy.Choose(false, WolverineControllerMode.Xbox) == DemoRoute.XboxBody
+        && DemoRoutePolicy.Choose(false, WolverineControllerMode.Xbox, xboxSensa: true) == DemoRoute.Sensa
         && DemoRoutePolicy.Choose(false, WolverineControllerMode.NotFound) == DemoRoute.NoController;
     var pcm = new byte[3 * 8];                                   // 3 frames, 4 ch PCM16: ch3 = left haptic, ch4 = right
     BitConverter.TryWriteBytes(pcm.AsSpan(0 * 8 + 4), (short)16384); BitConverter.TryWriteBytes(pcm.AsSpan(1 * 8 + 6), (short)-32768);
