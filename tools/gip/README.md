@@ -20,3 +20,8 @@ byte 59 = 0. The data area therefore ends at byte 57: ask for at most 47 bytes p
 Rules (AGENTS.md, `docs/research/README.md`):
 - Extend the allow list only with commands that Razer software itself was seen sending.
 - Any write needs the user's consent and a row in `docs/research/EXPERIMENTS.md`.
+
+`GipSensaBlind` (writes, with the user's consent; 2026-11-11) sends Xbox-mode Sensa frames: Razer class 0x16
+cmd 0x0E `[01, frame]` in GIP 0x0F, in the 4-body-part layout of `docs/SENSA_USB_PROTOCOL.md`. It mixes them
+with GameInput reference rumble in a shuffled blind test and logs stimulus and answer to `result.txt`. It sends
+silence frames between trials and on exit.

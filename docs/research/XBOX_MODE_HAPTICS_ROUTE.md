@@ -97,7 +97,16 @@ Route A steps 1–3 are done, all with read-only commands:
 
 Tools: [`tools/gip/`](../../tools/gip/README.md).
 
-## Next step
+## Result, 2026-11-11: step 4 works
+
+- The frame layout was decoded in emulation (E-20261111-01).
+- The first writes reached the controller (E-20261111-03).
+- A blind hand-held test mapped the body parts (E-20261111-04): 216/116 = palms, 249/149 = left/right trigger
+  motors.
+- Palms and triggers are driven by **one** Sensa frame in Xbox mode, from a normal desktop app, without Synapse.
+- Tools: `tools/gip/GipSensaBlind`.
+
+## Former next step (done)
 
 Step 4 is a **write**: a Sensa frame (0x16/0x0E) through the same wrapper. It needs:
 1. The **4-body-part frame layout**. The PC layout is 2 hands × 3 bands × 4 points. The Xbox descriptor says

@@ -92,7 +92,7 @@ Source: the firmware's Xbox-mode decoder (0xEF50 in `Dev2FW`), run in an ARM emu
 ([tools/firmware/emulate_decoder.py](../tools/firmware/emulate_decoder.py)) and verified with an encoder whose
 frames decode field by field. The controller selects this decoder when it is in Xbox mode. The frame travels
 in the same Razer command (class 0x16, cmd 0x0E, arg 0x01 + frame), tunnelled in GIP message 0x0F
-(docs/research/XBOX_MODE_HAPTICS_ROUTE.md). Not yet sent to a controller.
+(docs/research/XBOX_MODE_HAPTICS_ROUTE.md). **Works on the controller since 2026-11-11** (E-20261111-03/04).
 
 ```
 7 bits   header (0111100 as in PC mode; its value sets the point spacing: points at 0 and 60)
@@ -104,8 +104,8 @@ pad with 0 to the byte
 ```
 
 - Palms: pitch is mapped like PC mode (30 + p·370/127 Hz), and strength is a·32767/63.
-- Body parts 249/149 (probably the trigger motors): pitch and strength are stored raw (7 / 6 bits). Their
-  meaning on the actuator is not known yet.
+- Body parts 249/149 are the **left/right trigger motors** (blind test, E-20261111-04). Pitch and strength are
+  stored raw (7 / 6 bits). Strength raises level and motor speed. The effect of the pitch field is not measured yet.
 - Sizes:
   - Smallest frame: header + four 0 flags pairs = 15 bits, so 2 bytes.
   - All 4 body parts with 1 band and no hits: 7 + 2·(28+1) + 2·(28+1) = 123 bits, 16 bytes.

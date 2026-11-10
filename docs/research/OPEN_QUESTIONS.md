@@ -17,16 +17,21 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   - A third-party app gets the GIP provider.
   - Razer packets tunnel in GIP 0x0F/0x10, and our app can send them.
   - Sensa class 0x16 answers in Xbox mode and serves the 4-body-part descriptor (E-20261110-13..16).
-- **Next step:** Q2 is solved. With the user's consent, write a first Sensa frame through the tunnel: a silence
-  frame, then a short weak pulse on one body part at a time (216, 116, 249, 149), with the mic running.
+- **Answered 2026-11-11:** yes. One Xbox-mode Sensa frame drives the palms (216/116) and the trigger motors (249/149)
+  (E-20261111-03/04).
+- **Next step:** build it into the app as an Xbox-mode output:
+  - DualSense haptic PCM → palms.
+  - Trigger effects → 249/149.
+  - Keep the GIP send path at ≥ 11 ms per frame.
+  - Silence on stop.
 - **Details:** [XBOX_MODE_HAPTICS_ROUTE.md](XBOX_MODE_HAPTICS_ROUTE.md)
 
 ## Q2. Bit layout of the 4-body-part Sensa frame (closed 2026-11-11)
 
 - **Answer:** solved by emulating the firmware decoder (E-20261111-01). Layout in
   [SENSA_USB_PROTOCOL.md](../SENSA_USB_PROTOCOL.md), section "Xbox mode frame".
-- **Still open:** what the raw pitch / strength values of body parts 249/149 do on the trigger motors. Answer on
-  hardware with the first write test (Q1).
+- **Still open:** how the raw pitch field of 249/149 changes the trigger motors. Strength clearly raises level and
+  speed. Measure with the mic held close.
 
 ## Q3. Hum suppression hurts hits at low volume (-12 dB)
 
