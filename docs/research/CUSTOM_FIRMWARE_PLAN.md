@@ -55,6 +55,7 @@ Findings go to [EXPERIMENTS.md](EXPERIMENTS.md) as usual. This page keeps the pl
 | --- | --- | --- |
 | 2026-11-11 | Plan written | — |
 | 2026-11-11 | Phase 0: updater decompiled (ILSpy, `WolverineV3ProCFU.exe`) | See the findings below. |
+| 2026-11-11 | G0: native updater disassembled; brick reports read | Bootloader 1532:110E, erase 0x8000–0x37800, no recovery without a booting app → hardware (SWD) recovery needed |
 
 ## Phase 0 findings so far (static)
 
@@ -81,11 +82,36 @@ Findings go to [EXPERIMENTS.md](EXPERIMENTS.md) as usual. This page keeps the pl
   the console's headset audio therefore passes through the NXP MCU, the same chip that drives Sensa, so a
   wired-only first version may need just one chip patched. To be confirmed in phase 1.
 
-## Open for G0
+## G0 result (2026-11-11): software rollback only while the stock app boots
 
-1. Disassemble `Controller_Update_Lib` (`Bootloader_110E` path):
-   - the bootloader entry command;
-   - the bootloader PID;
-   - the exact `DFUErase` range, to prove that the bootloader area is never erased.
-2. Find out whether the bootloader can be entered by hand (a button held at plug-in) when the app does not run.
-   This needs the device or Razer support documentation.
+From `Controller_Update_Lib.dll` (x86 disassembly, `upgrade_firmware_process` → `Bootloader_110E` path):
+- **Entering the bootloader** (from the running app, Xbox mode):
+  - The updater sends the Razer packet **class 0x00, cmd 0x04, arg [0x01]** over WinUSB raw GIP, in the same 0x0F
+    tunnel and XOR format as Razer Controller Setup for Xbox.
+  - It waits 1 s, then opens the **bootloader as 1532:110E**: HID, 91-byte reports.
+  - This PC already has the WinUSB 0A3F interface of this controller registered (an earlier official update), so
+    the tooling works here.
+- **Erase range:** class **0x10 cmd 0x01** with [start, end] taken from the HEX file: start = the first data
+  record, end = the last record's end. For `Dev2FW` that is **0x8000–0x37800**. The bootloader (0x0000–0x7FFF) is
+  never erased by the official tool. Programming and verification follow in 0x10-class packets.
+- **Recovery when the app does not run: none known.**
+  - Razer Insider reports controllers that stayed dead after a controller update failed at ~50 %: no response on
+    Xbox, Windows or macOS, and no recovery posted.
+  - That is the state of a half-written app region. So the bootloader evidently does not come up by itself when
+    the app is invalid, or not in a way users or the updater can use.
+  - No documented button combo enters it.
+- **Consequence for the plan:**
+  - Any custom image that fails to boot, or any interrupted flash, very likely **bricks the controller with no
+    software way back**.
+  - The dormant-patch design limits *run-time* bugs, but not a boot-time mistake or a power loss during the flash.
+  - A real rollback needs **hardware access**. The NXP MCU has an SWD debug port: open the controller, find the
+    SWD pads, and connect a probe (MCU-Link / J-Link). The CMPA/debug-lock state is unknown until tried. Or accept
+    the risk with a spare controller.
+
+**G0 status: passed for knowledge, failed for safety.** Software rollback exists only while the stock app boots. G1
+and G3 must not proceed without a hardware recovery path (SWD verified, flash backup read out) or the user's explicit
+acceptance of a likely brick.
+
+Sources:
+- https://insider.razer.com/razer-support-45/issue-with-razer-wolverine-pro-v3-firmware-update-75788
+- https://insider.razer.com/razer-support-45/wolverine-w3-pro-doesn-t-start-after-update-failure-75841
