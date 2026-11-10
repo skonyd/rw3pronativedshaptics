@@ -38,6 +38,7 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 - Sensa in Xbox mode: no route.
   - The controller exposes only a GIP device: no Razer HID, and Razer's haptics service sees no device.
   - GIP vendor messaging (`GipGameControllerProvider.SendMessage`) is reported not to work and Razer's GIP commands are undocumented, so we did not probe the firmware blindly.
+  - The controller's GIP headset audio (endpoint "Kulaklıklar (Xbox Controller)") does not drive Sensa. Tested 2026-11-10: tones at 40–1000 Hz, with and without a headset in the 3.5 mm jack. The audio reached the headset, but the controller did not vibrate (felt by the user, and no tone peak at the mic without a headset).
 - Virtual DualSense input matched the Xbox pad in every readback report.
 - Trigger motor frequency (Xbox mode, GameInput, 2026-11-10, mic; 4 good runs, 2 orientations). The pitch follows the strength:
   - Left trigger: ~130 Hz at 25 %, ~176 Hz at 50 %, ~234 Hz at 100 %.
