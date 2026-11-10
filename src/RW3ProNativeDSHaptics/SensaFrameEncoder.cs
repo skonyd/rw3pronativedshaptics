@@ -19,8 +19,10 @@ public readonly record struct SensaTransient(double Strength, double Position);
 /// "transient record follows" (0 here); padded to 41 bytes. p is 0..1 linear over 30–400 Hz.
 /// Band 1 is the plain signal; bands 2–3 carry extra spectral components (what HAR's multi-melody
 /// .haps produce). Verified byte-exact against 1696 HAR-rendered frames (single- and multi-band).
-/// Transient record (decoded 2026-11-09 from HAR renders): strength 6 = ⌊a·63⌋, a constant 7-bit field 24,
-/// time 8 = 2·round(position·33) (whole ms, 0.5 ms units), tail 3 = 100. One record per hand at most
+/// Transient records, as the firmware 2.04.00 decoder reads them (emulated, 2026-11-10, docs/FIRMWARE_ANALYSIS_20261110.md):
+/// a list of up to 2 per hand, each = flag 1 + strength 6 (⌊a·63⌋) + pitch 7 (24 ≈ 100 Hz) + time 7 (ms in the frame),
+/// ended by a 0 flag when shorter than 2. The older layout from HAR renders (time 8 + tail 100) put 3 extra bits
+/// after the record, which shifted the right hand when the left hand had a hit. One record per hand at most
 /// (frame 44 bytes with one, 47 with two). HAR does not fold the hit into the strength points.
 /// </summary>
 public static class SensaFrameEncoder
@@ -28,11 +30,11 @@ public static class SensaFrameEncoder
     public const int FrameLength = 41, BlockLength = 19, Points = 4;
     /// <summary>Largest frame: one transient record per hand.</summary>
     public const int MaxFrameLength = 47;
-    public const int TransientType = 24, TransientTail = 0b100;
+    public const int TransientType = 24;
 
-    /// <summary>Transient time field: whole milliseconds within the 33 ms frame, in 0.5 ms units.</summary>
+    /// <summary>Transient time field (7 bits): whole milliseconds within the 33 ms frame.</summary>
     public static int TransientTime(double position) =>
-        2 * (int)Math.Round(Math.Clamp(double.IsFinite(position) ? position : 0, 0, 1) * 33, MidpointRounding.AwayFromZero);
+        (int)Math.Round(Math.Clamp(double.IsFinite(position) ? position : 0, 0, 1) * 33, MidpointRounding.AwayFromZero);
     public const byte Header = 0x79, Separator = 0x01;
     public const double MinHz = 30, MaxHz = 400;
 
@@ -84,8 +86,8 @@ public static class SensaFrameEncoder
             Put(frame, ref bit, 1, 1);   // transient record follows
             Put(frame, ref bit, Quantize6(h.Strength), 6);
             Put(frame, ref bit, TransientType, 7);
-            Put(frame, ref bit, TransientTime(h.Position), 8);
-            Put(frame, ref bit, TransientTail, 3);
+            Put(frame, ref bit, TransientTime(h.Position), 7);
+            Put(frame, ref bit, 0, 1);   // end of this hand's record list
         }
         else Put(frame, ref bit, 0, 1);   // no transient record
     }

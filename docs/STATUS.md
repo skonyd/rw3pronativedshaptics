@@ -40,7 +40,7 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 - Sensa in Xbox mode: **a route exists, not yet used for output** (2026-11-10, docs/research/XBOX_MODE_HAPTICS_ROUTE.md).
   - The route: Razer packets tunnelled in GIP message 0x0F, answers in 0x10. Our app can send them through `Windows.Gaming.Input.Custom` (interface `{AAE22FB7-…}`).
   - Read-only so far: in Xbox mode the controller answers Sensa class 0x16 and serves a 4-body-part descriptor (palms + 249/149, probably the triggers; 2 bands / 2 points).
-  - Sending a Sensa frame needs the 4-body-part frame layout (unknown) and the user's consent.
+  - The 4-body-part frame layout is decoded in emulation (docs/SENSA_USB_PROTOCOL.md). No frame has been sent yet; the first write needs the user's consent.
   - The controller exposes only a GIP device: no Razer HID, and Razer's haptics service sees no device.
   - GIP vendor messaging (`GipGameControllerProvider.SendMessage`) is reported not to work and Razer's GIP commands are undocumented, so we did not probe the firmware blindly.
   - USB captures, read-only:
@@ -93,7 +93,8 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
   - Character: energy moves from 120 Hz (×21 vs ×27) to 190 Hz (×5.3 vs ×2.0), a crisper click.
   - First hit after silence: ~4.5 dB weaker and ~10 ms later.
   - Mixed and stereo scenes: unchanged.
-  - Not a clear mic win, so the feel decides (Ayarlar → "vuruşları darbe kaydı olarak gönder"). The `101` tail is still not reproduced.
+  - Not a clear mic win, so the feel decides (Ayarlar → "vuruşları darbe kaydı olarak gönder").
+  - Fixed 2026-11-11 (firmware decoder, emulated): the old record layout shifted the right hand 3 bits whenever the left hand had a hit. The A/B above used that layout and should be repeated.
 - Spectral history: multi-resolution since 2026-11-09. Components >= 60 Hz come from a 42.7 ms window, the bass from 85.3 ms. The 240-case audit passes 240/240 (max 0.36 Hz error); the plain 2048 window failed 55 cases. Hybrid enters multiband after 21.3 ms + 2 steady frames. Mic comparison 2026-11-09, Direct USB, 45 cases (TestResults/multires-physical-20261109), medians:
   - Mixed 80+190 Hz, Hybrid: 80 Hz ×13.6, 190 Hz ×10.9, wrong band ×2.2.
   - Multiband: onset in the first 300 ms +4.1 dB (old run ≈0); short hits +9.8 dB (old run +6 dB).

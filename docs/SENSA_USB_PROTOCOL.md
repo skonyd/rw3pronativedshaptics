@@ -64,9 +64,10 @@ The frame is one **MSB-first bit stream**:
 per hand (left, then right):
   3 x ( 1 bit = 1
         4 x ( 6 bit strength = floor(a*63), 7 bit pitch = floor(p*127) ) )   band 1..3
-  1 bit  transient record follows (0/1)
-  [24 bit transient record, if flagged]
-pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two records)
+  transient list, up to 2 records:
+    1 bit = 1, strength 6, pitch 7, time 7 (ms within the frame)   per record
+    1 bit = 0                                                        ends the list early
+pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two records in total)
 ```
 
 - `a` is the strength 0..1 at the 4 points of the 33 ms frame; `p` is 0..1 linear over 30–400 Hz.
@@ -75,9 +76,43 @@ pad with 0 to the byte (41 bytes without transients, 44 / 47 with one / two reco
   strength 0, pitch 0.
 - Silence frame = all strengths 0, band-1 pitch P 6 (50 Hz). Synapse sends nothing at rest, but
   the controller keeps playing the last frame, so a direct sender must end with silence frames.
-- Transient record (24 bit): strength 6 = floor(a*63), pitch 7, time 8 (0.5 ms units within the
-  frame), then 3 bits `10x` whose last bit is not understood yet. Since 2026-11-10 RW3 writes one
-  record per hand for the frame's first hit (setting; off = folded into the nearest strength point).
+- Transient record, as the firmware 2.04.00 decoder reads it (emulated 2026-11-10, see
+  [FIRMWARE_ANALYSIS_20261110.md](FIRMWARE_ANALYSIS_20261110.md)):
+  - flag 1, strength 6 = floor(a*63), pitch 7 (HAR always writes 24 ≈ 100 Hz), time 7 in whole ms.
+  - Then the next flag. A hand can carry 2 records. A 0 flag ends the hand.
+- RW3 writes one record per hand for the frame's first hit (setting; off = folded into the nearest strength
+  point).
+  - Until 2026-11-10, RW3 wrote `time 8 + tail 100` instead (see the study below). That put 3 extra bits after
+    a left-hand record and shifted the right hand.
+  - Fixed: with a left hit, both hands now decode correctly in the emulated firmware.
+
+## Xbox mode frame (4 body parts), decoded 2026-11-10
+
+Source: the firmware's Xbox-mode decoder (0xEF50 in `Dev2FW`), run in an ARM emulator
+([tools/firmware/emulate_decoder.py](../tools/firmware/emulate_decoder.py)) and verified with an encoder whose
+frames decode field by field. The controller selects this decoder when it is in Xbox mode. The frame travels
+in the same Razer command (class 0x16, cmd 0x0E, arg 0x01 + frame), tunnelled in GIP message 0x0F
+(docs/research/XBOX_MODE_HAPTICS_ROUTE.md). Not yet sent to a controller.
+
+```
+7 bits   header (0111100 as in PC mode; its value sets the point spacing: points at 0 and 60)
+per body part, in order 216 (left palm), 116 (right palm), 249, 149:
+  band list, up to 2:       1 bit = 1, then 2 x ( strength 6, pitch 7 )   per band; 1 bit = 0 ends it early
+  transient list, up to 2 (palms) / 1 (249, 149):
+                            1 bit = 1, strength 6, pitch 7, time 7 (ms)   per record; 1 bit = 0 ends it early
+pad with 0 to the byte
+```
+
+- Palms: pitch is mapped like PC mode (30 + p·370/127 Hz), and strength is a·32767/63.
+- Body parts 249/149 (probably the trigger motors): pitch and strength are stored raw (7 / 6 bits). Their
+  meaning on the actuator is not known yet.
+- Sizes:
+  - Smallest frame: header + four 0 flags pairs = 15 bits, so 2 bytes.
+  - All 4 body parts with 1 band and no hits: 7 + 2·(28+1) + 2·(28+1) = 123 bits, 16 bytes.
+  - Maximum: 349 bits, 44 bytes.
+  - A GIP 0x0F packet leaves room for 1 + 47 frame bytes, so every frame fits.
+- The firmware only accepts a new 0x0E frame every ≥ 11 ms. Like PC mode, it keeps playing the last frame
+  until the next one arrives.
 
 ## What this enables
 
@@ -103,6 +138,14 @@ Record layout:
 - **7 bits:** always 24, whatever the transient or effect pitch. This is a type/constant, not a pitch.
 - **time 8 bits:** 2 × round(position × 33). Whole milliseconds within the frame in 0.5 ms units, so the value is always even.
 - **tail 3 bits:** `100` in every controlled case (~300 records).
+
+**Corrected 2026-11-10 (firmware decoder):**
+- "time 8" is really time 7 (ms) plus the next record flag, which was 0. That is why the value was always even.
+- The "tail" bits are not part of the record. They are the first bits of the right hand: band flag `1`, then
+  the first strength bits. That explains `100` (a quiet right hand) and the live-stream `101` (an active right
+  hand).
+- HAR wrote the correct layout. RW3's encoder copied those 3 bits as a fixed tail and then wrote the real right
+  hand after them, so the right hand started 3 bits late.
 
 The tail value `101` appeared only in the live "am" stream of 2026-11-08 (14 of 57 records). Its cause is not reproduced: it is not time, amplitude, pitch, envelope shape or the update pattern.
 

@@ -1000,7 +1000,8 @@ SpectralContracts.Run(Check);
     Check(folded && silent, "Direct USB: transient folded into nearest point (pos .7 → point 2), silent features send nothing");
 }
 {
-    // Transient record layout vs HAR offline renders (2026-11-09 sweep: trAmp 0.2 at 10 ms -> s12 p24 t20 tail 100).
+    // Transient record layout as the firmware 2.04.00 decoder reads it (emulated 2026-11-10): flag, s6, p7, t7 (ms), end flag.
+    // The HAR-derived layout (t8 + tail 100) shifted the right hand by 3 bits when the left hand had a hit.
     static int Bits(ReadOnlySpan<byte> f, int start, int width)
     {
         int v = 0;
@@ -1017,15 +1018,15 @@ SpectralContracts.Run(Check);
     int lenNone = SensaFrameEncoder.EncodeBands(l, r, none, new SensaTransient(.01, .5), null);   // quantizes to 0 -> no record
     const int hand = 159;
     bool leftRecord = Bits(one, 7 + hand, 1) == 1 && Bits(one, 8 + hand, 6) == 12 && Bits(one, 14 + hand, 7) == 24
-        && Bits(one, 21 + hand, 8) == 20 && Bits(one, 29 + hand, 3) == 0b100 && Bits(one, 32 + 2 * hand, 1) == 0;
-    // The right hand's bands are shifted by the 24-bit left record but otherwise identical to the plain frame.
-    bool rightShifted = Enumerable.Range(0, hand).All(i => Bits(one, 32 + hand + i, 1) == Bits(plain, 8 + hand + i, 1));
-    int rr = 7 + hand + 1 + 24 + hand + 1;   // start of the right record in the two-record frame
-    bool rightRecord = Bits(two, rr - 1, 1) == 1 && Bits(two, rr, 6) == 63 && Bits(two, rr + 6, 7) == 24 && Bits(two, rr + 13, 8) == 66 && Bits(two, rr + 21, 3) == 0b100
-        && Bits(two, 8 + hand, 6) == 31 && Bits(two, 21 + hand, 8) == 20;
+        && Bits(one, 21 + hand, 7) == 10 && Bits(one, 28 + hand, 1) == 0 && Bits(one, 29 + 2 * hand, 1) == 0;
+    // The right hand follows the 21-bit left record (+ end flag) and is otherwise identical to the plain frame.
+    bool rightShifted = Enumerable.Range(0, hand).All(i => Bits(one, 29 + hand + i, 1) == Bits(plain, 8 + hand + i, 1));
+    int rr = 29 + 2 * hand + 1;   // start of the right record in the two-record frame
+    bool rightRecord = Bits(two, rr - 1, 1) == 1 && Bits(two, rr, 6) == 63 && Bits(two, rr + 6, 7) == 24 && Bits(two, rr + 13, 7) == 33 && Bits(two, rr + 20, 1) == 0
+        && Bits(two, 8 + hand, 6) == 31 && Bits(two, 21 + hand, 7) == 10;
     bool lengths = lenOne == 44 && lenTwo == 47 && lenNone == 41 && none.AsSpan(0, 41).SequenceEqual(plain.AsSpan(0, 41));
-    bool times = SensaFrameEncoder.TransientTime(0) == 0 && SensaFrameEncoder.TransientTime(1) == 66 && SensaFrameEncoder.TransientTime(-1) == 0
-        && SensaFrameEncoder.TransientTime(double.NaN) == 0 && SensaFrameEncoder.TransientTime(.5) == 34;
+    bool times = SensaFrameEncoder.TransientTime(0) == 0 && SensaFrameEncoder.TransientTime(1) == 33 && SensaFrameEncoder.TransientTime(-1) == 0
+        && SensaFrameEncoder.TransientTime(double.NaN) == 0 && SensaFrameEncoder.TransientTime(.5) == 17;
     var report = new byte[SensaHidTransport.FeatureLength];
     SensaHidTransport.BuildReport(two.AsSpan(0, lenTwo), 1, report);
     bool sized = report[6] == 48;   // data size = frame + 1 (report[6], see the captured packet above)
@@ -1036,7 +1037,7 @@ SpectralContracts.Run(Check);
     var hitOnly = new SideFeatures { TransientCount = 1, T0Position = .1f, T0Amplitude = .6f };
     bool hitAlone = DirectSensaMapping.Points(hitOnly, 1, a, recordFirstHit: true);   // folded path: the hit raises point 0
     Check(leftRecord && rightShifted && rightRecord && lengths && times && sized && notFolded && hitAlone,
-        $"Direct USB transient records: s6/24/t8/100 per hand, 41/44/47 bytes ({lenNone}/{lenOne}/{lenTwo}), report size byte {report[6]}, first hit not folded when recorded");
+        $"Direct USB transient records: flag/s6/p7/t7/end per hand (firmware layout), 41/44/47 bytes ({lenNone}/{lenOne}/{lenTwo}), report size byte {report[6]}, first hit not folded when recorded");
 }
 {
     // Synapse attachment check from Razer's log lines (2026-11-08 states).

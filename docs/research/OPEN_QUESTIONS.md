@@ -17,15 +17,16 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   - A third-party app gets the GIP provider.
   - Razer packets tunnel in GIP 0x0F/0x10, and our app can send them.
   - Sensa class 0x16 answers in Xbox mode and serves the 4-body-part descriptor (E-20261110-13..16).
-- **Next step:** Q2 (frame layout), then, with the user's consent, a first Sensa frame write through the tunnel.
+- **Next step:** Q2 is solved. With the user's consent, write a first Sensa frame through the tunnel: a silence
+  frame, then a short weak pulse on one body part at a time (216, 116, 249, 149), with the mic running.
 - **Details:** [XBOX_MODE_HAPTICS_ROUTE.md](XBOX_MODE_HAPTICS_ROUTE.md)
 
-## Q2. Bit layout of the 4-body-part Sensa frame
+## Q2. Bit layout of the 4-body-part Sensa frame (closed 2026-11-11)
 
-- **Why:** needed before any frame could be sent through route A.
-- **Known:** the PC-mode layout (2 hands × 3 bands × 4 points), see [SENSA_USB_PROTOCOL.md](../SENSA_USB_PROTOCOL.md).
-- **Next step:** trace the Sensa decoder in `Dev2FW` from the class 0x16 handler (dispatcher 0x30524, class
-  table at 0x3074C). Look at how the header and the body-part count change with the mode flag.
+- **Answer:** solved by emulating the firmware decoder (E-20261111-01). Layout in
+  [SENSA_USB_PROTOCOL.md](../SENSA_USB_PROTOCOL.md), section "Xbox mode frame".
+- **Still open:** what the raw pitch / strength values of body parts 249/149 do on the trigger motors. Answer on
+  hardware with the first write test (Q1).
 
 ## Q3. Hum suppression hurts hits at low volume (-12 dB)
 
@@ -34,5 +35,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Q4. First hit after silence is ~4.5 dB weaker with transient records
 
-- **Known:** E-20261110-01. The `101` tail bit is still not reproduced.
-- **Next step:** compare HAR renders whose tail is `101` against `100`.
+- **Known:** E-20261110-01.
+- **New 2026-11-11 (E-20261111-02):**
+  - The old record layout shifted the right hand when the left hand had a hit. That bug is fixed, which may
+    change this result.
+  - The `101` "tail" is explained: it was the right hand's first bits.
+- **Next step:** repeat the mic A/B for transient records with the fixed encoder.

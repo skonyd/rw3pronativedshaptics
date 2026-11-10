@@ -104,6 +104,23 @@ python -I tools/firmware/descriptor_refs.py <res>/Dev2FW.bin                    
 
 Work on copies in a scratch folder. Never run the updater or the extracted EXEs for analysis.
 
+## Finding 4: the frame decoders (emulated, 2026-11-11)
+
+- **Path:** class 0x16 runs through a `tbh` table at 0x30BC2 (index cmd − 7). cmd 0x0E is handled at 0x30EFC:
+  - It needs arg 0 = 1 and a frame of at most 0x41 bytes.
+  - It drops frames that arrive less than 11 ticks apart.
+  - It copies the frame to RAM 0x20000B34 and sets a "new frame" flag at 0x20000B2C.
+- **Consumer:** 0x2B538 clears the flag and calls, depending on the mode flag:
+  - **0x2A708** in PC mode;
+  - **0xEF50** in Xbox mode.
+  Both fill 4 × 0x82-byte body-part structs at 0x20013530.
+- **Tool:** [`tools/firmware/emulate_decoder.py`](../tools/firmware/emulate_decoder.py) runs both decoders in
+  unicorn. A single-bit flip scan on the PC decoder reproduced the known PC layout, which validates the method.
+- **Results:**
+  - The Xbox layout (4 body parts, 2 bands × 2 points, 2/2/1/1 transients) is in
+    [SENSA_USB_PROTOCOL.md](SENSA_USB_PROTOCOL.md).
+  - A bug in RW3's PC transient record was found and fixed (docs/research/EXPERIMENTS.md, E-20261111-02).
+
 ## Verified on hardware afterwards (2026-11-10)
 
 - The Xbox-mode controller serves the 4-body-part descriptor through Razer class 0x16, tunnelled in GIP 0x0F/0x10
