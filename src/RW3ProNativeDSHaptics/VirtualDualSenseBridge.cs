@@ -544,7 +544,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _xbox?.Set(f.BodyLeft, f.BodyRight, f.TriggerLeft, f.TriggerRight);
         else if (_pcOutputSlot >= 0)
         {
-            var v = new XInput.Vibration { wLeftMotorSpeed = (ushort)(f.BodyLeft * 65535), wRightMotorSpeed = (ushort)(f.BodyRight * 65535) };
+            var v = new XInput.Vibration { wLeftMotorSpeed = (ushort)(BodyMotorLimit.Big(f.BodyLeft) * 65535), wRightMotorSpeed = (ushort)(Math.Clamp(f.BodyRight, 0, 1) * 65535) };
             XInput.XInputSetState((uint)_pcOutputSlot, ref v);
         }
     }

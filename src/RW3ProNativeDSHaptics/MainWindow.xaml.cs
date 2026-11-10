@@ -110,6 +110,8 @@ public partial class MainWindow : Window
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
         _bridge.PalmTriggerFeel = _settings.PalmTriggerFeel;
         PalmTriggerFeel.IsChecked = _settings.PalmTriggerFeel;
+        BodyMotorLimit.Enabled = _settings.BigMotorCeiling;
+        BigMotorCeiling.IsChecked = _settings.BigMotorCeiling;
         RouteImpulse.IsChecked = _bridge.TriggerMotors;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
@@ -432,6 +434,15 @@ public partial class MainWindow : Window
         ApplyPadModeOptions(_padMode);
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox bas/tiz", ex); }
         DiagnosticsService.Info("Xbox bass/treble split: " + _settings.XboxBassTreble + " (effective " + XboxBodyEnvelope.Preferred + ").");
+    }
+
+    private void BigMotorCeiling_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.BigMotorCeiling = BigMotorCeiling.IsChecked == true;
+        BodyMotorLimit.Enabled = _settings.BigMotorCeiling;   // read at every motor write: applies live
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Büyük motor sınırı", ex); }
+        DiagnosticsService.Info("Big body motor ceiling: " + _settings.BigMotorCeiling + ".");
     }
 
     private void PalmTriggerFeel_Changed(object sender, RoutedEventArgs e)

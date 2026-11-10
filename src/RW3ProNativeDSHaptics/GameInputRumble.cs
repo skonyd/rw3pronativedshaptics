@@ -171,7 +171,7 @@ public sealed class GameInputRumble : IDisposable
         lock (_gate)
         {
             if (_disposed || !_allowOutput || !Connected()) return;
-            var r = new Rumble { Low = Q(low), High = Q(high), LeftTrigger = Q(leftTrigger), RightTrigger = Q(rightTrigger) };
+            var r = new Rumble { Low = Q(BodyMotorLimit.Big(low)), High = Q(high), LeftTrigger = Q(leftTrigger), RightTrigger = Q(rightTrigger) };
             long now = Environment.TickCount64;
             if (r.Equals(_last) && now - _lastWriteTick < 100) return;
             try { Slot<RumbleFn>(_device, 10)(_device, ref r); Writes++; _last = r; _lastWriteTick = now; }

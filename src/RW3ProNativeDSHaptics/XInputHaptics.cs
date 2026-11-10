@@ -46,7 +46,7 @@ public sealed class XInputHaptics : IDisposable
     }
     private static uint XInputSetState(uint userIndex, ref XInputVibration vibration)
     {
-        var v = new XInput.Vibration { wLeftMotorSpeed = vibration.LeftMotorSpeed, wRightMotorSpeed = vibration.RightMotorSpeed };
+        var v = new XInput.Vibration { wLeftMotorSpeed = (ushort)Math.Round(BodyMotorLimit.Big(vibration.LeftMotorSpeed / 65535.0) * 65535), wRightMotorSpeed = vibration.RightMotorSpeed };
         return XInput.XInputSetState(userIndex, ref v);
     }
 

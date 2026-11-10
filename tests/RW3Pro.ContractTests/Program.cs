@@ -1701,6 +1701,19 @@ SpectralContracts.Run(Check);
 
 // Xbox body motors: stereo widening keeps centre, keeps hard pans one-sided, spreads partial pans.
 {
+    // Big body motor ceiling: unchanged up to the knee, smooth and monotonic above it, never past the ceiling;
+    // off = plain clamp. Default on.
+    bool below = Enumerable.Range(0, 61).All(i => Math.Abs(BodyMotorLimit.Big(i / 100.0, true) - i / 100.0) < 1e-12);
+    double top = BodyMotorLimit.Big(1, true);
+    bool capped = top < BodyMotorLimit.Ceiling && top > 0.72;
+    bool monotonic = Enumerable.Range(0, 100).All(i => BodyMotorLimit.Big((i + 1) / 100.0, true) > BodyMotorLimit.Big(i / 100.0, true));
+    double slope = (BodyMotorLimit.Big(0.601, true) - BodyMotorLimit.Big(0.6, true)) / 0.001;
+    bool smooth = slope > 0.99;
+    bool off = BodyMotorLimit.Big(1, false) == 1 && BodyMotorLimit.Big(1.5, false) == 1 && BodyMotorLimit.Big(double.NaN, true) == 0;
+    Check(below && capped && monotonic && smooth && off && BodyMotorLimit.Enabled,
+        $"Big body motor ceiling: <= {BodyMotorLimit.Knee} unchanged, 1.0 -> {top:0.000} (< {BodyMotorLimit.Ceiling}), monotonic, smooth at the knee, off = clamp, default on");
+}
+{
     // Audio level shaper: auto level makes the vibration follow content, not volume; hum suppression lowers a steady
     // drone and lets hits through; both off = bit-exact passthrough.
     static float[] ShSine(double hz, double amp, double seconds, double phase0 = 0)

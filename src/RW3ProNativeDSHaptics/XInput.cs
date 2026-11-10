@@ -36,7 +36,7 @@ internal static class XInput
     public static uint SetMotors(uint index, double left, double right)
     {
         static ushort U(double v) => (ushort)Math.Round(Math.Clamp(double.IsFinite(v) ? v : 0, 0, 1) * 65535);
-        var v = new Vibration { wLeftMotorSpeed = U(left), wRightMotorSpeed = U(right) };
+        var v = new Vibration { wLeftMotorSpeed = U(BodyMotorLimit.Big(left)), wRightMotorSpeed = U(right) };   // big motor rattles at full power
         return XInputSetState(index, ref v);
     }
 }
