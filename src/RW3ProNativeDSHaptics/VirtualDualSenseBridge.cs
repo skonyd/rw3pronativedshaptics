@@ -88,7 +88,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private readonly object _framesGate = new();
     private string _triggerNote = "";
     private WolverineControllerMode _outputMode;
-    private bool _interpreterForMotors;
+    private int _interpreterTuning;   // 0 body motors, 1 GameInput trigger motors, 2 Sensa trigger motors
     // Window maxima for the periodic log: physical trigger pull and what each motor was given.
     private double _wPullL, _wPullR, _wBodyL, _wBodyR, _wTrigL, _wTrigR;
     public WolverineControllerMode ControllerMode => _mode;
@@ -164,7 +164,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _ctrl.OutputReceived += OnOutput;
             _mode = WolverineModeControl.Detect();
             _outputMode = _mode;
-            _interpreterForMotors = false;
+            _interpreterTuning = 0;
             lock (_gate)
                 foreach (var interpreter in new[] { _left, _right })
                 { interpreter.Reset(); interpreter.ClickSeconds = TriggerEffectInterpreter.DefaultClickSeconds; interpreter.TensionScale = 0; }
@@ -442,13 +442,15 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 _ctrl.SubmitState(in state); // a failed virtual input submission must also stop physical output
                 double lt, rt; byte rl, rr;
                 bool motors = _mode == WolverineControllerMode.Xbox && TriggerMotors;
-                if (motors != _interpreterForMotors)
+                int tuning = !motors ? 0 : XboxSensa.Active ? 2 : 1;
+                if (tuning != _interpreterTuning)
                 {
                     // Trigger motors: longer clicks and felt resistance; body motors: short clicks only.
                     lock (_gate)
                         foreach (var it in new[] { _left, _right })
-                        { it.ClickSeconds = motors ? 0.09 : TriggerEffectInterpreter.DefaultClickSeconds; it.TensionScale = motors ? 0.45 : 0; }
-                    _interpreterForMotors = motors;
+                        // Sensa trigger motors: 90 ms clicks were barely felt, 165 ms clearly (threshold test 2026-11-11).
+                        { it.ClickSeconds = tuning == 2 ? 0.16 : motors ? 0.09 : TriggerEffectInterpreter.DefaultClickSeconds; it.TensionScale = motors ? 0.45 : 0; }
+                    _interpreterTuning = tuning;
                 }
                 lock (_gate) { lt = _left.Update(g.bLeftTrigger / 255.0, dt); rt = _right.Update(g.bRightTrigger / 255.0, dt); rl = _rumbleLeft; rr = _rumbleRight; }
                 if (_outputMode == WolverineControllerMode.Xbox)

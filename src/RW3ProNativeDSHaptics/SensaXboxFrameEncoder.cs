@@ -90,9 +90,20 @@ public static class SensaXboxFrameEncoder
         else Put(f, ref bit, 0, 1);
     }
 
+    /// <summary>Lowest strength the trigger motors are felt at: 8/63 was not felt, 16/63 was (threshold test, pulled, 2026-11-11).</summary>
+    public const int TriggerFloor = 16;
+
+    /// <summary>Trigger strength 0..1 → raw 6-bit value: 0 stays 0, anything above starts at <see cref="TriggerFloor"/> so weak
+    /// effects (DualSense resistance zones at a fraction of full force) are still felt.</summary>
+    public static int TriggerLevel(double strength)
+    {
+        if (!double.IsFinite(strength) || strength <= 0.01) return 0;
+        return (int)Math.Round(TriggerFloor + Math.Clamp(strength, 0, 1) * (63 - TriggerFloor));
+    }
+
     private static void Trigger(Span<byte> f, ref int bit, double strength)
     {
-        int s = SensaFrameEncoder.Quantize6(strength);
+        int s = TriggerLevel(strength);
         Band(f, ref bit, s, s, s > 0 ? TriggerPitch : SilentPitch);
         Put(f, ref bit, 0, 1);   // end of the band list
         Put(f, ref bit, 0, 1);   // no transient

@@ -397,6 +397,7 @@ public sealed class SensaStereoPrototype : IDisposable
                             records && leftOn ? DirectSensaMapping.Hit(fl, level) : null, records && rightOn ? DirectSensaMapping.Hit(fr, level) : null,
                             trigL, trigR, xframe);
                         ok = gip.Send(xframe.AsSpan(0, length));
+                        if (ok) XboxSensa.NoteSent(SensaXboxFrameEncoder.TriggerLevel(trigL), SensaXboxFrameEncoder.TriggerLevel(trigR));
                         silenceToSend = 2;
                         LastSentHz = (lHold.Last, rHold.Last);
                     }

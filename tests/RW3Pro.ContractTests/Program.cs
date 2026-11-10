@@ -1007,7 +1007,7 @@ SpectralContracts.Run(Check);
     string silence = Convert.ToHexString(SensaXboxFrameEncoder.Silence());
     int nPalm = SensaXboxFrameEncoder.Encode(new[] { new SensaBand(32.5 / 63, 32.5 / 63, 32.5 / 63, 32.5 / 63, 31.5 / 127) }, default, null, null, 0, 0, xf);
     string palm = Hex(xf, nPalm);
-    int nTrig = SensaXboxFrameEncoder.Encode(default, default, null, null, 32.5 / 63, 0, xf);
+    int nTrig = SensaXboxFrameEncoder.Encode(default, default, null, null, (32 - 16) / 47.0, 0, xf);   // TriggerLevel -> raw 32
     string trig = Hex(xf, nTrig);
     bool vectors = silence == "790030018801800C400C006200600300" && palm == "7980FC07C801800C400C006200600300"
         && trig == "790030018801800C607903C200600300";
@@ -1023,8 +1023,10 @@ SpectralContracts.Run(Check);
     byte xor = 0; for (int i = 2; i < 58; i++) xor ^= pkt[i];
     bool packet = pkt[1] == 0x20 && pkt[5] == 17 && pkt[6] == 0x16 && pkt[7] == 0x0E && pkt[8] == 1 && pkt[58] == xor && pkt[59] == 0;
     // 7 + 2 palms x (2 bands x 27 + record 1+20 + end 1) + 2 triggers x (27 + 2) = 217 bits -> 28 bytes.
-    Check(vectors && nMax == 28 && folded && packet,
-        $"Xbox-mode Sensa frame: hardware-tested vectors {vectors}, fullest frame {nMax} bytes (28), fold {folded}, packet {packet}; 4 points fold to 2 by halves, GIP 0x0F packet with XOR at byte 58");
+    bool floor = SensaXboxFrameEncoder.TriggerLevel(0) == 0 && SensaXboxFrameEncoder.TriggerLevel(.005) == 0 && SensaXboxFrameEncoder.TriggerLevel(.02) == 17
+        && SensaXboxFrameEncoder.TriggerLevel(1) == 63 && SensaXboxFrameEncoder.TriggerLevel(double.NaN) == 0;
+    Check(vectors && nMax == 28 && folded && packet && floor,
+        $"Xbox-mode Sensa frame: hardware-tested vectors {vectors}, fullest frame {nMax} bytes (28), fold {folded}, packet {packet}, trigger floor 16 {floor}; 4 points fold to 2 by halves, GIP 0x0F packet with XOR at byte 58");
 }
 {
     // Transient record layout as the firmware 2.04.00 decoder reads it (emulated 2026-11-10): flag, s6, p7, t7 (ms), end flag.

@@ -16,6 +16,15 @@ public static class XboxSensa
     /// <summary>The engine has an open GIP route and sends Xbox-mode Sensa frames.</summary>
     public static volatile bool Active;
     private static long _triggers, _triggerTick;
+    private static int _maxSentL, _maxSentR;
+
+    /// <summary>Engine: raw trigger strengths (0..63) of a frame it sent; the periodic log reads and resets the maxima.</summary>
+    public static void NoteSent(int left, int right)
+    {
+        if (left > Volatile.Read(ref _maxSentL)) Volatile.Write(ref _maxSentL, left);
+        if (right > Volatile.Read(ref _maxSentR)) Volatile.Write(ref _maxSentR, right);
+    }
+    public static (int Left, int Right) TakeMaxSent() => (Interlocked.Exchange(ref _maxSentL, 0), Interlocked.Exchange(ref _maxSentR, 0));
 
     /// <summary>Bridge → engine: trigger-motor strengths 0..1 (after mix and output level).</summary>
     public static void SetTriggers(double left, double right)
