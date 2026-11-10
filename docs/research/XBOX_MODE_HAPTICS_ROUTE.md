@@ -80,7 +80,30 @@ Ruled out (E-20261110-02). The interface does not exist in Xbox mode.
 
 Both are against the AGENTS.md safety rules, and recovering a bricked controller is not possible.
 
+## Progress, 2026-11-10 (route A)
+
+Route A steps 1–3 are done, all with read-only commands:
+
+1. **Provider:** Windows gives a third-party desktop app a `GipGameControllerProvider` for both unknown
+   interfaces (E-20261110-13).
+2. **Wrapper:** captured from Razer Controller Setup for Xbox. A Razer packet travels in GIP message **0x0F**
+   (60 bytes: `[status, tx, 0, 0, 0, size, class, cmd, args…]`, XOR of bytes 2..57 at byte 58), and the answer
+   comes back in **0x10** (E-20261110-14).
+3. **Replay:** our `SendMessage(Command, 0x0F, …)` reaches the controller and it answers (E-20261110-15).
+   - Sensa class 0x16 works in Xbox mode.
+   - The descriptor read back is the **4-body-part** one: palms + 249/149 (E-20261110-16).
+   - Limitation: Windows does not deliver the 0x10 answers to our sink, and `SendReceiveMessage` is not
+     supported. Sensa frames are fire-and-forget writes, so streaming would not need answers.
+
+Tools: [`tools/gip/`](../../tools/gip/README.md).
+
 ## Next step
 
-Route A step 1, the passive probe. It needs the controller in Xbox mode on the cable. It sends nothing, so it is
-safe without a capture. Step 2 needs the user to install the Razer app.
+Step 4 is a **write**: a Sensa frame (0x16/0x0E) through the same wrapper. It needs:
+1. The **4-body-part frame layout**. The PC layout is 2 hands × 3 bands × 4 points. The Xbox descriptor says
+   4 body parts × 2 bands × 2 points. The bit order and header are unknown; trace the decoder in `Dev2FW`
+   (OPEN_QUESTIONS Q2).
+2. A **size check:** a GIP 0x0F packet carries at most ~47 data bytes, and a PC frame is 41–47 bytes.
+3. The user's **consent**. Start with a silence frame and a short, weak pulse on one body part, with the mic
+   running.
+

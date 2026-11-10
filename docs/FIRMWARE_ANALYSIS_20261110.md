@@ -104,6 +104,13 @@ python -I tools/firmware/descriptor_refs.py <res>/Dev2FW.bin                    
 
 Work on copies in a scratch folder. Never run the updater or the extracted EXEs for analysis.
 
+## Verified on hardware afterwards (2026-11-10)
+
+- The Xbox-mode controller serves the 4-body-part descriptor through Razer class 0x16, tunnelled in GIP 0x0F/0x10
+  (docs/research/EXPERIMENTS.md, E-20261110-16).
+- Hypothesis confirmed: Razer packets travel in GIP 0x0F (request) and 0x10 (response), not only 0x10
+  (E-20261110-14).
+
 ## Not done / limits
 
 - The handlers for GIP messages 0x0F / 0x10 were not traced to the Sensa decoder.

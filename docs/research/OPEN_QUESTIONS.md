@@ -13,8 +13,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   - GIP headset audio (E-20261110-03).
   - A GameInput haptic endpoint, as shipped (E-20261110-12).
   - Firmware flashing (safety rule).
-- **Next step:** passive Windows.Gaming.Input.Custom probe for interfaces `{AAE22FB7-…}` / `{9776FF56-…}`.
-  Then a USB capture of Razer Controller Setup for Xbox, if the user installs it.
+- **Done (2026-11-10):**
+  - A third-party app gets the GIP provider.
+  - Razer packets tunnel in GIP 0x0F/0x10, and our app can send them.
+  - Sensa class 0x16 answers in Xbox mode and serves the 4-body-part descriptor (E-20261110-13..16).
+- **Next step:** Q2 (frame layout), then, with the user's consent, a first Sensa frame write through the tunnel.
 - **Details:** [XBOX_MODE_HAPTICS_ROUTE.md](XBOX_MODE_HAPTICS_ROUTE.md)
 
 ## Q2. Bit layout of the 4-body-part Sensa frame
