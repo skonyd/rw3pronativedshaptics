@@ -56,10 +56,12 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
   - At 0.35-0.8: sporadic, not repeatable (0-4/s, once 8.7/s at 0.8).
   - The small motor, low levels (start threshold), the update rate (re-sent at 20 Hz or 200 Hz) and audio-like envelopes: no ticks.
   - Capping at 0.75-0.8 costs about 3-4 dB of the big motor's maximum (overall mic level -20 vs -23.4 dBFS).
-  - Ceiling setting (BodyMotorLimit, default on): up to 0.6 the command is unchanged, above it approaches 0.75.
+  - Ceiling setting (BodyMotorLimit, default off since the hand test): up to 0.6 the command is unchanged, above it approaches 0.75.
     - Mic, controller on the desk: 1.0 gave 22-30 ticks/s; 0.74 gave 10-15/s.
     - In a second sweep, 0.45-0.7 also ticked irregularly (0-14/s), although the first sweep had them nearly clean.
-    - The motor ticks reliably only at full power. In the middle the ticks are position-dependent, probably the pad touching the desk. A test with the pad held in the hand decides the final ceiling.
+    - The motor ticks reliably only at full power. In the middle the ticks are position-dependent, probably the pad touching the desk.
+    - Held in the hand, next to the mic (3 runs × 1.0/0.74/0.65/0.55/0.45; the vibration reached the mic at -30..-40 dBFS against a -44 dBFS room): 1 tick in total, none at full power.
+    - The ticks therefore come from the pad rattling against the surface it lies on, not from the motor itself. The ceiling only matters while the pad lies on a table, so it is off by default.
   - Why the user hears it only in Xbox mode: there, audio mode drives the body motors with gain 2.5, which often reaches 1.0. In PC mode the audio goes to Sensa instead.
 - Sensa overdrive check (2026-11-10, mic, both palms, steady drive):
   - Sweep: 30/50/80/120/190/300 Hz at strengths 16/32/48/63. Strength 63 is the top of the encoder scale, the same maximum Synapse/HAR uses.

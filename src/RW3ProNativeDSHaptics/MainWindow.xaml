@@ -510,10 +510,10 @@
               <RadioButton x:Name="TriggerFeelClassic" Content="Klasik (yalnız haptik)" Tag="0" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="170" Checked="TriggerFeel_Checked"
                            ToolTip="Tetik motorları kullanılmaz; tetik hissi de gövde titreşimiyle verilir (PC modundaki gibi)."/>
             </WrapPanel>
-            <CheckBox x:Name="BigMotorCeiling" Content="Büyük gövde motorunu tıklamadan sınırla (en fazla %75)" Foreground="#EEF3FF"
+            <CheckBox x:Name="BigMotorCeiling" Content="Kol masadayken büyük motoru tıklamadan sınırla (en fazla %75)" Foreground="#EEF3FF"
                       Checked="BigMotorCeiling_Changed" Unchecked="BigMotorCeiling_Changed"
                       AutomationProperties.Name="Büyük gövde motorunu sınırla"/>
-            <TextBlock Text="Büyük (sol) motor tam güçte takırdıyor (özellikle Xbox modunda). Açıkken %60'a kadar değişmez, üstü yumuşakça %75'e yaklaşır; en yüksek güçten ~3–4 dB kaybedilir. Küçük motor ve tetikler etkilenmez; Normal modda oyunun kendi titreşimi de." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
+            <TextBlock Text="Masada duran kol, büyük (sol) motor tam güçteyken masaya çarpıp tıklar; elde tutarken tıklamaz (ölçüldü). Açıkken %60'a kadar değişmez, üstü yumuşakça %75'e yaklaşır; en yüksek güçten ~3–4 dB kaybedilir. Küçük motor, tetikler ve Normal modda oyunun kendi titreşimi etkilenmez." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
             <CheckBox x:Name="PalmTriggerFeel" Content="PC modu: tetik efektlerini avuçlarda hisset (Sensa)" Foreground="#EEF3FF"
                       Checked="PalmTriggerFeel_Changed" Unchecked="PalmTriggerFeel_Changed"
                       AutomationProperties.Name="PC modunda tetik efektlerini avuçlarda hisset"/>

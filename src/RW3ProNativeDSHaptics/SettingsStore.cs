@@ -40,8 +40,8 @@ public sealed class UserSettings
     public bool PalmTriggerFeel { get; set; }
     /// <summary>Audio mode: vibration level follows the content, not the volume knob (AudioLevelShaper).</summary>
     public bool AudioAutoLevel { get; set; }
-    /// <summary>Soft ceiling on the big body motor (it rattles at full power). See BodyMotorLimit.</summary>
-    public bool BigMotorCeiling { get; set; } = true;
+    /// <summary>Soft ceiling on the big body motor (rattles against a table at full power). See BodyMotorLimit.</summary>
+    public bool BigMotorCeiling { get; set; }
     /// <summary>Audio mode: slowly reduce sustained drone so hits stand out (AudioLevelShaper).</summary>
     public bool AudioHumSuppression { get; set; }
     /// <summary>Direct USB: hits as real Sensa transient records (true) or folded into strength points (false).</summary>

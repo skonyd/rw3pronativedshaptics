@@ -1710,8 +1710,8 @@ SpectralContracts.Run(Check);
     double slope = (BodyMotorLimit.Big(0.601, true) - BodyMotorLimit.Big(0.6, true)) / 0.001;
     bool smooth = slope > 0.99;
     bool off = BodyMotorLimit.Big(1, false) == 1 && BodyMotorLimit.Big(1.5, false) == 1 && BodyMotorLimit.Big(double.NaN, true) == 0;
-    Check(below && capped && monotonic && smooth && off && BodyMotorLimit.Enabled,
-        $"Big body motor ceiling: <= {BodyMotorLimit.Knee} unchanged, 1.0 -> {top:0.000} (< {BodyMotorLimit.Ceiling}), monotonic, smooth at the knee, off = clamp, default on");
+    Check(below && capped && monotonic && smooth && off && !BodyMotorLimit.Enabled,
+        $"Big body motor ceiling: <= {BodyMotorLimit.Knee} unchanged, 1.0 -> {top:0.000} (< {BodyMotorLimit.Ceiling}), monotonic, smooth at the knee, off = clamp, default off");
 }
 {
     // Audio level shaper: auto level makes the vibration follow content, not volume; hum suppression lowers a steady
