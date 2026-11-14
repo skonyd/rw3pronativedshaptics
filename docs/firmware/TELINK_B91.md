@@ -193,8 +193,18 @@ words neighboring the transmit ring keep their guard values.
 The host models DMA movement using the source register and the
 stock descriptor. It supplies the transfer pacing for each block.
 This establishes the stock caller-to-FIFO path with prepared PCM.
-Earlier portions of the call path include paired per-channel
-processing at `0x2002656C` and stereo processing at `0x20022374`.
-There is a separate LPC SPI initialization marker at `0x2002A8B0`.
-The active RF codec, physical I²S signal and controller-to-NXP
-link still need to be demonstrated independently.
+The earlier stock call setup at `0x12B2C` enters stereo resampler
+`0x20022374` in place. Its stock initializer at `0x20022728`
+builds the coefficient table using floating-point instructions.
+The nominal-ratio fixture supplies six 40-frame PCM blocks for
+silence, a left step and tail, a right step and tail, and final
+silence. All 240 processed stereo frames reach the modeled FIFO
+unchanged after the resampler. The steps cross the test threshold
+at zero-based frame 14, the opposing channel stays silent,
+and each step tail decays to zero. This is a sample-domain
+fixture with known input, outside physical timing.
+
+Paired per-channel processing at `0x2002656C` precedes those
+calls. There is a separate LPC SPI initialization marker at
+`0x2002A8B0`. The active RF codec, physical I²S signal and
+controller-to-NXP link still need to be demonstrated independently.

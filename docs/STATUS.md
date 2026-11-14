@@ -21,6 +21,8 @@ in a dirty-memory fixture.
 The controller Telink's stock I²S setup generates transmit and receive
 DMA descriptors. Its stock PCM writer sends 623 synthetic stereo frames
 to the modeled transmit FIFO in order, including a descriptor wrap.
+The preceding stock stereo resampler also reaches that FIFO using
+a test-initialized nominal ratio and 240 synthetic input frames.
 The real scheduling, RF handoff, and controller-to-NXP link still need
 to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio

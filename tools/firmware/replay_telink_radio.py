@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import struct
 
-from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_SP
+from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_MSTATUS, UC_RISCV_REG_RA, UC_RISCV_REG_SP
 
 from replay_telink_startup import replay_startup, require
 from replay_telink_usb import install_andes_hooks, run_until
@@ -15,6 +15,8 @@ I2S_SETUP = 0x20029E3C
 AFTER_I2S_ENABLE = 0x2002A086
 PCM_WRITER = 0xF808
 PCM_WRITER_CALL_SETUP, PCM_WRITER_RETURN = 0x12B3C, 0x12B48
+STEREO_RESAMPLE_CALL_SETUP = 0x12B2C
+RESAMPLER_INIT, RESAMPLER_CONTEXT = 0x20022728, 0x90038
 PCM_WRITE_CURSOR = 0x851CC
 I2S_FIFO = 0x80120000
 DMA_REGISTERS = 0x80100444
@@ -57,6 +59,45 @@ def fifo_input(cpu, tx, count):
             reloads += 1
     cpu.mem_write(source_register, struct.pack("<I", pointer))
     return output, reloads
+
+
+def replay_resampled_pcm(cpu, tx, caller_stack):
+    # The stock initializer takes a signed adjustment relative to 1,000,000.
+    # Use its nominal value and let stock floating-point code build the table.
+    cpu.reg_write(UC_RISCV_REG_MSTATUS, cpu.reg_read(UC_RISCV_REG_MSTATUS) | 0x6000)
+    cpu.reg_write(UC_RISCV_REG_A0, 0)
+    cpu.reg_write(UC_RISCV_REG_SP, caller_stack)
+    cpu.reg_write(UC_RISCV_REG_RA, 0x500)
+    run_until(cpu, RESAMPLER_INIT, 0x500, vendor_budget=250_000)
+    require(cpu.mem_read(RESAMPLER_CONTEXT + 0x10, 4) == b"\x01\x00\x00\x00",
+            "Stock controller resampler did not initialize")
+
+    pcm = caller_stack + CALLER_PCM_OFFSET
+    cases = [(0, 0), (21_000, 0), (0, 0), (0, -20_000), (0, 0), (0, 0)]
+    blocks = []
+    for left, right in cases:
+        cpu.mem_write(pcm, struct.pack("<hh", left, right) * 40)
+        # At this site the two mono inputs have already been processed
+        # and interleaved. Stock prepares the in-place resampler call.
+        run_until(cpu, STEREO_RESAMPLE_CALL_SETUP, PCM_WRITER_CALL_SETUP, vendor_budget=16_384)
+        count = cpu.reg_read(UC_RISCV_REG_A0)
+        require(count == 40, "Stock controller resampler returned the wrong block size")
+        result = cpu.mem_read(pcm, count * FRAME_BYTES)
+        run_until(cpu, PCM_WRITER_CALL_SETUP, PCM_WRITER_RETURN, vendor_budget=2048)
+        output, _ = fifo_input(cpu, tx, count)
+        require(output == result, "Controller resampler output changed before the modeled FIFO")
+        blocks.append(tuple(struct.iter_unpack("<hh", output)))
+    silence, left_step, left_tail, right_step, right_tail, drained = blocks
+    require(all(left == right == 0 for left, right in silence + drained), "Unexpected resampler output in silence")
+    require(all(right == 0 for _, right in left_step + left_tail)
+            and all(left == 0 for left, _ in right_step + right_tail), "Stock controller resampler mixed channels")
+    for channel, step, tail in ((0, left_step, left_tail), (1, right_step, right_tail)):
+        require(abs(step[13][channel]) < 1000 and abs(step[14][channel]) > 18_000
+                and abs(tail[13][channel]) > 18_000 and tail[-1][channel] == 0,
+                "Unexpected controller resampler step response")
+    return {"initializer": hex(RESAMPLER_INIT), "resampler": "0x20022374",
+            "call_setup": hex(STEREO_RESAMPLE_CALL_SETUP), "frames": len(cases) * 40,
+            "step_crossing_frame_zero_based": 14, "opposite_channel_silent": True, "tail_returns_to_zero": True}
 
 
 def replay_i2s(cpu):
@@ -110,13 +151,15 @@ def replay_i2s(cpu):
         blocks.append({"frames": count, "ring_word": cursor % ring_frames, "descriptor_reloads": reloads,
                        "silent_left": left == 0, "silent_right": right == 0})
         cursor += count
+    resampled = replay_resampled_pcm(cpu, tx, caller_stack)
     require(cpu.mem_read(ring_start - FRAME_BYTES, FRAME_BYTES) == guard
             and cpu.mem_read(ring_end, FRAME_BYTES) == guard, "Stock PCM writer changed a ring guard word")
     require(descriptor_reloads == 1, "Expected one stock I2S transmit descriptor reload")
     return {"setup_entry": hex(I2S_SETUP), "stop_after_enable": hex(AFTER_I2S_ENABLE),
             "tx_dma": tx, "rx_dma": rx, "pcm_writer": hex(PCM_WRITER),
             "pcm_writer_call_setup": hex(PCM_WRITER_CALL_SETUP), "blocks": blocks,
-            "fifo_input_bytes": len(stream), "fifo_input_sha256": hashlib.sha256(stream).hexdigest()}
+            "fifo_input_bytes": len(stream), "fifo_input_sha256": hashlib.sha256(stream).hexdigest(),
+            "resampler_to_fifo": resampled}
 
 
 def main():
