@@ -25,6 +25,8 @@ descriptor flags. The first linked descriptor also runs, with INTB then
 INTA and a same-PCM comparison against the independently compiled DSP.
 Continuous replay follows stock DMA links across 128 USB blocks and checks
 byte order, ring wrap and underrun silence at the modeled FIFO.
+Four-block USB bursts and midstream pauses now exercise queue buffering
+and ordered recovery under a deterministic event schedule.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

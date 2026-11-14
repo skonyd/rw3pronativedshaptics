@@ -189,6 +189,17 @@ USB ring wraps, and returns to silence after input stops. The first PCM reaches
 the modeled FIFO on tick 18, two ticks after the first PCM submission. This
 reflects the fixture schedule. Real FIFO pacing, DMA arbitration and cold boot
 remain open.
+
+### USB arrival variation
+
+The continuous DMA model also delivers USB PCM in groups of four blocks,
+with one DMA completion per fixture tick. In separate runs it delays
+all subsequent groups by 0, 8, 24 or 48 ticks after the first 64 blocks.
+All four runs deliver 128 blocks byte for byte in order. The 8-tick delay
+is absorbed by the queue. The 24- and 48-tick delays produce silence gaps
+of 24 and 48 ticks, then resume at the next queued PCM block. This is a
+deterministic event schedule. FIFO request pacing and actual USB jitter
+still require independent validation.
 [NXP DMA descriptor fields](https://mcuxpresso.nxp.com/mcuxsdk/latest/api/devices/LPC54628/index.html).
 
 Recovery timing depends on queue position in this fixture. After draining

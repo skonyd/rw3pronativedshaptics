@@ -483,7 +483,7 @@ def check_stock_dma_descriptor(image, dsp):
             "candidate_enabled_strengths": enabled_strengths}
 
 
-def check_continuous_dma(image, dsp, blocks):
+def check_continuous_dma(image, dsp, blocks, arrival_ticks=None):
     """Run the stock USB producer and generated DMA descriptor ring together."""
     replay = initialize_stock_dma(image, dsp)
     cpu = replay.cpu
@@ -494,11 +494,18 @@ def check_continuous_dma(image, dsp, blocks):
     cpu.mem_write(0x20000A59, b"\x01")
     played, first_pcm_tick = 0, None
     addresses = set()
-    underrun = False
-    for tick in range(len(blocks) + 24):
-        if tick < len(blocks):
-            header = bytes((0x60, 0x20, tick % 255 + 1, 0xC0, 0x81, 0))
-            replay.receive_usb(header + blocks[tick])
+    arrivals = list(range(len(blocks))) if arrival_ticks is None else arrival_ticks
+    verify(bool(arrivals) and len(arrivals) == len(blocks) and arrivals[0] >= 0 and
+           arrivals == sorted(arrivals), "Invalid USB arrival schedule")
+    received = 0
+    silence_gaps = []
+    last_pcm_tick = None
+    tail_silence = False
+    for tick in range(arrivals[-1] + 25):
+        while received < len(blocks) and arrivals[received] == tick:
+            header = bytes((0x60, 0x20, received % 255 + 1, 0xC0, 0x81, 0))
+            replay.receive_usb(header + blocks[received])
+            received += 1
         flags, source_end, destination, link = active
         verify(flags in (0x2F1223, 0x2F1213) and destination == 0x40097E20,
                f"Unsupported TX descriptor at tick {tick}")
@@ -508,13 +515,14 @@ def check_continuous_dma(image, dsp, blocks):
         fifo = b"".join(bytes(cpu.mem_read(source + offset, 4)) for offset in range(0, 192, 4))
         if source == ZERO:
             verify(fifo == bytes(192), "Startup or underrun PCM was not silent")
-            if played:
-                verify(played == len(blocks), "FIFO went silent before consuming all PCM")
-                underrun = True
+            tail_silence = played == len(blocks)
         else:
             if first_pcm_tick is None:
                 first_pcm_tick = tick
-            verify(not underrun and played < len(blocks), "DMA emitted unexpected PCM")
+            if last_pcm_tick is not None and tick > last_pcm_tick + 1:
+                silence_gaps.append(tick - last_pcm_tick - 1)
+            last_pcm_tick = tick
+            verify(played < received, "DMA emitted unexpected PCM")
             verify(source == USB_RING + (played * 192) % 6144, "DMA selected an out-of-order slot")
             verify(fifo == blocks[played], "DMA corrupted or reordered PCM")
             played += 1
@@ -527,11 +535,26 @@ def check_continuous_dma(image, dsp, blocks):
         cpu.ctl_flush_tb()
         replay.call(0xC478, RETURN)
 
-    verify(played == len(blocks) and underrun, "DMA queue did not finish and return to silence")
-    verify(first_pcm_tick == 18 and len(addresses) == 3, "Unexpected startup or descriptor reuse")
+    verify(played == len(blocks) and tail_silence, "DMA queue did not finish and return to silence")
+    verify(len(addresses) == 3, "Unexpected descriptor reuse")
+    if arrival_ticks is None:
+        verify(first_pcm_tick == 18 and not silence_gaps, "Unexpected startup or gap in steady replay")
     return {"name": "stock_continuous_dma", "blocks_played": played, "pcm_bytes": played * 192,
             "first_pcm_fixture_tick": first_pcm_tick, "descriptor_addresses": len(addresses),
-            "underrun_selected_silence": underrun}
+            "silence_gaps_ticks": silence_gaps, "underrun_selected_silence": tail_silence}
+
+
+def check_dma_arrival_variation(image, dsp):
+    blocks = [tone(tick, ((83,), (197,))) for tick in range(128)]
+    burst = [index // 4 * 4 for index in range(len(blocks))]
+    report = []
+    for pause in (0, 8, 24, 48):
+        arrivals = [tick + (pause if index >= 64 else 0) for index, tick in enumerate(burst)]
+        result = check_continuous_dma(image, dsp, blocks, arrivals)
+        gaps = result["silence_gaps_ticks"]
+        verify(gaps == ([pause] if pause >= 24 else []), f"Unexpected FIFO gap for pause {pause}: {gaps}")
+        report.append({"usb_pause_ticks": pause, **{key: value for key, value in result.items() if key != "name"}})
+    return {"name": "stock_dma_arrival_variation", "cases": report}
 
 
 def replay_capture(image, dsp, path):
@@ -595,6 +618,7 @@ def main():
     report.append(check_stock_i2s_completion(image, dsp))
     report.append(check_stock_dma_descriptor(image, dsp))
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
+    report.append(check_dma_arrival_variation(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

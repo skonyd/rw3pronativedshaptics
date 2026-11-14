@@ -11,6 +11,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   timing. Identify the B91 runtime address mapping and NXP–Telink
   link to determine how dongle PCM reaches the controller.
 - Model FIFO pacing and independently validate interrupt timing.
+  E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
+  midstream pause, including silence and PCM recovery.
   E-20261114-11 covers continuous reload under a fixed fixture schedule.
   E-20261114-10 covers
   the first reload and checks the same PCM against the original DSP.
