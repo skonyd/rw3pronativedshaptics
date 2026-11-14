@@ -34,6 +34,9 @@ remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
   - Oyunun DualSense titreşimi: palm haptic source **Oyunun HD haptiği / Oyun sesinden / Kapalı** with a level slider (game HD → native gain; sound → the same audio level), plus trigger effects and the game's rumble. "Oyun sesinden" is for games with DualSense triggers but no HD haptics: the virtual DualSense keeps the triggers and rumble, and the palms follow the PC sound through the same Sensa extractor. The bridge then pushes no game PCM and no palm trigger synth (one producer). A USB DualSense endpoint is used only for the game-HD source.
   - The native mode now auto-starts with any source on. Before, it auto-started only with HD PCM on, so the common "triggers, no HD" setup waited for a manual click.
   - Settings no longer has the Native gain / audio sensitivity presets (now the sliders).
+  - Layout (second pass): the status card (what runs now, level meters) sits above the mode card and stays visible; the mode options scroll. The native mode is labelled "DualSense oyunları". The connections panel names what each part does, and its "DualSense köprüsü" line follows the bridge live (before, it kept saying "kapalı" while the bridge ran, and "Xbox modunda kullanılmaz" for Sensa although Xbox-mode Sensa works). The tray menu can switch the native palm haptic source per game.
+  - Fixed: in Xbox mode with "Xbox modunda Sensa", any frequency filter other than "full band" silently moved audio mode from the palms to the body motors. The filter now applies on the palm path too.
+  - Audio status shows the captured playback device and the Bluetooth sync delay.
   - Not yet felt: "Oyun sesinden" in a real game.
 
 - **Sensa without Synapse:** own frame encoder + HID feature report 4 ("Direct USB"), over the cable and the HyperSpeed dongle.

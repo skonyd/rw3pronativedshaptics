@@ -186,12 +186,12 @@
 
     <!-- ===================== GENEL KULLANIM ===================== -->
     <Grid x:Name="GeneralPage" Grid.Row="1">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
 
       <Border Style="{StaticResource CardBorder}">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top" Text="Bağlantılar" Style="{StaticResource CardTitle}"/>
-          <TextBlock DockPanel.Dock="Top" Text="Bağlantı kontrolleri oyun kaynağını veya fiziksel HD çıkışı doğrulamaz." Style="{StaticResource Hint}" Margin="0,0,0,14"/>
+          <TextBlock DockPanel.Dock="Top" Text="Kolun ve gereken parçaların durumu." Style="{StaticResource Hint}" Margin="0,0,0,14"/>
           <Button DockPanel.Dock="Bottom" Content="↻  Yeniden kontrol et" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="RefreshChecks_Click"/>
           <StackPanel x:Name="CheckList">
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -200,52 +200,69 @@
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotSynapse" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>
-              <StackPanel Grid.Column="1"><TextBlock Text="Sensa bağlantısı (Doğrudan USB)" FontWeight="SemiBold"/><TextBlock x:Name="HintSynapse" Style="{StaticResource Hint}"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Avuç haptiği (Sensa)" FontWeight="SemiBold"/><TextBlock x:Name="HintSynapse" Style="{StaticResource Hint}"/></StackPanel>
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotSdk" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>
-              <StackPanel Grid.Column="1"><TextBlock Text="Sanal DualSense (HIDMaestro)" FontWeight="SemiBold"/><TextBlock x:Name="HintSdk" Style="{StaticResource Hint}"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Sanal DualSense sürücüsü" FontWeight="SemiBold"/><TextBlock x:Name="HintSdk" Style="{StaticResource Hint}"/></StackPanel>
             </Grid>
             <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
               <Ellipse x:Name="DotDualSense" Width="11" Height="11" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{StaticResource Muted}"/>
-              <StackPanel Grid.Column="1"><TextBlock Text="DualSense haptic kaynağı" FontWeight="SemiBold"/><TextBlock x:Name="HintDualSense" Style="{StaticResource Hint}"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="DualSense köprüsü" FontWeight="SemiBold"/><TextBlock x:Name="HintDualSense" Style="{StaticResource Hint}"/></StackPanel>
             </Grid>
           </StackPanel>
         </DockPanel>
       </Border>
 
       <Grid Grid.Column="2">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="18"/><RowDefinition/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="14"/><RowDefinition/></Grid.RowDefinitions>
 
-        <Border Style="{StaticResource CardBorder}">
+        <!-- what is running right now: always visible above the options -->
+        <Border Style="{StaticResource CardBorder}" Padding="20,14">
           <StackPanel>
-            <TextBlock Text="Titreşim modu" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="Bir mod seç; seçtiğin mod hemen ve her açılışta otomatik çalışır." Style="{StaticResource Hint}" Margin="0,0,0,14"/>
-            <UniformGrid Columns="3">
+            <TextBlock x:Name="StatusTitle" Text="Hazır" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock x:Name="StatusDetail" Style="{StaticResource Hint}" Margin="0,3,0,0" FontSize="12.5"/>
+            <Grid x:Name="LevelPanel" Margin="0,10,0,0" Visibility="Collapsed">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="16"/><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <TextBlock Text="Sol" Foreground="{StaticResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+              <ProgressBar x:Name="LeftLevel" Grid.Column="1" Style="{StaticResource LevelBar}" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="3" Text="Sağ" Foreground="{StaticResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+              <ProgressBar x:Name="RightLevel" Grid.Column="4" Style="{StaticResource LevelBar}" VerticalAlignment="Center"/>
+            </Grid>
+            <TextBlock x:Name="ModeNote" Style="{StaticResource Hint}" FontSize="12" Margin="0,4,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="Titreşim modu" Style="{StaticResource CardTitle}"/>
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,12"
+                       Text="Seçtiğin mod hemen ve her açılışta kendiliğinden çalışır. Kumandada ☰ ile de değişir."/>
+            <UniformGrid DockPanel.Dock="Top" Columns="3">
               <RadioButton x:Name="ModeNormal" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
                 <StackPanel>
                   <TextBlock Text="Normal" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Orijinal Xbox kolu gibi. Oyun titreşimi doğrudan gider." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+                  <TextBlock Text="Uygulama karışmaz. Oyunun Xbox titreşimi olduğu gibi kola gider." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
                 </StackPanel>
               </RadioButton>
               <RadioButton x:Name="ModeAudio" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
                 <StackPanel>
                   <TextBlock Text="Sesten titreşim" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Bilgisayar sesinden klasik titreşim üretir." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+                  <TextBlock Text="Her oyunda, filmde, müzikte. Bilgisayarın sesi avuçlarda titreşir." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
                 </StackPanel>
               </RadioButton>
               <RadioButton x:Name="ModeNative" GroupName="Mode" Style="{StaticResource ChoiceCard}" Checked="Mode_Checked">
                 <StackPanel>
-                  <TextBlock Text="Oyunun DualSense titreşimi" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Oyun kolu DualSense sanır: HD haptik, tetik efektleri. Sanal köprüyle ya da USB DualSense ile." Style="{StaticResource Hint}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                  <Border Background="#3A2A10" CornerRadius="6" Padding="6,1" Margin="0,8,0,0" HorizontalAlignment="Left">
+                  <TextBlock Text="DualSense oyunları" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                  <TextBlock Text="Oyun kolu DualSense sanır: tetik efektleri, HD haptik ya da sesten haptik." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
+                  <Border Background="#3A2A10" CornerRadius="6" Padding="6,1" Margin="0,6,0,0" HorizontalAlignment="Left">
                     <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
                   </Border>
                 </StackPanel>
               </RadioButton>
             </UniformGrid>
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,14,0,0" MaxHeight="430" Focusable="False">
-            <StackPanel Margin="0,0,8,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,14,0,0" Focusable="False">
+            <StackPanel Margin="0,0,10,0">
             <StackPanel x:Name="NormalSourceRows" Visibility="Collapsed">
               <TextBlock Text="Xbox kolu destekleyen oyunlarda seç. Wolverine Xbox modundayken standart gövde titreşimi ve oyun gönderiyorsa tetik içi titreşim doğrudan kola gider." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
             </StackPanel>
@@ -323,34 +340,7 @@
             </StackPanel>
             </StackPanel>
             </ScrollViewer>
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}">
-          <Grid>
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-            <Grid>
-              <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <StackPanel VerticalAlignment="Center">
-                <TextBlock x:Name="StatusTitle" Text="Hazır" FontSize="20" FontWeight="SemiBold"/>
-                <TextBlock x:Name="StatusDetail" Style="{StaticResource Hint}" Margin="0,4,16,0" FontSize="13"/>
-              </StackPanel>
-            </Grid>
-
-            <StackPanel x:Name="LevelPanel" Grid.Row="1" Margin="0,22,0,0" Visibility="Collapsed">
-              <TextBlock Text="Gelen haptic sinyali" Style="{StaticResource Hint}" Margin="0,0,0,8"/>
-              <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <TextBlock Text="Sol" Foreground="{StaticResource Muted}"/>
-                <ProgressBar x:Name="LeftLevel" Grid.Column="1" Style="{StaticResource LevelBar}"/>
-              </Grid>
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <TextBlock Text="Sağ" Foreground="{StaticResource Muted}"/>
-                <ProgressBar x:Name="RightLevel" Grid.Column="1" Style="{StaticResource LevelBar}"/>
-              </Grid>
-            </StackPanel>
-
-            <TextBlock x:Name="ModeNote" Grid.Row="3" Style="{StaticResource Hint}" FontSize="12"/>
-          </Grid>
+          </DockPanel>
         </Border>
       </Grid>
     </Grid>
@@ -493,7 +483,7 @@
           <!-- Temel -->
           <StackPanel x:Name="SettingsBasicPanel">
             <TextBlock Text="Titreşim gücü" Style="{StaticResource CardTitle}"/>
-            <TextBlock Text="Bu uygulamanın gönderdiği titreşimler için. Oyunun kendi titreşimini değiştirmez." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+            <TextBlock Text="Genel üst sınır: bu uygulamanın gönderdiği her titreşime uygulanır (Normal moddaki oyun titreşimine değil). Modlara özel seviyeler Genel sekmesindeki kaydırıcılarda." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
               <RadioButton x:Name="Level25" Content="%25" Tag="25" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
               <RadioButton x:Name="Level50" Content="%50" Tag="50" GroupName="Level" Style="{StaticResource PresetCard}" Checked="Level_Checked"/>
@@ -530,7 +520,7 @@
             <CheckBox x:Name="XboxSensaOutput" Content="Xbox modunda Sensa: avuçlar + tetik motorları (tüm modlar)" Foreground="#EEF3FF"
                       Checked="XboxSensa_Changed" Unchecked="XboxSensa_Changed"
                       AutomationProperties.Name="Xbox modunda Sensa"/>
-            <TextBlock Text="Razer'ın Xbox kanalı (GIP) üzerinden, kol Xbox modundayken PC modundaki gibi avuçlarda Sensa: Oyunun DualSense titreşimi → haptik avuçlara, tetik efektleri tetik motorlarına (Sensa + GameInput birlikte, silahta kırılmaya kadar artan titreşim). Sesten titreşim → avuçlar. Demolar ve motor testi → avuçlar. Oyunun normal titreşimi gövde motorlarında kalır. Kör test ve kalibrasyonla doğrulandı. Kapalıyken eski davranış: haptik ve ses gövde motorlarında, tetikler yalnız GameInput ile." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
+            <TextBlock Text="Razer'ın Xbox kanalı (GIP) üzerinden, kol Xbox modundayken PC modundaki gibi avuçlarda Sensa: DualSense oyunları → haptik avuçlara, tetik efektleri tetik motorlarına (Sensa + GameInput birlikte, silahta kırılmaya kadar artan titreşim). Sesten titreşim → avuçlar. Demolar ve motor testi → avuçlar. Oyunun normal titreşimi gövde motorlarında kalır. Kör test ve kalibrasyonla doğrulandı. Kapalıyken eski davranış: haptik ve ses gövde motorlarında, tetikler yalnız GameInput ile." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
             <CheckBox x:Name="BigMotorCeiling" Content="Kol masadayken büyük motoru tıklamadan sınırla (en fazla %75)" Foreground="#EEF3FF"
                       Checked="BigMotorCeiling_Changed" Unchecked="BigMotorCeiling_Changed"
                       AutomationProperties.Name="Büyük gövde motorunu sınırla"/>
@@ -539,7 +529,7 @@
                       Checked="PalmTriggerFeel_Changed" Unchecked="PalmTriggerFeel_Changed"
                       AutomationProperties.Name="PC modunda tetik efektlerini avuçlarda hisset"/>
             <TextBlock Text="PC modunda tetik motorlarına ulaşılamaz. Açıkken tetik efektleri gövde motoru yerine aynı taraftaki avuçta çalar: bölgeye girişte kısa bir tık, direnç boyunca güçle artan bir doku, titreşim efektlerinde titreşim. Xbox modunu etkilemez." Style="{StaticResource Hint}" Margin="0,2,0,10" TextWrapping="Wrap"/>
-            <TextBlock Text="Oyunun DualSense titreşimi · Xbox modu motor karışımı" Style="{StaticResource CardTitle}"/>
+            <TextBlock Text="DualSense oyunları · Xbox modu motor karışımı" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="Gövde ve tetik motorlarına giden kaynakların seviyesi. 0 kaynağı kapatır. Öncelik, gövdeye giden HD haptik (yalnız Sensa kapalıyken) ve rumble arasında uygulanır." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
             <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxPcmLevel, StringFormat='HD PCM · %{0:0}'}"/>
             <Slider x:Name="XboxPcmLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="HD PCM seviyesi"/>
@@ -654,7 +644,7 @@
               <Button x:Name="HhRestoreBtn" Content="Gizlemeyi geri al" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="HhRestore_Click" Visibility="Collapsed"/>
             </WrapPanel>
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-              <TextBlock Text="Köprü, Genel → 'Oyunun DualSense titreşimi' seçilince kendiliğinden açılır." Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,10,0" TextWrapping="Wrap" MaxWidth="220"/>
+              <TextBlock Text="Köprü, Genel → 'DualSense oyunları' seçilince kendiliğinden açılır." Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,10,0" TextWrapping="Wrap" MaxWidth="220"/>
               <TextBlock x:Name="VcBridgeText" Style="{StaticResource Hint}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
             </StackPanel>
           </StackPanel>

@@ -141,10 +141,12 @@ public sealed class HapticOrchestrator
             combined.IncludeGameRumble = IncludeXboxGameRumble();
             combined.IncludeGameTriggers = IncludeXboxGameTriggers();
         }
-        else if (AudioRoute == WolverineMode.Pc || (AudioRoute == WolverineMode.Xbox && XboxSensa.Enabled && profile == AudioHapticProfile.Existing))
+        else if (AudioRoute == WolverineMode.Pc || (AudioRoute == WolverineMode.Xbox && XboxSensa.Enabled))
         {
             // PC mode: Sensa over USB. Xbox mode (XboxSensa): the same engine reaches the palms over GIP, and the
             // calibration rated palms better than body rumble (E-20261111-07). The game's own rumble/triggers stay its own.
+            // The frequency filter applies on this path too (as in PC mode). Until 2026-11-14 any filter other than
+            // "full band" silently moved Xbox-mode audio from the palms to the body motors.
             await _bridge.StartAudioToSensaAsync(profile: profile);
             if (Superseded(mode) || !_settings.AudioOutputEnabled || profile != _settings.AudioProfile) { _bridge.Stop(); return false; }
         }

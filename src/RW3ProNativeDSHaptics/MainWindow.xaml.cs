@@ -38,7 +38,7 @@ public partial class MainWindow : Window
 
     private Forms.NotifyIcon? _tray;
     private System.Drawing.Icon? _trayIcon;
-    private Forms.ToolStripMenuItem? _normalMenu, _audioMenu, _nativeMenu;
+    private Forms.ToolStripMenuItem? _normalMenu, _audioMenu, _nativeMenu, _sourceMenu;
 
     private bool _busy, _initialized, _realExit;
     // Mode orchestration lives in HapticOrchestrator; these forward to it so the UI code reads as before.
@@ -214,10 +214,24 @@ public partial class MainWindow : Window
         menu.Items.Add(new Forms.ToolStripSeparator());
         _normalMenu = new Forms.ToolStripMenuItem("Normal", null, (_, _) => Dispatcher.Invoke(() => ModeNormal.IsChecked = true));
         _audioMenu = new Forms.ToolStripMenuItem("Sesten titreşim", null, (_, _) => Dispatcher.Invoke(() => ModeAudio.IsChecked = true));
-        _nativeMenu = new Forms.ToolStripMenuItem("Native DualSense (deneysel)", null, (_, _) => Dispatcher.Invoke(() => ModeNative.IsChecked = true));
+        _nativeMenu = new Forms.ToolStripMenuItem("DualSense oyunları (beta)", null, (_, _) => Dispatcher.Invoke(() => ModeNative.IsChecked = true));
+        // Per-game switch without opening the window: the native mode's palm haptic source.
+        _sourceMenu = new Forms.ToolStripMenuItem("   Avuç haptiği");
+        foreach (var (label, radio) in new[] { ("Oyunun HD haptiği", NativeSrcGame), ("Oyun sesinden", NativeSrcAudio), ("Kapalı", NativeSrcOff) })
+            _sourceMenu.DropDownItems.Add(new Forms.ToolStripMenuItem(label, null, (_, _) => Dispatcher.Invoke(() =>
+            {
+                radio.IsChecked = true;
+                ModeNative.IsChecked = true;
+            })) { Tag = radio });
+        _sourceMenu.DropDownOpening += (_, _) =>
+        {
+            foreach (Forms.ToolStripMenuItem item in _sourceMenu.DropDownItems)
+                item.Checked = item.Tag is RadioButton { IsChecked: true };
+        };
         menu.Items.Add(_normalMenu);
         menu.Items.Add(_audioMenu);
         menu.Items.Add(_nativeMenu);
+        menu.Items.Add(_sourceMenu);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Çıkış", null, (_, _) => Dispatcher.Invoke(ExitCompletely));
         using var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/App.ico")).Stream;
@@ -317,10 +331,10 @@ public partial class MainWindow : Window
     private async Task<bool> OfferBridgeSetupAsync()
     {
         var answer = System.Windows.MessageBox.Show(
-            "Oyunun DualSense titreşimi için sanal DualSense köprüsü yönetici izniyle çalışır." + Environment.NewLine + Environment.NewLine +
+            "'DualSense oyunları' modu için sanal DualSense köprüsü yönetici izniyle çalışır." + Environment.NewLine + Environment.NewLine +
             "Şimdi bir kez izin verirsen köprü bundan sonra bu modu seçtiğinde ve uygulama açıldığında sormadan başlar " +
             "(Windows zamanlanmış görevi; Ayarlar → Sanal DualSense'ten kapatabilirsin).",
-            "Oyunun DualSense titreşimi", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+            "DualSense oyunları", MessageBoxButton.OKCancel, MessageBoxImage.Information);
         if (answer != MessageBoxResult.OK) return false;
         var (_, msg) = await VirtualControllerSetup.RunElevatedAsync(ElevatedLaunchTask.InstallArg);
         DiagnosticsService.Info("Bridge task setup from mode pick: " + msg);
@@ -830,13 +844,29 @@ public partial class MainWindow : Window
             SetState(DotSynapse, HintSynapse, r.SensaPaths > 0 ? GoodBrush : BadBrush, r.SensaPaths > 0
                 ? "Hazır: titreşim doğrudan kola yazılır, Synapse gerekmez." + (r.Synapse ? " Synapse açık: 'Audio to Haptics' kapalı olmalı." : "")
                 : "Kolun Sensa arabirimi açılamadı. Kolu çıkarıp tak.");
-        else SetState(DotSynapse, HintSynapse, MutedBrush, r.Mode == WolverineControllerMode.Xbox ? "Xbox modunda kullanılmaz." : "Kol bağlı değil.");
+        else if (r.Mode == WolverineControllerMode.Xbox)
+            SetState(DotSynapse, HintSynapse, XboxSensa.Enabled ? GoodBrush : MutedBrush, XboxSensa.Enabled
+                ? "Xbox modunda Razer'ın kanalı (GIP) üzerinden: avuçlar + tetik motorları."
+                : "Kapalı: Ayarlar → 'Xbox modunda Sensa'. Kapalıyken titreşim gövde motorlarında.");
+        else SetState(DotSynapse, HintSynapse, MutedBrush, "Kol bağlı değil.");
         SetState(DotSdk, HintSdk, r.Virtual.Ready ? GoodBrush : WarnBrush, r.Virtual.Ready
-            ? "Kurulu. 'Oyunun DualSense titreşimi' modu için gerekli."
-            : "Kurulu değil. Yalnız 'Oyunun DualSense titreşimi' için gerekir: Ayarlar → Sanal DualSense → Kur.");
-        SetState(DotDualSense, HintDualSense, r.DualSenseEndpoint != null ? GoodBrush : MutedBrush, r.DualSenseEndpoint != null
-            ? "4 kanal ses aygıtı: " + r.DualSenseEndpoint
-            : "Şu an yok: sanal köprü kapalı ve USB DualSense takılı değil. 'Oyunun DualSense titreşimi' modu köprüyü açar.");
+            ? "Kurulu. 'DualSense oyunları' modu için."
+            : "Kurulu değil. Yalnız 'DualSense oyunları' için gerekir: Ayarlar → Sanal DualSense → Kur.");
+        _usbDualSenseName = r.DualSenseEndpoint;
+        UpdateBridgeCheck();
+    }
+
+    private string? _usbDualSenseName;
+
+    /// <summary>"DualSense köprüsü" line: live (bridge state changes without a recheck).</summary>
+    private void UpdateBridgeCheck()
+    {
+        if (_bridge.IsVirtualDualSenseRunning)
+            SetState(DotDualSense, HintDualSense, GoodBrush, "Açık: oyunlar kolu DualSense olarak görür; Xbox kolu oyundan gizli.");
+        else if (_usbDualSenseName != null && !_bridge.IsVirtualDualSenseRunning && _run == RunState.Native)
+            SetState(DotDualSense, HintDualSense, GoodBrush, "USB DualSense'in haptik kanalı kullanılıyor: " + _usbDualSenseName);
+        else
+            SetState(DotDualSense, HintDualSense, MutedBrush, "Kapalı. 'DualSense oyunları' modu seçilince kendiliğinden açılır.");
     }
 
     private static void SetState(System.Windows.Shapes.Ellipse dot, TextBlock hint, Brush brush, string text)
@@ -950,6 +980,7 @@ public partial class MainWindow : Window
     {
         var mode = SelectedMode;
         var hapticSource = _settings.NativeHapticSource ?? NativeHapticSource.Game;
+        UpdateBridgeCheck();
         NativeSourceRows.Visibility = mode == HapticMode.Native ? Visibility.Visible : Visibility.Collapsed;
         AudioSourceRows.Visibility = mode == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
         NormalSourceRows.Visibility = mode == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
@@ -977,7 +1008,7 @@ public partial class MainWindow : Window
             case HapticMode.Normal:
                 StatusTitle.Text = "Normal mod etkin";
                 StatusDetail.Text = "Oyunun titreşimi doğrudan kola gider. Bu uygulamanın bir şey çalıştırmasına gerek yok.";
-                ModeNote.Text = "Razer'ın kendi Sensa HD efektleri için Synapse'te 'Sensa HD Games' kaynağını kullan.";
+                ModeNote.Text = "Oyun hiç titreşim göndermiyorsa ya da avuçlarda his istiyorsan 'Sesten titreşim'i, oyun DualSense destekliyorsa 'DualSense oyunları'nı dene.";
                 SetBadge(GoodBrush, "Normal");
                 break;
             case HapticMode.Audio:
@@ -995,12 +1026,15 @@ public partial class MainWindow : Window
                     WolverineMode.Xbox => _combinedXbox?.HasRecentSound ?? _xboxAudio?.HasRecentSound ?? _bridge.AudioHasRecentSound,
                     _ => _xboxAudio?.HasRecentSound ?? (snap.LastActiveSoundTick > 0 && Environment.TickCount64 - snap.LastActiveSoundTick < 3000)
                 };
+                string? device = _xboxAudio?.DeviceName ?? _bridge.AudioDeviceName;
+                int delay = _xboxAudio?.EffectiveDelayMs ?? _bridge.AudioSyncDelayMs;
                 StatusTitle.Text = running ? "Sesten titreşim çalışıyor" : "Sesten titreşim";
                 StatusDetail.Text = running
-                    ? route + " • " + (sound ? "ses algılanıyor." : "şu an ses yok veya çok sessiz. Ses kaydedilmez.")
+                    ? route + " • " + (sound ? "ses algılanıyor" : "şu an ses yok veya çok sessiz") +
+                      (device != null ? $" • dinlenen: {device}" : "") +
+                      (delay > 0 ? $" • titreşim {delay} ms geciktirilir (Bluetooth; Ayarlar → Gelişmiş)" : "")
                     : waitText;
-                ModeNote.Text = "Ses yalnız avuç/gövde titreşimi üretir: PC modunda Sensa, Xbox modunda da Sensa ('Xbox modunda Sensa' kapalıysa ana motorlar). Tetiklere ses komutu gönderilmez. " +
-                                "Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.";
+                ModeNote.Text = "İpucu: Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.";
                 SetBadge(running ? GoodBrush : WarnBrush, running ? "Çalışıyor" : "Bekliyor");
                 break;
             default:
@@ -1008,7 +1042,7 @@ public partial class MainWindow : Window
                 {
                     var (_, _, triggers) = _bridge.VirtualDualSenseCounters;
                     bool capturing = _bridge.IsNativeAudioRunning;
-                    StatusTitle.Text = capturing ? "Oyunun DualSense titreşimi · avuçlar sesten" : "Sanal DualSense hazır · ses yakalanamadı";
+                    StatusTitle.Text = capturing ? "DualSense oyunları · avuçlar sesten" : "Sanal DualSense hazır · ses yakalanamadı";
                     StatusDetail.Text = (capturing
                         ? (_bridge.NativeAudioHasRecentSound ? "Ses → avuçlar, " : "Ses bekleniyor (şu an sessiz), ")
                         : "Ses yakalama: " + (_bridge.NativeAudioFailure ?? "başlatılamadı") + ", ") +
@@ -1027,7 +1061,7 @@ public partial class MainWindow : Window
                 {
                     var (blocks, reports, triggers) = _bridge.VirtualDualSenseCounters;
                     bool xbox = _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox;
-                    StatusTitle.Text = blocks > 0 ? "Oyunun DualSense titreşimi çalışıyor" : "Sanal DualSense hazır · oyun bekleniyor";
+                    StatusTitle.Text = blocks > 0 ? "DualSense oyunları çalışıyor" : "Sanal DualSense hazır · oyun bekleniyor";
                     StatusDetail.Text = (xbox ? (XboxSensa.Enabled ? "Xbox modu: haptik → avuçlar, L2/R2 → tetik motorları" : "Xbox modu: haptik → gövde, L2/R2 → tetik motorları") : "PC modu: haptik → Sensa (avuç)") +
                         $" • haptik blok {blocks}, tetik raporu {triggers}" +
                         (_bridge.VirtualDualSenseInputCheck.Length > 0 ? " • " + _bridge.VirtualDualSenseInputCheck : "");
@@ -1047,7 +1081,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    StatusTitle.Text = "Oyunun DualSense titreşimi";
+                    StatusTitle.Text = "DualSense oyunları";
                     StatusDetail.Text = _nativeWaitNote != null && _lastErrorNoted == null && !_busy ? _nativeWaitNote : waitText;
                     SetBadge(WarnBrush, "Bekliyor");
                 }
