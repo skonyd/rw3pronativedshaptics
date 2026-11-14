@@ -33,6 +33,9 @@ public sealed class XboxAudioSink : IAudioHapticSink
     public float Gain { get; set; } = 2.5f;
     /// <summary>App-wide audio vibration level (UI slider, percent), read per block so it applies live.</summary>
     public static volatile int LevelPercent = 100;
+    /// <summary>Companion of the Xbox-mode palm output: plays the body motors only while
+    /// <see cref="ControllerFocusGuard"/> says the palms are blocked (a browser/Electron app in front); silent otherwise.</summary>
+    public bool Companion { get; init; }
     public long NonFiniteSamples { get; private set; }
     public string Description => "Xbox gövde motorları (tetiklere komut gönderilmez)";
     public bool HasGamepad => FindSlot() >= 0;
@@ -64,7 +67,7 @@ public sealed class XboxAudioSink : IAudioHapticSink
     {
         _inBlock = 0;
 
-        double level = HapticOutputLevel.Apply(1.0, OutputLevelPercent);
+        double level = Companion && !ControllerFocusGuard.ForegroundTakesController() ? 0 : HapticOutputLevel.Apply(1.0, OutputLevelPercent);
         double g = (float.IsFinite(Gain) ? Math.Max(0, Gain) : 0) * Math.Clamp(LevelPercent, 0, 400) / 100.0;
         var v = new GamepadVibration
         {

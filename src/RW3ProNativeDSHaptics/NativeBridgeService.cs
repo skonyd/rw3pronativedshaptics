@@ -359,6 +359,13 @@ public sealed class NativeBridgeService : IDisposable
         {
             _nativeAudio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features));
             _nativeAudio.Start();
+            if (_virtual?.ControllerMode == WolverineControllerMode.Xbox && XboxSensa.Enabled)
+            {
+                // Same as audio mode: body motors carry the sound while a browser/Electron app in front blocks the palms.
+                _nativeCompanion = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = OutputLevelPercent, Companion = true });
+                try { _nativeCompanion.Start(); }
+                catch (Exception ex) { DiagnosticsService.Error("Native audio body companion", ex); _nativeCompanion.Dispose(); _nativeCompanion = null; }
+            }
             DiagnosticsService.Info("Native mode: palm haptics from PC sound ('" + _nativeAudio.DeviceName + "'); game HD PCM not used.");
         }
         catch (Exception ex)
@@ -368,8 +375,11 @@ public sealed class NativeBridgeService : IDisposable
         }
     }
 
+    private AudioHapticsBridge? _nativeCompanion;
+
     private void StopNativeAudio()
     {
+        _nativeCompanion?.Dispose(); _nativeCompanion = null;
         if (_nativeAudio == null) return;
         _nativeAudio.Dispose(); _nativeAudio = null;
         _sensitivityActive = false; ApplyGain();

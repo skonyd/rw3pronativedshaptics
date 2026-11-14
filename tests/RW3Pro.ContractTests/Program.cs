@@ -1777,6 +1777,19 @@ SpectralContracts.Run(Check);
         $"Melody output: bass {(a.Length > 0 ? a[3].BassHz : 0):0.0} Hz, melody {(a.Length > 0 ? a[3].MelodyHz : 0):0.0} Hz, 880→{(b.Length > 0 ? b[3].MelodyHz : 0):0.0} Hz, voice-like fundamental {(v.Length > 0 ? v[3].MelodyHz : 0):0.0} Hz, note change {(c.Length > 0 ? c[0].MelodyHz : 0):0}→{(c.Length > 0 ? c[3].MelodyHz : 0):0} Hz, silence {silent}, per-point pitch codes {p0}→{p3}");
 }
 
+// Xbox-mode palms vs controller focus: browsers / Electron / CEF apps in front take the output; others do not.
+{
+    bool None(string _) => false;
+    bool Electron(string f) => f.EndsWith(System.IO.Path.Combine("resources", "app.asar"));
+    bool Cef(string f) => f.EndsWith("libcef.dll");
+    const string dir = @"C:\apps\x";
+    bool focus = ControllerFocusGuard.IsTaker("opera.exe", dir, None) && ControllerFocusGuard.IsTaker("Claude.exe", dir, None)
+        && ControllerFocusGuard.IsTaker("someapp.exe", dir, Electron) && ControllerFocusGuard.IsTaker("launcher.exe", dir, Cef)
+        && !ControllerFocusGuard.IsTaker("notepad.exe", dir, None) && !ControllerFocusGuard.IsTaker("Banishers-Win64-Shipping.exe", dir, None)
+        && !ControllerFocusGuard.IsTaker(null, null, None);
+    Check(focus, "Controller focus guard: browsers, Electron (app.asar) and CEF apps take the Xbox output; Notepad and a game do not");
+}
+
 // Mode orchestration decisions (HapticModePolicy, used by HapticOrchestrator).
 {
     bool May(HapticMode m, RunState run = RunState.Off, bool starting = false, bool busy = false, bool exiting = false,

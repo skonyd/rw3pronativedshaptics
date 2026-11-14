@@ -45,6 +45,8 @@ public sealed class HapticOrchestrator
     public string? NativeWaitNote { get; set; }
     public WolverineMode AudioRoute { get; private set; } = WolverineMode.Unknown;
     public AudioHapticsBridge? XboxAudio { get; private set; }
+    /// <summary>Xbox-mode audio to the palms: body-motor companion for while the palms are blocked (ControllerFocusGuard).</summary>
+    public AudioHapticsBridge? XboxCompanion { get; private set; }
     public XboxAudioGameBridge? CombinedXbox { get; private set; }
 
     public bool UseXboxGameBridge => IncludeXboxGameRumble() || IncludeXboxGameTriggers();
@@ -154,6 +156,14 @@ public sealed class HapticOrchestrator
             // "full band" silently moved Xbox-mode audio from the palms to the body motors.
             await _bridge.StartAudioToSensaAsync(profile: profile);
             if (Superseded(mode) || !_settings.AudioOutputEnabled || profile != EffectiveProfile) { _bridge.Stop(); return false; }
+            if (AudioRoute == WolverineMode.Xbox)
+            {
+                // Palms follow Windows' controller focus: a browser or Electron app in front (Opera, Claude, Codex…)
+                // drops them silently. The body motors (XInput) are not focus-bound, so they carry the sound meanwhile.
+                XboxCompanion = new AudioHapticsBridge(new XboxAudioSink { OutputLevelPercent = _settings.OutputLevelPercent, PreferredIndex = _settings.PreferredXInputSlot, Companion = true }) { Profile = profile };
+                try { XboxCompanion.Start(); }
+                catch (Exception ex) { DiagnosticsService.Error("Xbox body companion", ex); XboxCompanion.Dispose(); XboxCompanion = null; }
+            }
         }
         else if (AudioRoute == WolverineMode.Xbox || profile != AudioHapticProfile.Existing)
         {
@@ -200,6 +210,8 @@ public sealed class HapticOrchestrator
     {
         XboxAudio?.Dispose();
         XboxAudio = null;
+        XboxCompanion?.Dispose();
+        XboxCompanion = null;
         try { CombinedXbox?.Dispose(); }
         catch (Exception ex) { DiagnosticsService.Error("Xbox köprüsü geri alma", ex); }
         CombinedXbox = null;
