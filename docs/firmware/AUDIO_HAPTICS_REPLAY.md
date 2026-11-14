@@ -267,7 +267,15 @@ block at `0x354CE`. The valid test block supplied a first gain of 21%.
 Wrong checksum, length, version and erased data all produced the factory
 20% gain and marked the block for rewrite. The selected data was passed
 through the stock table initializer. EEPROM initialization is seeded in
-this test, and the deferred write and separate user profile loader remain open.
+this test, and the deferred write remains open.
+
+The separate user profile branch at `0x2DDDA` reads 1,348 bytes from EEPROM
+offset `0x0400`. It checks length, version and checksum before using the
+stored bytes. Invalid and erased fixtures select the factory profile at
+`0x34F66` and set the deferred rewrite flag. The firmware also clamps
+the 16-bit field at `0x53E` to 300–3600 and flags an out-of-range value
+for rewrite. Both exact endpoints were accepted without a rewrite.
+The factory field value is 900.
 
 ### Hardware and integration
 

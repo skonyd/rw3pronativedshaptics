@@ -649,6 +649,47 @@ def check_eeprom_calibration(image, dsp):
     return {"name": "stock_eeprom_calibration", "cases": outcomes}
 
 
+def check_eeprom_user_profile(image, dsp):
+    address, size = 0x20001BF5, 0x544
+    factory = image[0x34F66 - 0x8000:0x34F66 - 0x8000 + size]
+    outcomes = []
+    for scenario, stored, accepted in (("valid", 1200, True), ("minimum", 300, True),
+                                       ("maximum", 3600, True), ("too_low", 299, True),
+                                       ("too_high", 3601, True), ("bad_checksum", 1200, False),
+                                       ("bad_length", 1200, False), ("wrong_version", 1200, False),
+                                       ("erased", 1200, False)):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        cpu.mem_map(0x40108000, 4096)
+        cpu.mem_write(0x200094DA, b"\x01")
+        profile = bytearray(factory)
+        struct.pack_into("<H", profile, 0x53E, stored)
+        if scenario == "bad_length":
+            profile[0] ^= 1
+        if scenario == "wrong_version":
+            profile[3] ^= 1
+        cpu.mem_write(address, bytes(profile))
+        replay.call(0x2B6B8, RETURN, address, size - 2)
+        struct.pack_into("<H", profile, size - 2, cpu.reg_read(UC_ARM_REG_R0) & 0xFFFF)
+        if scenario == "bad_checksum":
+            profile[-1] ^= 1
+        if scenario == "erased":
+            profile[:] = b"\xFF" * size
+        cpu.mem_write(0x40108400, bytes(profile))
+        replay.call(0x2DDDA, 0x2DE70, instruction_limit=200000)
+        expected = bytearray(profile if accepted else factory)
+        value, = struct.unpack_from("<H", expected, 0x53E)
+        bounded = min(3600, max(300, value))
+        struct.pack_into("<H", expected, 0x53E, bounded)
+        verify(bytes(cpu.mem_read(address, size)) == expected, f"Unexpected stock user profile: {scenario}")
+        dirty, = struct.unpack("<H", cpu.mem_read(0x200019B8, 2))
+        rewrite = not accepted or bounded != value
+        verify(bool(dirty & 0x80) == rewrite, f"Unexpected user profile rewrite flag: {scenario}")
+        outcomes.append({"scenario": scenario, "accepted": accepted, "rewrite_pending": rewrite,
+                         "loaded_field_0x53e": bounded})
+    return {"name": "stock_eeprom_user_profile", "cases": outcomes}
+
+
 def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
@@ -778,6 +819,7 @@ def main():
     report.append(check_sensa_pwm(image, dsp))
     report.append(check_stock_profile_calibration(image, dsp))
     report.append(check_eeprom_calibration(image, dsp))
+    report.append(check_eeprom_user_profile(image, dsp))
     full_gain = check_sensa_pwm(image, dsp, continuous=True)
     half_gain = check_sensa_pwm(image, dsp, continuous=True, gain_percent=50)
     for full, half in zip(full_gain["cases"], half_gain["cases"]):
