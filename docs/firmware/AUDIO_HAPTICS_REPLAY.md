@@ -173,8 +173,17 @@ reads 48 incrementing 32-bit words from the descriptor's source and checks
 the fixed TX FIFO destination. A distinctive stereo fixture verifies byte
 order. The model derives INTB from the descriptor and runs the stock IRQ,
 I2S completion and application callbacks to the next silence submission.
-The test executes the head descriptor only. Linked reload, FIFO pacing,
-DMA arbitration and cold boot remain open.
+The test now follows the first reload as well. The linked descriptor is
+latched before the first completion callback, then supplies another 192
+bytes and raises INTA. The stock code returns from the first resubmission
+before the model dispatches the second IRQ. On the same PCM fixture the
+stock path leaves Sensa RAM unchanged. The original DSP produces band
+strengths 22/43 on the left and 7/13 on the right, preserves the PCM, and
+returns all four strengths to zero on disable. The DSP runs alongside the
+stock path as a separate ARM module.
+
+Continuous ring reload under real FIFO pacing, DMA arbitration and cold
+boot remain open.
 [NXP DMA descriptor fields](https://mcuxpresso.nxp.com/mcuxsdk/latest/api/devices/LPC54628/index.html).
 
 Recovery timing depends on queue position in this fixture. After draining

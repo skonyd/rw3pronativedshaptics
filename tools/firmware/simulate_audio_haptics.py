@@ -425,24 +425,55 @@ def check_stock_dma_descriptor(image, dsp):
     # Load a distinctive fixture in the already-addressed buffer to expose
     # incorrect strides or a reversed transfer. The firmware descriptor is untouched.
     payload = tone(2, ((80,), (190,)))
-    cpu.mem_write(source_start, payload)
-    fifo = b"".join(bytes(cpu.mem_read(source_start + index * width, width))
-                    for index in range(transfers))
-    verify(fifo == payload, "DMA FIFO payload mismatch")
-    cpu.mem_write(source_start, bytes(len(payload)))
-
-    # SETINTB (bit 5) raises the modeled channel's INTB after the transfer.
-    for offset, value in ((0x48, 1 << channel), (0x60, 1 << channel)):
-        cpu.mem_write(dma + offset, struct.pack("<I", value))
-    # Initialization already translated the submit routine. Rebuild blocks
-    # so Unicorn honors the new stop address inside the callback chain.
-    cpu.ctl_flush_tb()
-    replay.call(0xC478, DMA_SUBMIT)
-    verify(cpu.reg_read(UC_ARM_REG_R2) == ZERO and cpu.reg_read(UC_ARM_REG_R3) == 192,
-           "Startup DMA completion did not re-arm silence")
+    # DMA reloads the next descriptor before dispatching completion. Snapshot
+    # it first, because the stock driver can reuse descriptors in its callback.
+    linked = struct.unpack("<4I", cpu.mem_read(link, 16))
+    linked_flags, linked_source_end, linked_destination, next_link = linked
+    verify(linked_flags & ~0x30 == flags & ~0x30 and linked_flags & 0x30 == 0x10,
+           "Unsupported linked DMA transfer")
+    verify(linked_destination == destination_end and next_link % 16 == 0 and next_link != link,
+           "Invalid DMA reload target")
+    second_start = linked_source_end - (transfers - 1) * width
+    verify(second_start == ZERO, "Linked startup descriptor did not select silence")
+    completions = []
+    candidate = Replay(image, dsp)
+    candidate_pcm = 0x20024000
+    enabled_strengths = []
+    for index, (active_flags, start, expected) in enumerate(
+            ((flags, source_start, payload), (linked_flags, second_start, bytes(192)))):
+        if index == 0:
+            cpu.mem_write(start, payload)
+        fifo = b"".join(bytes(cpu.mem_read(start + word * width, width)) for word in range(transfers))
+        verify(fifo == expected, "DMA FIFO order changed after reload")
+        if index == 0:
+            candidate.cpu.mem_write(candidate_pcm, fifo)
+            candidate.call(DSP, RETURN, STATE, candidate_pcm, 1, LEVELS)
+            enabled_strengths = list(candidate.cpu.mem_read(LEVELS, 4))
+            verify(any(enabled_strengths[:2]) and any(enabled_strengths[2:]),
+                   "Candidate did not generate stereo haptics from DMA PCM")
+            candidate.call(DSP, RETURN, STATE, candidate_pcm, 0, LEVELS)
+            verify(not any(candidate.cpu.mem_read(LEVELS, 4)), "Candidate disable left active levels")
+            verify(bytes(candidate.cpu.mem_read(candidate_pcm, 192)) == fifo,
+                   "Candidate changed the stock PCM")
+        cpu.mem_write(start, bytes(192))
+        status = 0x60 if active_flags & 0x20 else 0x58
+        for offset in (0x48, 0x58, 0x60):
+            cpu.mem_write(dma + offset, struct.pack("<I", (1 << channel) if offset in (0x48, status) else 0))
+        cpu.ctl_flush_tb()
+        replay.call(0xC478, DMA_SUBMIT)
+        verify(cpu.reg_read(UC_ARM_REG_R2) == ZERO and cpu.reg_read(UC_ARM_REG_R3) == 192,
+               "Startup DMA completion did not re-arm silence")
+        verify(not any(cpu.mem_read(OUT, 4 * 0x82)), "Stock audio DMA changed Sensa state")
+        completions.append("INTB" if status == 0x60 else "INTA")
+        if index == 0:
+            # Finish the first submit and return through the suspended ISR.
+            cpu.ctl_flush_tb()
+            cpu.emu_start(DMA_SUBMIT | 1, RETURN, count=20000)
+            verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, "Stock resubmission did not return")
     return {"name": "stock_generated_dma_descriptor", "channel": channel,
             "descriptor": hex(descriptor), "flags": hex(flags), "linked_descriptor": hex(link),
-            "fifo_bytes": len(fifo), "completion": "INTB", "rearmed_with": "silence"}
+            "fifo_bytes": 2 * len(fifo), "completions": completions, "rearmed_with": "silence",
+            "candidate_enabled_strengths": enabled_strengths}
 
 
 def replay_capture(image, dsp, path):
