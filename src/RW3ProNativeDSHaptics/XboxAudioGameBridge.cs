@@ -181,7 +181,9 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _context = new HMContext();
                 _context.LoadDefaultProfiles();
                 if (!_context.IsDriverInstalled) throw new InvalidOperationException("HIDMaestro sürücüsü hazır değil.");
-                var model = _context.GetProfile("xbox-series-xs-bt") ??
+                // Strict (GDK games): an Xbox 360 pad (XUSB). Banishers did not take the Bluetooth Series profile (a HID
+                // device) as a gamepad through GameInput: it sent rumble to it but ignored its input (2026-11-15).
+                var model = _context.GetProfile(Strict ? "xbox-360-wired" : "xbox-series-xs-bt") ??
                     throw new InvalidOperationException("Sanal Xbox Series profili bulunamadı.");
                 _controller = _context.CreateController(model, "rw3-xbox-audio");
                 _controller.OutputReceived += OnOutput;
@@ -227,8 +229,18 @@ public sealed class XboxAudioGameBridge : IDisposable
 #if HAS_HIDMAESTRO
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
-        if (packet.Source == HMOutputSource.HidOutput) AcceptReport(packet.ReportId, packet.Data.Span);
+        if (packet.Source == HMOutputSource.HidOutput && AcceptReport(packet.ReportId, packet.Data.Span)) return;
+        // Not a Series 0x0F report (the Xbox 360 profile's rumble arrives another way): log the first few shapes.
+        if (Interlocked.Increment(ref _unknownLogged) <= 6)
+            DiagnosticsService.Info($"Virtual Xbox pad: unhandled output {packet.Source} id 0x{packet.ReportId:X2} len {packet.Data.Length}: " +
+                Convert.ToHexString(packet.Data.Span[..Math.Min(16, packet.Data.Length)]));
+        var d = packet.Data.Span;
+        // XUSB set-state as the Xbox 360 profile may hand it over: [.., left, right] motors 0..255 at the end of an 8-byte
+        // 00 08 00 L R 00 00 00 report (the XInput wire format).
+        if (Strict && d.Length >= 5 && d[0] == 0x00 && d[1] == 0x08)
+            lock (_gate) { _game = new(d[3] / 255.0, d[4] / 255.0, 0, 0); _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
     }
+    private int _unknownLogged;
 #endif
 
     internal void SubmitSyntheticReport(ReadOnlySpan<byte> data)
@@ -239,16 +251,17 @@ public sealed class XboxAudioGameBridge : IDisposable
         AcceptReport(0x0F, data);
     }
 
-    private void AcceptReport(byte reportId, ReadOnlySpan<byte> data)
+    private bool AcceptReport(byte reportId, ReadOnlySpan<byte> data)
     {
-        if (!_running || !XboxGameFeedback.TryDecode(reportId, data, out var frame)) return;
+        if (!_running || !XboxGameFeedback.TryDecode(reportId, data, out var frame)) return false;
         lock (_gate)
         {
-            if (!_running) return;
+            if (!_running) return true;
             _game = frame;
             _gameAt = Environment.TickCount64;
             Interlocked.Increment(ref _reports);
         }
+        return true;
     }
 
     private void Run()
@@ -322,6 +335,19 @@ public sealed class XboxAudioGameBridge : IDisposable
 
     private int _lastGoodSlot = -1;
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct CapsEx { public byte Type, SubType; public ushort Flags, Buttons; public byte LT, RT; public short LX, LY, RX, RY; public ushort WL, WR, Vid, Pid, Version, Unk1; public uint Unk2; }
+    [System.Runtime.InteropServices.DllImport("xinput1_4.dll", EntryPoint = "#108")]
+    private static extern uint XInputGetCapabilitiesEx(uint one, uint user, uint flags, out CapsEx caps);
+
+    /// <summary>HIDMaestro's Xbox 360 (045E:028E) and Series BT (045E:0B13) pads. After a replug the physical pad's slot
+    /// is gone for a moment and the scan found the virtual pad (2026-11-15, "back on XInput slot 1").</summary>
+    private static bool IsVirtualPad(int slot)
+    {
+        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 && c.Vid == 0x045E && c.Pid is 0x028E or 0x0B13; }
+        catch { return false; }
+    }
+
     private bool TryReadXInput(out XInputPad pad)
     {
         pad = default;
@@ -330,10 +356,11 @@ public sealed class XboxAudioGameBridge : IDisposable
         {
             // The pad's earlier slot first (after a replug Windows usually gives it back, and the virtual Xbox pad may now
             // also be on XInput); otherwise a single connected slot. Two unknown pads: keep waiting, never guess.
-            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0) slot = _lastGoodSlot;
+            // Our own virtual pad is on XInput too: never read it back (checked only when a slot is chosen, not per loop).
+            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0 && !IsVirtualPad(_lastGoodSlot)) slot = _lastGoodSlot;
             else
                 for (int i = 0; i < 4; i++)
-                    if (XInput.GetState((uint)i, out _) == 0) { if (slot >= 0) return false; slot = i; }
+                    if (XInput.GetState((uint)i, out _) == 0 && !IsVirtualPad(i)) { if (slot >= 0) return false; slot = i; }
         }
         if (slot < 0 || XInput.GetState((uint)slot, out var s) != 0) { _xinputSlot = -1; return false; }
         _lastGoodSlot = slot;
