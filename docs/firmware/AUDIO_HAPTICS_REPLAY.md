@@ -182,8 +182,13 @@ strengths 22/43 on the left and 7/13 on the right, preserves the PCM, and
 returns all four strengths to zero on disable. The DSP runs alongside the
 stock path as a separate ARM module.
 
-Continuous ring reload under real FIFO pacing, DMA arbitration and cold
-boot remain open.
+The continuous replay starts the stock I2S driver, delivers one USB block
+per fixture tick, and follows the live DMA links while the stock IRQ and
+callbacks update the descriptors. It plays all 128 blocks in order, including
+USB ring wraps, and returns to silence after input stops. The first PCM reaches
+the modeled FIFO on tick 18, two ticks after the first PCM submission. This
+reflects the fixture schedule. Real FIFO pacing, DMA arbitration and cold boot
+remain open.
 [NXP DMA descriptor fields](https://mcuxpresso.nxp.com/mcuxsdk/latest/api/devices/LPC54628/index.html).
 
 Recovery timing depends on queue position in this fixture. After draining

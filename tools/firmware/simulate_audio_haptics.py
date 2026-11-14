@@ -388,8 +388,7 @@ def check_stock_i2s_completion(image, dsp):
     return {"name": "stock_i2s_completion", "cases": report, "rearmed_with": ["silence", "usb_pcm"]}
 
 
-def check_stock_dma_descriptor(image, dsp):
-    """Execute the initial descriptor produced by the stock I2S setup."""
+def initialize_stock_dma(image, dsp):
     replay = Replay(image, dsp)
     cpu = replay.cpu
     syscon, dma, tx, rx, nvic = 0x40000000, 0x40082000, 0x40097000, 0x40098000, 0xE000E000
@@ -405,6 +404,14 @@ def check_stock_dma_descriptor(image, dsp):
     cpu.hook_add(UC_HOOK_MEM_WRITE, reset_register_alias, begin=syscon + 0x120, end=syscon + 0x14B)
     cpu.mem_write(dma + 8, struct.pack("<I", 0x2000B000))
     replay.call(0x13D6C, RETURN)
+    return replay
+
+
+def check_stock_dma_descriptor(image, dsp):
+    """Execute the initial descriptors produced by the stock I2S setup."""
+    replay = initialize_stock_dma(image, dsp)
+    cpu = replay.cpu
+    dma, tx = 0x40082000, 0x40097000
 
     channel = 13
     table, = struct.unpack("<I", cpu.mem_read(dma + 8, 4))
@@ -476,6 +483,57 @@ def check_stock_dma_descriptor(image, dsp):
             "candidate_enabled_strengths": enabled_strengths}
 
 
+def check_continuous_dma(image, dsp, blocks):
+    """Run the stock USB producer and generated DMA descriptor ring together."""
+    replay = initialize_stock_dma(image, dsp)
+    cpu = replay.cpu
+    dma, channel_bit = 0x40082000, 1 << 13
+    table, = struct.unpack("<I", cpu.mem_read(dma + 8, 4))
+    address = table + 13 * 16
+    active = struct.unpack("<4I", cpu.mem_read(address, 16))
+    cpu.mem_write(0x20000A59, b"\x01")
+    played, first_pcm_tick = 0, None
+    addresses = set()
+    underrun = False
+    for tick in range(len(blocks) + 24):
+        if tick < len(blocks):
+            header = bytes((0x60, 0x20, tick % 255 + 1, 0xC0, 0x81, 0))
+            replay.receive_usb(header + blocks[tick])
+        flags, source_end, destination, link = active
+        verify(flags in (0x2F1223, 0x2F1213) and destination == 0x40097E20,
+               f"Unsupported TX descriptor at tick {tick}")
+        verify(link and link % 16 == 0 and link != address, "Invalid TX descriptor link")
+        addresses.add(address)
+        source = source_end - 188
+        fifo = b"".join(bytes(cpu.mem_read(source + offset, 4)) for offset in range(0, 192, 4))
+        if source == ZERO:
+            verify(fifo == bytes(192), "Startup or underrun PCM was not silent")
+            if played:
+                verify(played == len(blocks), "FIFO went silent before consuming all PCM")
+                underrun = True
+        else:
+            if first_pcm_tick is None:
+                first_pcm_tick = tick
+            verify(not underrun and played < len(blocks), "DMA emitted unexpected PCM")
+            verify(source == USB_RING + (played * 192) % 6144, "DMA selected an out-of-order slot")
+            verify(fifo == blocks[played], "DMA corrupted or reordered PCM")
+            played += 1
+
+        address = link
+        active = struct.unpack("<4I", cpu.mem_read(address, 16))
+        irq_status = 0x60 if flags & 0x20 else 0x58
+        for offset in (0x48, 0x58, 0x60):
+            cpu.mem_write(dma + offset, struct.pack("<I", channel_bit if offset in (0x48, irq_status) else 0))
+        cpu.ctl_flush_tb()
+        replay.call(0xC478, RETURN)
+
+    verify(played == len(blocks) and underrun, "DMA queue did not finish and return to silence")
+    verify(first_pcm_tick == 18 and len(addresses) == 3, "Unexpected startup or descriptor reuse")
+    return {"name": "stock_continuous_dma", "blocks_played": played, "pcm_bytes": played * 192,
+            "first_pcm_fixture_tick": first_pcm_tick, "descriptor_addresses": len(addresses),
+            "underrun_selected_silence": underrun}
+
+
 def replay_capture(image, dsp, path):
     # The USB capture does not prove the negotiated format or firmware ingress.
     # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
@@ -502,8 +560,12 @@ def replay_capture(image, dsp, path):
         levels, _ = replay.tick(pcm, True, True, index % 3)
         trace.append({"sequence": sequence, "urb_timestamp_us": record["urb_timestamp_us"],
                       "palm_band_strength": levels})
-    return {"name": "capture_pcm_boundary", "stock_usb_ring_copy_checked": usb_ring_checked,
-            "stock_queue": check_stream_queue(image, dsp, records), "blocks": trace}
+    result = {"name": "capture_pcm_boundary", "stock_usb_ring_copy_checked": usb_ring_checked,
+              "stock_queue": check_stream_queue(image, dsp, records), "blocks": trace}
+    if len(records) >= 128:
+        result["continuous_dma"] = check_continuous_dma(
+            image, dsp, [bytes.fromhex(record["payload_hex"]) for record in records[:128]])
+    return result
 
 
 def main():
@@ -532,6 +594,7 @@ def main():
     report.append(check_dma_boundaries(image, dsp))
     report.append(check_stock_i2s_completion(image, dsp))
     report.append(check_stock_dma_descriptor(image, dsp))
+    report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:
