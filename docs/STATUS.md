@@ -13,6 +13,9 @@ RAM. Both Telink images have initial byte-range maps with explicit unknowns.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.
+The stock audio queue now runs across startup, drain, underrun and recovery
+in the replay. The CTIMER2 callback and SCT duty register updates also run
+with fixture state.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

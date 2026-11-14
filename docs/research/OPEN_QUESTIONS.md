@@ -6,11 +6,13 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
 ## Firmware audio-to-haptics
 
 - E-20261114-04 establishes wired and dongle GIP audio at the host USB boundary
-  and locates the NXP ring copy. Trace the ring's real queue priming and
-  interrupt timing. Identify the B91 runtime address mapping and NXP–Telink
+  and locates the NXP ring copy. E-20261114-06 exercises queue priming and
+  underrun with scheduled callbacks. Trace hardware interrupt delivery and
+  timing. Identify the B91 runtime address mapping and NXP–Telink
   link to determine how dongle PCM reaches the controller.
-- Add modeled DMA and timer completion with independent traces, then capture
-  SCT PWM. Build an end-to-end acceptance trace before selecting a firmware
+- Add modeled DMA and timer completion with independent traces. SCT register
+  writes are now covered for seeded duty. Trace the synthesis inputs and
+  capture actual PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.
   Verify a spare-unit restore before any hardware candidate. Bootloader

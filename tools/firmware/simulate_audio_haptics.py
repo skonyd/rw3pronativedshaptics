@@ -7,7 +7,7 @@ from pathlib import Path
 import struct
 import wave
 
-from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
+from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_MCLASS, UC_MODE_THUMB
 from unicorn.arm_const import (
     UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
     UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_SP,
@@ -79,17 +79,21 @@ class Replay:
         self.call(DSP, RETURN, STATE, address, int(expected and enabled), LEVELS)
         return list(cpu.mem_read(LEVELS, 4)), self.steps
 
-    def check_usb_receive(self, slot, offset):
-        """Invoke the stock 198-byte receive branch with a synthetic USB event."""
+    def receive_usb(self, slot, end=RETURN):
         cpu = self.cpu
         cpu.mem_write(USB_BUFFER, slot)
         cpu.mem_write(USB_EVENT, struct.pack("<II", 0, len(slot)))
         cpu.mem_write(0x20000778, struct.pack("<I", USB_CONTEXT))
         cpu.mem_write(USB_CONTEXT + 0x115, b"\x01")
         cpu.mem_write(0x200021CC, b"\x01")
+        self.call(USB_RX, end, 0, 2, USB_EVENT)
+
+    def check_usb_receive(self, slot, offset):
+        """Invoke the stock 198-byte receive branch with a synthetic USB event."""
+        cpu = self.cpu
         cpu.mem_write(0x20008F9C, struct.pack("<I", offset))
         cpu.mem_write(0x20008FA0, bytes(16))
-        self.call(USB_RX, USB_RX_ACCOUNTING, 0, 2, USB_EVENT)
+        self.receive_usb(slot, USB_RX_ACCOUNTING)
         first = min(192, 6144 - offset)
         observed = bytes(cpu.mem_read(USB_RING + offset, first))
         if first < 192:
@@ -185,6 +189,89 @@ def check_toggle(image, dsp):
     return {"name": "runtime_toggle", "pcm_unchanged": True, "strength_after_disable": levels}
 
 
+def check_stream_queue(image, dsp, records):
+    """Drive USB arrival and I2S completion callbacks on shared persistent RAM."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    cpu.mem_write(0x20000A59, b"\x01")
+    # This selects the USB ring, not the short alternate waveform buffer.
+    cpu.mem_write(0x20000A92, b"\x00")
+    pending = []
+    primed_at = None
+    played = 0
+    for tick, record in enumerate(records[:128]):
+        pcm = bytes.fromhex(record["payload_hex"])
+        header = bytes((0x60, 0x20, record["sequence"], 0xC0, 0x81, 0))
+        replay.receive_usb(header + pcm)
+        pending.append(pcm)
+        replay.call(TX, DMA_SUBMIT, 0, 0)
+        address = cpu.reg_read(UC_ARM_REG_R2)
+        verify(cpu.reg_read(UC_ARM_REG_R3) == 192, "Unexpected I2S block size")
+        if address == ZERO:
+            verify(primed_at is None, "Unexpected gap in a continuous USB stream")
+            continue
+        if primed_at is None:
+            primed_at = tick
+        verify(address == USB_RING + (played * 192) % 6144, "Unexpected I2S slot")
+        verify(bytes(cpu.mem_read(address, 192)) == pending[played], "USB queue reordered PCM")
+        played += 1
+
+    if len(pending) < 17:
+        verify(played == 0, "USB queue primed before its stock threshold")
+        return {"blocks_received": len(pending), "primed_at_ms": None}
+    verify(primed_at == 16, "USB queue did not prime after 16 blocks of prefill")
+    for _ in range(len(pending) - played):
+        replay.call(TX, DMA_SUBMIT, 0, 0)
+        address = cpu.reg_read(UC_ARM_REG_R2)
+        verify(address == USB_RING + (played * 192) % 6144, "Unexpected drain slot")
+        verify(bytes(cpu.mem_read(address, 192)) == pending[played], "Drain reordered PCM")
+        played += 1
+    replay.call(TX, DMA_SUBMIT, 0, 0)
+    verify(cpu.reg_read(UC_ARM_REG_R2) == ZERO, "Queue underrun failed to select silence")
+    recovery = pending[:17]
+    recovery_at = None
+    for index, pcm in enumerate(recovery):
+        replay.receive_usb(bytes((0x60, 0x20, index + 1, 0xC0, 0x81, 0)) + pcm)
+        replay.call(TX, DMA_SUBMIT, 0, 0)
+        address = cpu.reg_read(UC_ARM_REG_R2)
+        if address != ZERO:
+            verify(address == USB_RING + (played * 192) % 6144, "Queue resumed from the wrong slot")
+            verify(bytes(cpu.mem_read(address, 192)) == recovery[0], "Queue resumed with stale PCM")
+            recovery_at = index
+            break
+    verify(recovery_at is not None, "Queue did not recover")
+    return {"blocks_received": len(pending), "primed_at_ms": primed_at,
+            "blocks_played": played, "underrun_selected_silence": True, "recovery_prefill_blocks": recovery_at}
+
+
+def check_timer_pwm(image, dsp):
+    """Run the stock CTIMER2 callback and capture SCT register writes."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    timer, sct = 0x40028000, 0x40085000
+    cpu.mem_map(timer, 4096)
+    cpu.mem_map(sct, 4096)
+    cpu.mem_write(0x200044BE, b"\x01")
+    for address, value in ((sct, 1), (sct + 0x100, 4500), (sct + 0x30C, 1)):
+        cpu.mem_write(address, struct.pack("<I", value))
+    writes = []
+    cpu.hook_add(UC_HOOK_MEM_WRITE, lambda _, access, address, size, value, data:
+                 writes.append((address, value)), begin=timer, end=sct + 4095)
+    observed = []
+    for enabled, duty, changed in ((False, 20, False), (True, 20, True), (True, 20, False),
+                                   (True, 100, True), (True, 0, True)):
+        writes.clear()
+        cpu.mem_write(0x200044ED, bytes([enabled]))
+        cpu.mem_write(0x20002284, struct.pack("<H", duty))
+        replay.call(0x2B6F0, RETURN)
+        expected = [(sct + 0x104, duty * 45), (sct + 0x204, duty * 45)] if changed else []
+        verify([(addr, value) for addr, value in writes if addr in (sct + 0x104, sct + 0x204)] == expected,
+               "Unexpected SCT MATCH/MATCHREL writes")
+        verify(writes[-1] == (timer, 1), "CTIMER2 did not acknowledge match")
+        observed.append({"enabled": enabled, "duty_percent": duty, "match_counts": [v for _, v in expected]})
+    return {"name": "stock_timer_pwm_registers", "cases": observed}
+
+
 def replay_capture(image, dsp, path):
     # The USB capture does not prove the negotiated format or firmware ingress.
     # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
@@ -211,7 +298,8 @@ def replay_capture(image, dsp, path):
         levels, _ = replay.tick(pcm, True, True, index % 3)
         trace.append({"sequence": sequence, "urb_timestamp_us": record["urb_timestamp_us"],
                       "palm_band_strength": levels})
-    return {"name": "capture_pcm_boundary", "stock_usb_ring_copy_checked": usb_ring_checked, "blocks": trace}
+    return {"name": "capture_pcm_boundary", "stock_usb_ring_copy_checked": usb_ring_checked,
+            "stock_queue": check_stream_queue(image, dsp, records), "blocks": trace}
 
 
 def main():
@@ -236,6 +324,7 @@ def main():
     report = [run_scenario(image, dsp, *case) for case in cases]
     report.append(check_stream_loss(image, dsp))
     report.append(check_toggle(image, dsp))
+    report.append(check_timer_pwm(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

@@ -111,9 +111,30 @@ at the host-to-dongle USB link. Its over-the-air framing and where the
 controller receives or decodes the audio remain open. No planned button
 sequence was captured in this pass.
 
+## Queue startup and PWM register tests
+
+The replay schedules one receive and one transmit callback per fixture
+millisecond. The USB context and stream enable come from the fixture, but
+the firmware manages its own read and write indices, byte counters, and
+queue priming. The stock receive accounting routine at `0x2384C` runs to
+completion. The TX routine still stops at DMA submission.
+
+For the first 128 blocks of each hardware capture, the stock queue buffered
+16 blocks before selecting the first PCM block on the next callback. All
+128 blocks drained in order and matched the original PCM byte for byte.
+The next callback selected silence. The queue accepted another 16 blocks
+of prefill and then resumed with the first newly queued block. These results
+describe the tested arrival schedule. Hardware IRQ latency was not measured.
+
+The stock CTIMER2 callback at `0x2B6F0` reaches the SCT duty routine and
+acknowledges the timer match. With a seeded period of 4500 counts, 20% wrote
+900 to MATCH1 and MATCHREL1, 100% wrote 4500, and 0% wrote 0. A repeated
+20% value and a disabled callback generated no duty write. The test injects
+duty values, so the synthesis chain and physical PWM waveform remain open.
+
 ## Remaining work
 
-1. Trace endpoint registration, DMA completion and queue priming into the
+1. Trace endpoint registration and DMA completion into the
    confirmed 198-byte branch and on to I2S without fixture state. Capture a
    timed button/analog sequence. Identify the NXP–Telink link and use it to
    connect the two B91 call graphs. The [B91 map](TELINK_B91.md) supplies anchors.
