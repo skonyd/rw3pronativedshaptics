@@ -397,6 +397,9 @@
                 <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeLevelSlider, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
               </Grid>
 
+              <CheckBox x:Name="NativeMelody" Content="Melodi modu: avuçlarda bas + melodi (müzikli sahneler, oyun içi müzik)" Foreground="#EEF3FF" Margin="0,8,0,0"
+                        Checked="NativeMelody_Changed" Unchecked="NativeMelody_Changed"/>
+              <TextBlock Text="Sesten titreşim modundaki Melodi ile aynı ayar. Değiştirince köprü kısa bir an yeniden başlar." Style="{StaticResource Hint}"/>
               <TextBlock Text="Oyunun diğer geri bildirimi" FontWeight="SemiBold" Margin="0,12,0,2"/>
               <CheckBox x:Name="RouteTriggers" Content="Tetik efektleri (L2/R2): Xbox modunda tetik motorlarında" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
               <CheckBox x:Name="RouteRumble" Content="Oyunun normal titreşimi (rumble): gövde motorlarında" Foreground="#EEF3FF" Margin="0,4,0,0" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>

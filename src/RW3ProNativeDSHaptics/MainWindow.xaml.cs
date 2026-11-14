@@ -167,6 +167,7 @@ public partial class MainWindow : Window
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, SensaOutputMethod.Melody => MethodMelody, _ => MethodStandard }).IsChecked = true;
         UpdateNativeSourceUi();
         AudioMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
+        NativeMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
 
@@ -2159,9 +2160,16 @@ public partial class MainWindow : Window
         if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
     }
 
+    private void NativeMelody_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        AudioMelody.IsChecked = NativeMelody.IsChecked;   // one setting: the audio panel's handler applies it
+    }
+
     private void AudioMelody_Changed(object sender, RoutedEventArgs e)
     {
         if (!_initialized) return;
+        NativeMelody.IsChecked = AudioMelody.IsChecked;
         int method = AudioMelody.IsChecked == true ? (int)SensaOutputMethod.Melody : (int)SensaOutputMethod.Standard;
         if (method == _settings.OutputMethod) return;
         ((SensaOutputMethod)method == SensaOutputMethod.Melody ? MethodMelody : MethodStandard).IsChecked = true;   // applies through OutputMethod_Checked
@@ -2172,6 +2180,7 @@ public partial class MainWindow : Window
         if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
         int method = int.Parse(tag);
         AudioMelody.IsChecked = method == (int)SensaOutputMethod.Melody;
+        NativeMelody.IsChecked = method == (int)SensaOutputMethod.Melody;
         if (method == _settings.OutputMethod) return;
         if (_busy || _starting)
         {
