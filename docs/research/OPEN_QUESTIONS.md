@@ -5,9 +5,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Firmware audio-to-haptics
 
-- Trace the USB and wireless producers of the NXP PCM buffers and correlate
-  them with repeatable wired and dongle recordings. Identify the two B91
-  images' runtime address mapping and the NXP–Telink link.
+- E-20261114-04 establishes wired and dongle GIP audio at the host USB boundary
+  and locates the NXP ring copy. Trace the ring's real queue priming and
+  interrupt timing. Identify the B91 runtime address mapping and NXP–Telink
+  link to determine how dongle PCM reaches the controller.
 - Add modeled DMA and timer completion with independent traces, then capture
   SCT PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.

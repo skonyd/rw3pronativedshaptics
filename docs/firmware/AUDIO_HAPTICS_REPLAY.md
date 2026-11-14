@@ -58,11 +58,61 @@ zig objcopy -O binary --only-section=.text "$lab/audio_haptics.elf" "$lab/audio_
 python -B tools/firmware/simulate_audio_haptics.py "$lab/images/Dev2FW.bin" "$lab/audio_haptics.bin"
 ```
 
+## Capture and replay the same stimulus on cable and dongle
+
+1. Add `--fixture-wav "$lab/headset-fixture.wav"` to the replay command.
+   It writes six seconds of 48 kHz stereo PCM16: silence, left 80 Hz, right
+   190 Hz, separate stereo mixtures, then two seconds of silence.
+2. Connect just one transport and plug a headset into the controller. Locate
+   the active headset render endpoint using HardwareProbe `audio-endpoints`.
+   Start USBPcap on the current root hub and device address only. Confirm the
+   address with the injected USB descriptor.
+3. Run HardwareProbe `play-headset-fixture <endpoint-id> <wav>` and record a
+   repeatable input sequence during capture. Repeat with the other transport.
+4. Run `usb_audio_trace.py <pcap> <address> --blocks <local-json>` to report
+   isochronous OUT slots and extract aligned GIP 0x60 payloads. The timestamp
+   is the USB request timestamp, shared by its slots. Other transfer types and
+   dongle framing need their own parser.
+5. Verify the negotiated format independently. With contiguous 192-byte
+   48 kHz stereo PCM16 slots, use `--verified-pcm-trace <local-json>` to run
+   the trace at the callback boundary. It rejects sequence gaps and other
+   payload sizes. For the first active block, the replay constructs a matching
+   198-byte GIP slot and invokes the stock receive callback with a fixture event.
+
+The parser and replay handoff passed a synthetic 198-byte isochronous slot
+containing a 6-byte GIP header and 192 bytes of test data.
+See [USBPcap format](https://desowin.org/usbpcap/captureformat.html).
+
+### Windows hardware capture
+
+| Transport | USB isochronous OUT | GIP 0x60 blocks | Payload | Sequence gaps |
+| --- | --- | --- | --- | --- |
+| Wired Xbox | 0x03 | 6,552 | 192 bytes | 0 |
+| HyperSpeed dongle in Xbox mode | 0x06 | 6,272 | 192 bytes | 0 |
+
+Both streams used 198-byte slots, four slots per submitted USB transfer. The
+left-only 80 Hz, right-only 190 Hz and stereo mixture appeared in the intended
+channels. After sample alignment, the 143,900 compared stereo frames differed
+by at most two PCM counts across the two USB captures. Both PCM sequences
+passed the offline callback/DSP replay. Local captures and replay JSON live
+under `TestResults/firmware-lab`.
+
+NXP callback `0x28C80` accepts a 198-byte event, skips six bytes at
+`0x2000B3C0` and copies the rest into the 6,144-byte ring at `0x200057AC`.
+Execution stopped at its accounting call `0x2384C`. For a non-silent PCM
+block from each capture, the real machine code preserved every payload byte
+at offset 0 and at offset 6080 where the copy wrapped to the start of the ring.
+This corroborates the wired USB-to-I2S buffer route. The dongle capture ends
+at the host-to-dongle USB link. Its over-the-air framing and where the
+controller receives or decodes the audio remain open. No planned button
+sequence was captured in this pass.
+
 ## Remaining work
 
-1. Trace GIP audio into both RAM buffers and capture genuine wired and dongle
-   transport input. Identify the NXP–Telink link and use it to connect the two
-   B91 call graphs. The [B91 map](TELINK_B91.md) supplies initial anchors.
+1. Trace endpoint registration, DMA completion and queue priming into the
+   confirmed 198-byte branch and on to I2S without fixture state. Capture a
+   timed button/analog sequence. Identify the NXP–Telink link and use it to
+   connect the two B91 call graphs. The [B91 map](TELINK_B91.md) supplies anchors.
 2. Reconstruct NXP peripheral behavior in that order: USB endpoint transfer,
    DMA descriptor completion, timer IRQ scheduling and SCT PWM capture. Add
    ADC and GPIO/PINT input replay with USB reports as the acceptance output.

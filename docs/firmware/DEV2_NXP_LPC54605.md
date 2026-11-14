@@ -131,6 +131,9 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
   or an alternate buffer at **0x200057AC**. See [callback replay](AUDIO_HAPTICS_REPLAY.md).
   The writer at 0x2BEF4 expands samples from a flash table into the three-slot ring,
   so a reference to this ring is insufficient evidence of USB audio ingress.
+- The 198-byte USB receive branch at 0x28C80 skips six bytes at 0x2000B3C0 and
+  writes into the 6,144-byte alternate ring at 0x200057AC. The stock handler's
+  payload copy and wrap were executed with test data captured from hardware.
 - The **I2S TX DMA callback 0x22FF8** hands the next block to I2S every millisecond, towards the audio SoC.
 - With no audio it sends the zero block at 0x200056EC.
 - The streaming flag is 0x20000A59.
@@ -140,8 +143,9 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 
 **Consequence for the custom firmware:**
 - The I2S TX callback 0x22FF8 transfers 192-byte PCM blocks from NXP RAM to the
-  audio interface. It is a candidate observation point. Trace the USB producer
-  and correlate a capture with the selected buffer before choosing an integration point.
+  audio interface. It is a candidate observation point. The USB producer and
+  consumer were verified with separate fixture states. The full scheduling
+  path needs to be exercised before choosing an integration point.
 - NXP-only audio-to-Sensa is a wired-path hypothesis. The wireless path through
   the dongle and radio SoC remains open.
 
@@ -162,6 +166,6 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 ### Next
 
 - USB/GIP device stack: USB0 ISR 0x23160, GIP class dispatch 0x25AD4, descriptors for XUSB (PC) and GIP (Xbox).
-- Audio path from USB message 0x60 into the ring at 0x20013A38.
+- Endpoint registration and USB/DMA scheduling for the PCM ring at 0x200057AC.
 - The input path: ADC sticks and triggers, PINT buttons.
 - The link to the radio SoC (FLEXCOMM9; 0x22D08 packet handler).

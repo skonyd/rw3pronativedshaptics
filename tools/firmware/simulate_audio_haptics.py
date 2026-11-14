@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import struct
+import wave
 
 from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
 from unicorn.arm_const import (
@@ -18,6 +19,9 @@ STOCK_SHA256 = "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8
 DSP, STATE, LEVELS = 0x100000, 0x20021000, 0x20021100
 RING, ZERO, TX = 0x20013A38, 0x200056EC, 0x22FF8
 DMA_SUBMIT, RETURN = 0x12F9C, 0xFFF0
+USB_RX, USB_RX_ACCOUNTING = 0x28C80, 0x2384C
+USB_BUFFER, USB_EVENT, USB_CONTEXT = 0x2000B3C0, 0x20022000, 0x20022100
+USB_RING = 0x200057AC
 
 
 def verify(condition, message):
@@ -74,6 +78,25 @@ class Replay:
         self.steps = 0
         self.call(DSP, RETURN, STATE, address, int(expected and enabled), LEVELS)
         return list(cpu.mem_read(LEVELS, 4)), self.steps
+
+    def check_usb_receive(self, slot, offset):
+        """Invoke the stock 198-byte receive branch with a synthetic USB event."""
+        cpu = self.cpu
+        cpu.mem_write(USB_BUFFER, slot)
+        cpu.mem_write(USB_EVENT, struct.pack("<II", 0, len(slot)))
+        cpu.mem_write(0x20000778, struct.pack("<I", USB_CONTEXT))
+        cpu.mem_write(USB_CONTEXT + 0x115, b"\x01")
+        cpu.mem_write(0x200021CC, b"\x01")
+        cpu.mem_write(0x20008F9C, struct.pack("<I", offset))
+        cpu.mem_write(0x20008FA0, bytes(16))
+        self.call(USB_RX, USB_RX_ACCOUNTING, 0, 2, USB_EVENT)
+        first = min(192, 6144 - offset)
+        observed = bytes(cpu.mem_read(USB_RING + offset, first))
+        if first < 192:
+            observed += bytes(cpu.mem_read(USB_RING, 192 - first))
+        verify(observed == slot[6:], "Stock USB receive did not copy the expected PCM bytes")
+        written, = struct.unpack("<I", cpu.mem_read(0x20008F9C, 4))
+        verify(written == (offset + 192) % 6144, "Stock USB receive did not advance its ring")
 
 
 def tone(tick, channel_frequencies, amplitude=0.85):
@@ -144,10 +167,41 @@ def check_toggle(image, dsp):
     return {"name": "runtime_toggle", "pcm_unchanged": True, "strength_after_disable": levels}
 
 
+def replay_capture(image, dsp, path):
+    # The USB capture does not prove the negotiated format or firmware ingress.
+    # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
+    records = json.loads(path.read_text(encoding="utf-8"))
+    verify(0 < len(records) <= 15000, "Expected at most 15 seconds of PCM")
+    replay = Replay(image, dsp)
+    trace = []
+    previous_sequence = None
+    usb_ring_checked = False
+    for index, record in enumerate(records):
+        sequence = record["sequence"]
+        pcm = bytes.fromhex(record["payload_hex"])
+        verify(len(pcm) == 192, "Capture contains a non-192-byte payload")
+        verify(1 <= sequence <= 255, "Invalid audio sequence")
+        verify(previous_sequence is None or sequence == previous_sequence % 255 + 1,
+               f"Audio sequence gap at slot {index}")
+        previous_sequence = sequence
+        if not usb_ring_checked and any(abs(sample) > 100 for sample in struct.unpack("<96h", pcm)):
+            header = bytes((0x60, 0x20, sequence, 0xC0, 0x81, 0))
+            for offset in (0, 6144 - 64):
+                replay.check_usb_receive(header + pcm, offset)
+            usb_ring_checked = True
+        levels, _ = replay.tick(pcm, True, True, index % 3)
+        trace.append({"sequence": sequence, "urb_timestamp_us": record["urb_timestamp_us"],
+                      "palm_band_strength": levels})
+    return {"name": "capture_pcm_boundary", "stock_usb_ring_copy_checked": usb_ring_checked, "blocks": trace}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stock", type=Path)
     parser.add_argument("dsp", type=Path)
+    parser.add_argument("--fixture-wav", type=Path, help="Also save a six-second stereo capture stimulus")
+    parser.add_argument("--verified-pcm-trace", type=Path,
+                        help="Replay contiguous, independently verified 48 kHz stereo PCM16 slots")
     args = parser.parse_args()
     image, dsp = args.stock.read_bytes(), args.dsp.read_bytes()
     verify(hashlib.sha256(image).hexdigest() == STOCK_SHA256, "Expected unmodified Dev2FW 2.04.00")
@@ -163,6 +217,14 @@ def main():
     report = [run_scenario(image, dsp, *case) for case in cases]
     report.append(check_stream_loss(image, dsp))
     report.append(check_toggle(image, dsp))
+    if args.verified_pcm_trace:
+        report.append(replay_capture(image, dsp, args.verified_pcm_trace))
+    if args.fixture_wav:
+        with wave.open(str(args.fixture_wav), "wb") as output:
+            output.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
+            for frequencies in (((), ()), ((80,), ()), ((), (190,)),
+                                ((80, 190), (110, 320)), ((), ()), ((), ())):
+                output.writeframes(b"".join(tone(tick, frequencies, 0.35) for tick in range(1000)))
     print(json.dumps(report, indent=2))
 
 

@@ -10,6 +10,9 @@ alongside stock NXP routines from v2.04.00. Nine scenarios verify callback PCM
 selection, stereo isolation, stream loss, a simulated runtime switch and Sensa
 decoder output. The comparison currently ends at DMA arguments and decoded
 RAM. Both Telink images have initial byte-range maps with explicit unknowns.
+Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
+payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
+ring in emulation. The captures and replay cover the host USB boundary.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

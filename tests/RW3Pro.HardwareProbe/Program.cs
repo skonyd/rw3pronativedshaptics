@@ -111,6 +111,28 @@ if (args.FirstOrDefault() == "audio-endpoints")
         .Select(d => new {d.ID,d.FriendlyName,Format=d.AudioClient.MixFormat.ToString()}),jsonOptions));
     return;
 }
+if (args.FirstOrDefault() == "play-headset-fixture")
+{
+    if (args.Length != 3) throw new ArgumentException("play-headset-fixture <endpoint ID> <48 kHz stereo PCM16 WAV>");
+    using var enumerator = new MMDeviceEnumerator();
+    using var endpoint = enumerator.GetDevice(args[1]);
+    using var source = new NAudio.Wave.WaveFileReader(args[2]);
+    var format = source.WaveFormat;
+    if (format.Encoding != NAudio.Wave.WaveFormatEncoding.Pcm || format.SampleRate != 48000 ||
+        format.Channels != 2 || format.BitsPerSample != 16 || source.TotalTime > TimeSpan.FromSeconds(15))
+        throw new ArgumentException("Expected a short stereo PCM16 WAV at 48 kHz.");
+    using var output = new NAudio.Wave.WasapiOut(endpoint, AudioClientShareMode.Shared, true, 30);
+    var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    output.PlaybackStopped += (_, e) =>
+    {
+        if (e.Exception != null) completed.TrySetException(e.Exception);
+        else completed.TrySetResult();
+    };
+    output.Init(source);
+    output.Play();
+    await completed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+    return;
+}
 if (args.FirstOrDefault() == "audit-spectrum")
 {
     if (args.Length is < 2 or > 3) throw new ArgumentException("audit-spectrum <report.json> [2048|4096|0=multi-resolution]");
