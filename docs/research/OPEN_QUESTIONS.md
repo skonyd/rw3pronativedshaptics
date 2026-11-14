@@ -22,7 +22,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   descriptor counts and IRQ events. Compare with an
   independent timing trace, including recovery at different ring positions. SCT register
   writes are covered for seeded duty and synthesized palm transients
-  (E-20261114-13). Trace continuous bands and trigger output, then capture
+  (E-20261114-13). E-20261114-14 covers continuous palm bands with fixture
+  gain tables. Trace the stock gain-table initializer and trigger output, then capture
   actual PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

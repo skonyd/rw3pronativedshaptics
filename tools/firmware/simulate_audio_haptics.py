@@ -557,8 +557,8 @@ def check_dma_arrival_variation(image, dsp):
     return {"name": "stock_dma_arrival_variation", "cases": report}
 
 
-def check_sensa_transient_pwm(image, dsp):
-    """Follow stock transient synthesis into the stock PWM register writer."""
+def check_sensa_pwm(image, dsp, continuous=False):
+    """Follow stock synthesis into the stock PWM register writer."""
     results = {}
     for side in (None, 0, 1):
         replay = Replay(image, dsp)
@@ -574,15 +574,38 @@ def check_sensa_transient_pwm(image, dsp):
             cpu.mem_write(0x4008530C + 8 * event, struct.pack("<I", channel + 1))
         bodies = [([], []) for _ in range(4)]
         if side is not None:
-            bodies[side] = ([], [(35, 24, 0)])
+            if continuous:
+                frequencies = [(83,) if channel == side else () for channel in range(2)]
+                for tick in range(8):
+                    cpu.mem_write(0x20024000, tone(tick, frequencies, 0.35))
+                    replay.call(DSP, RETURN, STATE, 0x20024000, 1, LEVELS)
+                levels = list(cpu.mem_read(LEVELS, 4))
+                verify(not any(levels[(1 - side) * 2:(1 - side) * 2 + 2]), "DSP leaked into the opposite side")
+                bands = [(level, level, pitch) for level, pitch in zip(levels[side * 2:side * 2 + 2], (17, 55))
+                         if level]
+                verify(bool(bands), "DSP did not produce a Sensa band")
+                bodies[side] = (bands, [])
+            else:
+                bodies[side] = ([], [(35, 24, 0)])
         cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
         cpu.mem_write(0x20000B2C, b"\x01")
         replay.call(0x2B538, RETURN)
         verify(cpu.mem_read(0x20000B2C, 1) == b"\x00", "Stock dispatcher did not consume the Sensa frame")
         for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
             cpu.mem_write(address, bytes([value]))
+        if continuous:
+            # The stock oscillator multiplies by a per-palm RAM table.
+            # Use a flat fixture until its device-specific initializer is modeled.
+            for channel in range(2):
+                cpu.mem_write(0x20002404 + 0x7D4 * channel, struct.pack("<501f", *([1.0] * 501)))
         trace = []
-        for _ in range(16):
+        for tick in range(32 if continuous else 16):
+            if continuous and tick == 16:
+                replay.call(DSP, RETURN, STATE, 0x20024000, 0, LEVELS)
+                verify(not any(cpu.mem_read(LEVELS, 4)), "Disabled DSP retained band strength")
+                cpu.mem_write(0x20000B34, xbox_frame([([], []) for _ in range(4)]) + bytes(64))
+                cpu.mem_write(0x20000B2C, b"\x01")
+                replay.call(0x2B538, RETURN)
             replay.call(0x2D210, RETURN)
             replay.call(0x2B6F0, RETURN)
             trace.append(struct.unpack("<2I", cpu.mem_read(0x40085104, 8)))
@@ -592,11 +615,13 @@ def check_sensa_transient_pwm(image, dsp):
     for side in (0, 1):
         trace = results[side]
         verify(all(values[1 - side] == baseline[1 - side] for values, baseline in zip(trace, idle)),
-               "Sensa transient changed the opposite modeled PWM channel")
+               "Sensa synthesis changed the opposite modeled PWM channel")
         delta = max(abs(values[side] - baseline[side]) for values, baseline in zip(trace, idle))
-        verify(delta > 0, "Sensa transient did not reach the modeled PWM registers")
+        verify(delta > 0, "Sensa synthesis did not reach the modeled PWM registers")
+        if continuous:
+            verify(trace[-4:] == idle[-4:], "Silent frame did not restore the idle PWM trace")
         report.append({"body_part": (216, 116)[side], "peak_match_count_delta": delta})
-    return {"name": "stock_sensa_transient_pwm", "cases": report}
+    return {"name": "candidate_sensa_band_pwm" if continuous else "stock_sensa_transient_pwm", "cases": report}
 
 
 def replay_capture(image, dsp, path):
@@ -661,7 +686,8 @@ def main():
     report.append(check_stock_dma_descriptor(image, dsp))
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
-    report.append(check_sensa_transient_pwm(image, dsp))
+    report.append(check_sensa_pwm(image, dsp))
+    report.append(check_sensa_pwm(image, dsp, continuous=True))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

@@ -224,6 +224,22 @@ trace on every tick. This establishes the transient-to-register path.
 Continuous bands, trigger outputs, hardware timer cadence and PWM pin
 waveforms still require validation.
 
+### Original DSP bands to stock PWM
+
+The continuous oscillator at `0xFCB0` reads a per-palm gain table starting at
+`0x20002404` with a `0x7D4` stride. With uninitialized tables it produced
+zero band output despite successful decoding. The replay supplies a unity
+gain table to exercise the oscillator before the device-specific table
+initializer is modeled.
+
+The original Cortex-M4 DSP receives eight 1 ms blocks of 83 Hz PCM on one
+channel. The test encodes its levels as Xbox Sensa bands, then runs the stock
+frame dispatcher, synthesis and SCT duty writer. Each palm deviates from
+idle by up to 540 match counts. The other palm matches its idle trace
+throughout. Disabling the DSP and explicitly submitting an empty Sensa
+frame restores the idle PWM trace. The PCM-to-frame adapter and enable
+switch run in the harness. Device gain tables and physical timing remain open.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

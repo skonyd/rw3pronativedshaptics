@@ -29,6 +29,8 @@ Four-block USB bursts and midstream pauses now exercise queue buffering
 and ordered recovery under a deterministic event schedule.
 Stock Sensa transient synthesis also reaches the modeled SCT duty registers
 for both palms, with opposite-channel isolation in the fixture.
+Original DSP band levels also reach stock SCT duty output with a unity
+gain-table fixture. An explicit empty frame restores idle.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
