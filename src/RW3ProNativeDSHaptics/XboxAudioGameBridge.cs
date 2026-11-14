@@ -36,6 +36,8 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// body motors go through XInput, the game's trigger values go to the trigger motors in the Sensa frame, and the sound
     /// goes to the palms through the Sensa engine (started by the orchestrator), not to the body motors.</summary>
     public bool Strict { get; init; }
+    /// <summary>Strict path: which pad the game sees (HIDMaestro profile, <see cref="OutputMatrix.Profile"/>).</summary>
+    public string VirtualProfile { get; init; } = "xbox-360-wired";
     private int _xinputSlot = -1;
     /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
     public Func<string>? EngineProbe { get; init; }
@@ -172,7 +174,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             throw new InvalidOperationException("HidHide hazır olmalı ve önceki gizleme geri alınmalı.");
         try
         {
-            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Xbox modunda Wolverine XInput ile görünmüyor (tek kol olmalı)."); }
+            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Wolverine XInput ile görünmüyor (tek kol bağlı olmalı)."); }
             else if (!_physical.TryAcquire() || !_physical.TryReadPad(out _))
                 throw new InvalidOperationException("Xbox modunda tek Wolverine gerekli. " + _physical.LastError);
             if (!synthetic)
@@ -181,14 +183,17 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _context = new HMContext();
                 _context.LoadDefaultProfiles();
                 if (!_context.IsDriverInstalled) throw new InvalidOperationException("HIDMaestro sürücüsü hazır değil.");
-                // Strict (GDK games): an Xbox 360 pad (XUSB). Banishers did not take the Bluetooth Series profile (a HID
-                // device) as a gamepad through GameInput: it sent rumble to it but ignored its input (2026-11-15).
-                var model = _context.GetProfile(Strict ? "xbox-360-wired" : "xbox-series-xs-bt") ??
-                    throw new InvalidOperationException("Sanal Xbox Series profili bulunamadı.");
+                // Strict: the output the user picked (Xbox 360 / Series / PS4). Banishers did not take the Bluetooth Series
+                // profile (a HID device) as a gamepad through GameInput: it sent rumble to it but ignored its input
+                // (E-20261115-02); the Xbox 360 pad (XUSB) is the safe choice there.
+                string profileId = Strict ? VirtualProfile : "xbox-series-xs-bt";
+                var model = _context.GetProfile(profileId) ??
+                    throw new InvalidOperationException("Sanal kol profili bulunamadı: " + profileId + ".");
                 _controller = _context.CreateController(model, "rw3-xbox-audio");
                 _controller.OutputReceived += OnOutput;
                 _hideOwned = true;
-                HidHideControl.HidePad(null, xboxOnly: true);
+                // Strict also runs in PC mode (the pad is XInput there too): hide whichever nodes the pad has now.
+                HidHideControl.HidePad(null, xboxOnly: !Strict || WolverineModeControl.Detect() == WolverineControllerMode.Xbox);
                 if (Strict)
                     try { DiagnosticsService.Info("Virtual Xbox pad (strict): " + HidHideControl.DisallowApp(HidHideControl.GameInputServicePath)); }
                     catch (Exception ex) { DiagnosticsService.Info("Virtual Xbox pad (strict): GameInputSvc " + ex.Message); }
@@ -230,6 +235,11 @@ public sealed class XboxAudioGameBridge : IDisposable
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
         if (packet.Source == HMOutputSource.HidOutput && AcceptReport(packet.ReportId, packet.Data.Span)) return;
+        if (packet.Source == HMOutputSource.HidOutput && TryDecodeDualShock4(packet.ReportId, packet.Data.Span, out var ds4))
+        {
+            lock (_gate) { if (!_running) return; _game = ds4; _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
+            return;
+        }
         // Not a Series 0x0F report (the Xbox 360 profile's rumble arrives another way): log the first few shapes.
         if (Interlocked.Increment(ref _unknownLogged) <= 6)
             DiagnosticsService.Info($"Virtual Xbox pad: unhandled output {packet.Source} id 0x{packet.ReportId:X2} len {packet.Data.Length}: " +
@@ -241,6 +251,16 @@ public sealed class XboxAudioGameBridge : IDisposable
             lock (_gate) { _game = new(d[3] / 255.0, d[4] / 255.0, 0, 0); _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
     }
     private int _unknownLogged;
+
+    /// <summary>DualShock 4 USB output report 0x05 (data after the ID): [0] flags (bit 0 = rumble valid), [3] right/weak
+    /// motor, [4] left/strong motor. No triggers.</summary>
+    internal static bool TryDecodeDualShock4(byte reportId, ReadOnlySpan<byte> data, out BridgeMotorFrame frame)
+    {
+        frame = default;
+        if (reportId != 0x05 || data.Length < 5 || (data[0] & 0x01) == 0) return false;
+        frame = new(data[4] / 255.0, data[3] / 255.0, 0, 0);
+        return true;
+    }
 #endif
 
     internal void SubmitSyntheticReport(ReadOnlySpan<byte> data)

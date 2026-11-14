@@ -19,6 +19,12 @@ public enum NativeHapticSource
 
 public sealed class UserSettings
 {
+    /// <summary>Which controller the game sees (main page selector). Null in files written before 2026-11-15: derived
+    /// once from <see cref="Mode"/> and its sources (<see cref="OutputMatrix.FromLegacy"/>).</summary>
+    public GameOutput? Output { get; set; }
+    /// <summary>Feature matrix rows switched on for <see cref="Output"/>.</summary>
+    public OutputFeature Features { get; set; }
+    /// <summary>Internal: the pipeline the selector maps to (<see cref="OutputMatrix.Plan"/>); no longer chosen directly.</summary>
     public HapticMode Mode { get; set; } = HapticMode.Normal;
     public HapticRoute Route { get; set; } = HapticRoute.NormalXInput;
     public int PreferredXInputSlot { get; set; } = -1;

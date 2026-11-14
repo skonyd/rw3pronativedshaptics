@@ -114,6 +114,50 @@
         </ControlTemplate></Setter.Value>
       </Setter>
     </Style>
+    <!-- Output selector tiles (which controller the game sees), DSX-style segmented bar -->
+    <Style x:Key="OutputTile" TargetType="RadioButton">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#C9D6F0"/>
+      <Setter Property="Margin" Value="3,0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="RadioButton">
+          <Border x:Name="B" Background="#162238" CornerRadius="10" Padding="6,9" BorderBrush="Transparent" BorderThickness="2">
+            <ContentPresenter HorizontalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#1D2C48"/></Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="B" Property="Background" Value="{StaticResource Accent}"/>
+              <Setter Property="Foreground" Value="#FFFFFF"/>
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#FFFFFF"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="MatrixCell" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#C9D6F0"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="3,2"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="8" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#5A8CFF"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#FFFFFF"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Cursor" Value="Arrow"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="PresetCard" TargetType="RadioButton" BasedOn="{StaticResource ChoiceCard}">
       <Setter Property="Margin" Value="0,0,8,0"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -285,33 +329,62 @@
 
         <Border Grid.Row="2" Style="{StaticResource CardBorder}">
           <DockPanel>
-            <TextBlock DockPanel.Dock="Top" Text="Titreşim modu" Style="{StaticResource CardTitle}"/>
-            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,12"
-                       Text="Seçtiğin mod hemen ve her açılışta kendiliğinden çalışır. Kumandada ☰ ile de değişir."/>
-            <UniformGrid DockPanel.Dock="Top" Columns="3">
-              <RadioButton x:Name="ModeNormal" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
-                <StackPanel>
-                  <TextBlock Text="Normal" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Uygulama karışmaz. Oyunun Xbox titreşimi olduğu gibi kola gider." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
-                </StackPanel>
-              </RadioButton>
-              <RadioButton x:Name="ModeAudio" GroupName="Mode" Style="{StaticResource ChoiceCard}" Margin="0,0,10,0" Checked="Mode_Checked">
-                <StackPanel>
-                  <TextBlock Text="Sesten titreşim" FontSize="15" FontWeight="SemiBold"/>
-                  <TextBlock Text="Her oyunda, filmde, müzikte. Bilgisayarın sesi avuçlarda titreşir." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
-                </StackPanel>
-              </RadioButton>
-              <RadioButton x:Name="ModeNative" GroupName="Mode" Style="{StaticResource ChoiceCard}" Checked="Mode_Checked">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="DualSense oyunları" FontSize="15" FontWeight="SemiBold"/>
-                    <Border Background="#3A2A10" CornerRadius="6" Padding="5,0" Margin="8,2,0,0" VerticalAlignment="Center">
-                      <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
-                    </Border>
+            <TextBlock DockPanel.Dock="Top" Text="Oyuna görünen kol" Style="{StaticResource CardTitle}"/>
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,10"
+                       Text="Oyun kolunu hangi kol olarak görsün? Seçim hemen ve her açılışta uygulanır. Kumandada ☰ kombinasyonu sıradakine geçer."/>
+            <Border DockPanel.Dock="Top" Background="#0B1222" CornerRadius="14" Padding="5,6">
+              <UniformGrid Columns="5">
+                <RadioButton x:Name="OutPhysical" GroupName="Output" Tag="Physical" Style="{StaticResource OutputTile}" Checked="Output_Checked" AutomationProperties.Name="Kolun kendisi">
+                  <StackPanel>
+                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Kolun kendisi" FontWeight="SemiBold" FontSize="12.5" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    <TextBlock Text="Wolverine" FontSize="10.5" Opacity="0.75" HorizontalAlignment="Center"/>
                   </StackPanel>
-                  <TextBlock Text="Oyun kolu DualSense sanır: tetik efektleri, HD haptik ya da sesten haptik." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
-                </StackPanel>
-              </RadioButton>
+                </RadioButton>
+                <RadioButton x:Name="OutXbox360" GroupName="Output" Tag="Xbox360" Style="{StaticResource OutputTile}" Checked="Output_Checked" AutomationProperties.Name="Xbox 360">
+                  <StackPanel>
+                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Xbox 360" FontWeight="SemiBold" FontSize="12.5" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    <TextBlock Text="XInput" FontSize="10.5" Opacity="0.75" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="OutXboxSeries" GroupName="Output" Tag="XboxSeries" Style="{StaticResource OutputTile}" Checked="Output_Checked" AutomationProperties.Name="Xbox Series">
+                  <StackPanel>
+                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Xbox Series" FontWeight="SemiBold" FontSize="12.5" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    <TextBlock Text="tetikli" FontSize="10.5" Opacity="0.75" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="OutDualShock4" GroupName="Output" Tag="DualShock4" Style="{StaticResource OutputTile}" Checked="Output_Checked" AutomationProperties.Name="PS4">
+                  <StackPanel>
+                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Text="PS4" FontWeight="SemiBold" FontSize="12.5" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    <TextBlock Text="DualShock 4" FontSize="10.5" Opacity="0.75" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="OutDualSense" GroupName="Output" Tag="DualSense" Style="{StaticResource OutputTile}" Checked="Output_Checked" AutomationProperties.Name="DualSense">
+                  <StackPanel>
+                    <TextBlock Text="&#xE7FC;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Text="DualSense" FontWeight="SemiBold" FontSize="12.5" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    <TextBlock Text="PS5" FontSize="10.5" Opacity="0.75" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </RadioButton>
+              </UniformGrid>
+            </Border>
+            <TextBlock x:Name="OutputHint" DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="2,8,0,8" TextWrapping="Wrap"/>
+            <Border DockPanel.Dock="Top" Background="#0F1829" CornerRadius="12" Padding="10,8" BorderBrush="{StaticResource Line}" BorderThickness="1">
+              <StackPanel>
+                <Grid x:Name="FeatureMatrix"/>
+                <TextBlock x:Name="MatrixLegend" Style="{StaticResource Hint}" FontSize="11.5" Margin="4,6,0,0" TextWrapping="Wrap"
+                           Text="● açık · ○ kapalı · ✓ o kolda var · — yok · oyun: oyunun kendisi sürer. Başka bir kolun hücresine tıklayınca o kola geçilir."/>
+                <TextBlock x:Name="MatrixPadNote" Style="{StaticResource Hint}" FontSize="11.5" Margin="4,2,0,0" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+            <!-- internal pipelines the selector maps to (OutputMatrix.Plan); not shown -->
+            <UniformGrid DockPanel.Dock="Top" Columns="3" Visibility="Collapsed">
+              <RadioButton x:Name="ModeNormal" GroupName="Mode" Checked="Mode_Checked"/>
+              <RadioButton x:Name="ModeAudio" GroupName="Mode" Checked="Mode_Checked"/>
+              <RadioButton x:Name="ModeNative" GroupName="Mode" Checked="Mode_Checked"/>
             </UniformGrid>
             <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,14,0,0" Focusable="False">
             <StackPanel Margin="0,0,10,0">
@@ -346,17 +419,6 @@
                         Checked="RumbleFallback_Changed" Unchecked="RumbleFallback_Changed"/>
               <TextBlock Text="Opera, Chrome, Claude, Codex gibi uygulamalar öndeyken Windows avuçları (Sensa) engeller. Açık: o sırada rumble motorları çalar (daha kaba). Kapalı: titreşim o sırada durur, hissettiğin her şey Sensa olur. Oyunlarda etkisi yok." Style="{StaticResource Hint}"/>
 
-              <!-- the game's own Xbox feedback, merged through a virtual Xbox pad -->
-              <TextBlock Text="Oyunun kendi titreşimini de ekle (Xbox modu)" FontWeight="SemiBold" Margin="0,12,0,2"/>
-              <CheckBox x:Name="IncludeXboxGameRumble" Content="Oyunun gövde titreşimi (rumble)" Foreground="#EEF3FF"
-                        Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
-              <CheckBox x:Name="IncludeXboxGameTriggers" Content="Oyunun LT/RT tetik titreşimi" Foreground="#EEF3FF"
-                        Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
-              <TextBlock Text="Kol Xbox modunda olmalı. Sanal Xbox kolu (HIDMaestro + HidHide) kurulur, fiziksel kol oyundan gizlenir; oyunu bundan sonra aç. Bu yolda ses gövde motorlarına gider." Style="{StaticResource Hint}"/>
-              <CheckBox x:Name="AudioStrictHide" Content="Deneysel · Game Pass / GDK oyunları: kolu GameInput'tan da gizle" Foreground="#FFB547" Margin="0,8,0,0"
-                        Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
-              <TextBlock Text="Yukarıdaki seçeneklerle birlikte: oyun yalnızca sanal Xbox kolunu görür; ses avuçlara (Sensa, melodi), oyunun tetik titreşimi tetik motorlarına, rumble gövdeye gider. Açtıktan sonra kolu çıkarıp tak ve oyunu yeniden başlat." Style="{StaticResource Hint}"/>
-
               <Expander Header="Gelişmiş ses ayarları" Foreground="#EEF3FF" Margin="0,12,0,0">
                 <StackPanel Margin="4,6,0,0">
                   <TextBlock Text="Frekans filtresi" FontWeight="SemiBold" Margin="0,0,0,2"/>
@@ -379,8 +441,8 @@
               </Expander>
             </StackPanel>
             <StackPanel x:Name="NativeSourceRows" Visibility="Collapsed">
-              <TextBlock Text="Avuç haptiği nereden gelsin?" FontWeight="SemiBold" Margin="0,0,0,6"/>
-              <UniformGrid Columns="3">
+              <TextBlock Text="DualSense ayarları" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <UniformGrid Columns="3" Visibility="Collapsed">
                 <RadioButton x:Name="NativeSrcGame" GroupName="NativeSrc" Tag="Game" Style="{StaticResource ChoiceCard}" Margin="0,0,8,0" Checked="NativeSource_Checked">
                   <StackPanel><TextBlock Text="Oyunun HD haptiği" FontWeight="SemiBold"/><TextBlock Text="Oyun DualSense haptiği gönderiyorsa" Style="{StaticResource Hint}"/></StackPanel>
                 </RadioButton>
@@ -410,19 +472,18 @@
               <CheckBox x:Name="NativeRumbleFallback" Content="Xbox modu: tarayıcı/Claude öndeyken titreşim rumble ile devam etsin" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="RumbleFallback_Changed" Unchecked="RumbleFallback_Changed"/>
               <TextBlock Text="Opera, Chrome, Claude, Codex gibi uygulamalar öndeyken Windows avuçları (Sensa) engeller. Açık: o sırada rumble motorları çalar (daha kaba). Kapalı: titreşim o sırada durur, hissettiğin her şey Sensa olur. Oyunlarda etkisi yok." Style="{StaticResource Hint}"/>
-              <TextBlock Text="Oyunun diğer geri bildirimi" FontWeight="SemiBold" Margin="0,12,0,2"/>
-              <CheckBox x:Name="RouteTriggers" Content="Tetik efektleri (L2/R2): Xbox modunda tetik motorlarında" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
-              <CheckBox x:Name="RouteRumble" Content="Oyunun normal titreşimi: rumble motorlarında (ayrı, avuçlara karışmaz)" Foreground="#EEF3FF" Margin="0,4,0,0" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
-              <Grid Margin="22,2,0,0">
+              <CheckBox x:Name="RouteTriggers" Visibility="Collapsed" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              <CheckBox x:Name="RouteRumble" Visibility="Collapsed" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              <Grid Margin="0,10,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                <TextBlock Text="Rumble seviyesi" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <TextBlock Text="Oyunun rumble seviyesi" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Slider x:Name="NativeRumbleLevel" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5" IsSnapToTickEnabled="True"
                         VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=RouteRumble}" ValueChanged="NativeRumbleLevel_Changed" AutomationProperties.Name="Oyunun rumble seviyesi"/>
                 <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeRumbleLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
               </Grid>
               <CheckBox x:Name="XboxStrictHide" Content="Deneysel · Xbox modu: kolu GameInput'tan da gizle (Game Pass / GDK oyunları)" Foreground="#FFB547" Margin="0,8,0,0"
                         Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
-              <TextBlock Text="Ses panelindeki aynı seçenekle tek ayardır. Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
               <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" Margin="0,6,0,6"/>
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>

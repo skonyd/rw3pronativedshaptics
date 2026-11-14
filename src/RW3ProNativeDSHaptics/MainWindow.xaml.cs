@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -38,7 +39,8 @@ public partial class MainWindow : Window
 
     private Forms.NotifyIcon? _tray;
     private System.Drawing.Icon? _trayIcon;
-    private Forms.ToolStripMenuItem? _normalMenu, _audioMenu, _nativeMenu, _sourceMenu;
+    private readonly List<Forms.ToolStripMenuItem> _outputMenus = new();
+    private Forms.ToolStripMenuItem? _palmMenu;
 
     private bool _busy, _initialized, _realExit;
     // Mode orchestration lives in HapticOrchestrator; these forward to it so the UI code reads as before.
@@ -79,8 +81,7 @@ public partial class MainWindow : Window
             SelectedMode = () => SelectedMode,
             Busy = () => _busy,
             Exiting = () => _realExit,
-            IncludeXboxGameRumble = () => IncludeXboxGameRumble.IsChecked == true,
-            IncludeXboxGameTriggers = () => IncludeXboxGameTriggers.IsChecked == true,
+            Plan = () => OutputMatrix.Plan(_output, _features),
             SetAudioPriority = SetAudioPriority,
             RestartElevated = RestartElevated,
             StartVirtualBridge = StartVirtualBridgeAsync,
@@ -171,7 +172,7 @@ public partial class MainWindow : Window
         NativeMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         ControllerFocusGuard.FallbackEnabled = _settings.XboxRumbleFallback;
         VirtualDualSenseBridge.StrictHide = _settings.XboxStrictHide;
-        XboxStrictHide.IsChecked = AudioStrictHide.IsChecked = _settings.XboxStrictHide;
+        XboxStrictHide.IsChecked = _settings.XboxStrictHide;
         AudioRumbleFallback.IsChecked = NativeRumbleFallback.IsChecked = _settings.XboxRumbleFallback;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
@@ -189,28 +190,29 @@ public partial class MainWindow : Window
         InitializeTray();
 
         var startupArgs = Environment.GetCommandLineArgs();
-        bool startXboxAudioBridge = VirtualDualSenseBridge.IsElevated &&
-            startupArgs.Contains(App.StartXboxAudioBridgeArg, StringComparer.OrdinalIgnoreCase);
-        if (startXboxAudioBridge)
+        // Elevated restart (task or UAC): the selected output starts here. Older builds' Xbox-bridge argument too.
+        bool elevatedStart = VirtualDualSenseBridge.IsElevated &&
+            (startupArgs.Contains(App.StartVirtualDualSenseArg, StringComparer.OrdinalIgnoreCase) ||
+             startupArgs.Contains(App.StartXboxAudioBridgeArg, StringComparer.OrdinalIgnoreCase));
+
+        // Which controller the game sees + feature rows; settings from before the selector map once from the old mode.
+        if (_settings.Output is not { } savedOutput)
         {
-            bool triggersOnly = startupArgs.Contains("--xbox-triggers-only", StringComparer.OrdinalIgnoreCase);
-            IncludeXboxGameRumble.IsChecked = !triggersOnly;
-            IncludeXboxGameTriggers.IsChecked = triggersOnly;
+            var legacyMix = _settings.XboxNativeMix ?? new XboxNativeMix();
+            (savedOutput, _settings.Features) = OutputMatrix.FromLegacy(_settings.Mode, _settings.NativeHapticSource, legacyMix.RumbleEnabled, legacyMix.TriggersEnabled);
+            _settings.Output = savedOutput;
+            DiagnosticsService.Info($"Output selector: settings migrated from mode {_settings.Mode} → {savedOutput} ({_settings.Features}).");
         }
-
-        ((startXboxAudioBridge ? HapticMode.Audio : _settings.Mode) switch
-        {
-            HapticMode.Audio => ModeAudio,
-            HapticMode.Native => ModeNative,
-            _ => ModeNormal
-        }).IsChecked = true;
+        _output = savedOutput;
+        _features = OutputMatrix.Normalize(_output, _settings.Features);
+        ApplyOutputToControls(initial: true);
         _initialized = true;
-        if (startXboxAudioBridge)
-            Dispatcher.BeginInvoke(new Action(async () => { await EnsureModeRunningAsync(); }));
-        else if (startupArgs.Contains(App.StartVirtualDualSenseArg, StringComparer.OrdinalIgnoreCase))
+        if (elevatedStart && _output == GameOutput.DualSense)
             Dispatcher.BeginInvoke(new Action(async () => { await StartVirtualBridgeAsync(); }));
+        else if (elevatedStart)
+            Dispatcher.BeginInvoke(new Action(async () => { await EnsureModeRunningAsync(); }));
 
-        if (!_settings.GuideDone && !startXboxAudioBridge) Dispatcher.BeginInvoke(new Action(ShowGuide), System.Windows.Threading.DispatcherPriority.Loaded);
+        if (!_settings.GuideDone && !elevatedStart) Dispatcher.BeginInvoke(new Action(ShowGuide), System.Windows.Threading.DispatcherPriority.Loaded);
         ShowFeelResults();
         _timer.Tick += Timer_Tick;
         _padTimer.Tick += PadTimer_Tick;
@@ -227,26 +229,17 @@ public partial class MainWindow : Window
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("RW3 Pro Haptics • Aç", null, (_, _) => Dispatcher.Invoke(RestoreWindow));
         menu.Items.Add(new Forms.ToolStripSeparator());
-        _normalMenu = new Forms.ToolStripMenuItem("Normal", null, (_, _) => Dispatcher.Invoke(() => ModeNormal.IsChecked = true));
-        _audioMenu = new Forms.ToolStripMenuItem("Sesten titreşim", null, (_, _) => Dispatcher.Invoke(() => ModeAudio.IsChecked = true));
-        _nativeMenu = new Forms.ToolStripMenuItem("DualSense oyunları (beta)", null, (_, _) => Dispatcher.Invoke(() => ModeNative.IsChecked = true));
-        // Per-game switch without opening the window: the native mode's palm haptic source.
-        _sourceMenu = new Forms.ToolStripMenuItem("   Avuç haptiği");
-        foreach (var (label, radio) in new[] { ("Oyunun HD haptiği", NativeSrcGame), ("Oyun sesinden", NativeSrcAudio), ("Kapalı", NativeSrcOff) })
-            _sourceMenu.DropDownItems.Add(new Forms.ToolStripMenuItem(label, null, (_, _) => Dispatcher.Invoke(() =>
-            {
-                radio.IsChecked = true;
-                ModeNative.IsChecked = true;
-            })) { Tag = radio });
-        _sourceMenu.DropDownOpening += (_, _) =>
+        // Which controller the game sees (same as the main page selector), plus the palm sound switch.
+        foreach (var output in OutputMatrix.Outputs)
         {
-            foreach (Forms.ToolStripMenuItem item in _sourceMenu.DropDownItems)
-                item.Checked = item.Tag is RadioButton { IsChecked: true };
-        };
-        menu.Items.Add(_normalMenu);
-        menu.Items.Add(_audioMenu);
-        menu.Items.Add(_nativeMenu);
-        menu.Items.Add(_sourceMenu);
+            var item = new Forms.ToolStripMenuItem(OutputMatrix.Label(output), null,
+                (_, _) => Dispatcher.Invoke(() => SetOutput(output, OutputMatrix.OnSelect(output, _features)))) { Tag = output };
+            _outputMenus.Add(item);
+            menu.Items.Add(item);
+        }
+        _palmMenu = new Forms.ToolStripMenuItem("   " + OutputMatrix.Label(OutputFeature.PalmAudio), null,
+            (_, _) => Dispatcher.Invoke(() => ClickFeature(OutputFeature.PalmAudio, null)));
+        menu.Items.Add(_palmMenu);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Çıkış", null, (_, _) => Dispatcher.Invoke(ExitCompletely));
         using var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/App.ico")).Stream;
@@ -463,17 +456,11 @@ public partial class MainWindow : Window
             AudioStandard.IsChecked = true;
             AudioLevelSlider.Value = 100;
             AudioMelody.IsChecked = true;   // bass + melody; loud hits still punch (per-hand fallback)
-            ModeAudio.IsChecked = true;
+            SetOutput(GameOutput.Physical, OutputFeature.PalmAudio);
         }
-        else if (choice == "Native")
-        {
-            // The game's own haptics and trigger effects, with its rumble on the body motors.
-            NativeSrcGame.IsChecked = true;
-            RouteTriggers.IsChecked = true;
-            RouteRumble.IsChecked = true;
-            ModeNative.IsChecked = true;
-        }
-        else ModeNormal.IsChecked = true;
+        else if (choice == "Native")   // the game's own haptics and trigger effects, with its rumble on the body motors
+            SetOutput(GameOutput.DualSense, OutputMatrix.Defaults(GameOutput.DualSense));
+        else SetOutput(GameOutput.Physical, OutputFeature.None);
         if (GuideAutostart.IsChecked == true && !StartupService.IsEnabled)
         {
             try { StartupService.SetEnabled(true); AutostartCheckbox.IsChecked = true; }
@@ -617,7 +604,7 @@ public partial class MainWindow : Window
     private void NativeSource_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out NativeHapticSource source)) return;
-        if (!_initialized) return;
+        if (!_initialized || _applyingOutput) return;
         if (_settings.NativeHapticSource == source) return;
         _settings.NativeHapticSource = source;
         ApplyXboxMix();
@@ -742,7 +729,7 @@ public partial class MainWindow : Window
 
     private void RouteSource_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_initialized) return;
+        if (!_initialized || _applyingOutput) return;
         ApplyXboxMix();   // applies live to a running virtual DualSense
         if (SelectedMode == HapticMode.Native && !_bridge.IsVirtualDualSenseRunning)
         {
@@ -894,6 +881,7 @@ public partial class MainWindow : Window
         _busy = true;
         try
         {
+            if (_output != GameOutput.DualSense) return;   // another output was picked meanwhile
             StopAll();
             ModeNative.IsChecked = true; // trigger conversion must never run under the Audio/Normal label
             int slot = _settings.PreferredXInputSlot is >= 0 and <= 3 ? _settings.PreferredXInputSlot : -1;
@@ -1012,33 +1000,180 @@ public partial class MainWindow : Window
     private string? _nativeWaitNote => _orch.NativeWaitNote;
     private bool UseXboxGameBridge => _orch.UseXboxGameBridge;
 
-    private void CombineXboxFeedback_Changed(object sender, RoutedEventArgs e)
+    // ───────────────────────── output selector + feature matrix ─────────────────────────
+
+    private GameOutput _output = GameOutput.Physical;
+    private OutputFeature _features;
+    private bool _applyingOutput;
+    private OutputPlan? _appliedPlan;
+
+    private RadioButton OutputTile(GameOutput output) => output switch
     {
-        if (!_initialized || sender is not System.Windows.Controls.CheckBox option) return;
-        if (_orch.UpdateCombinedOptions()) return;
-        bool enablingFirst = option.IsChecked == true &&
-            (IncludeXboxGameRumble.IsChecked != true || IncludeXboxGameTriggers.IsChecked != true);
-        if (enablingFirst && !VirtualDualSenseBridge.IsElevated)
+        GameOutput.Xbox360 => OutXbox360,
+        GameOutput.XboxSeries => OutXboxSeries,
+        GameOutput.DualShock4 => OutDualShock4,
+        GameOutput.DualSense => OutDualSense,
+        _ => OutPhysical
+    };
+
+    private void Output_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _applyingOutput || sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out GameOutput output)) return;
+        SetOutput(output, OutputMatrix.OnSelect(output, _features));
+    }
+
+    /// <summary>A matrix cell (or the tray's palm switch). <paramref name="column"/> = the output whose cell was clicked.</summary>
+    private void ClickFeature(OutputFeature feature, GameOutput? column)
+    {
+        var (output, features) = OutputMatrix.Click(_output, _features, feature, column);
+        SetOutput(output, features);
+    }
+
+    private void SetOutput(GameOutput output, OutputFeature features)
+    {
+        features = OutputMatrix.Normalize(output, features);
+        if (output == _output && features == _features) { ApplyOutputToControls(); return; }
+        _output = output;
+        _features = features;
+        _settings.Output = output;
+        _settings.Features = features;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kol seçimi", ex); }
+        DiagnosticsService.Info($"Output: {output}, features {features}.");
+        ApplyOutputToControls();
+    }
+
+    /// <summary>Maps the selector onto the existing pipelines (OutputMatrix.Plan → the internal mode, the DualSense
+    /// sources, the virtual pad) and restarts only what changed. Live changes (rumble/trigger rows of a running pad)
+    /// apply without a restart.</summary>
+    private void ApplyOutputToControls(bool initial = false)
+    {
+        var plan = OutputMatrix.Plan(_output, _features);
+        var before = _appliedPlan;
+        _appliedPlan = plan;
+        _applyingOutput = true;
+        try
         {
-            string argument = App.StartXboxAudioBridgeArg;
-            if (option == IncludeXboxGameTriggers) argument += " --xbox-triggers-only";
-            if (!RestartElevated(argument)) option.IsChecked = false;
-            return;
+            OutputTile(_output).IsChecked = true;
+            if (_output == GameOutput.DualSense)
+            {
+                _settings.NativeHapticSource = plan.Source;
+                _bridge.NativeAudioHaptics = plan.Source == NativeHapticSource.Audio;   // live while the virtual bridge runs
+                (plan.Source switch { NativeHapticSource.Audio => NativeSrcAudio, NativeHapticSource.Off => NativeSrcOff, _ => NativeSrcGame }).IsChecked = true;
+                RouteRumble.IsChecked = plan.Rumble;
+                RouteTriggers.IsChecked = plan.Triggers;
+                ApplyXboxMix();   // live while the virtual bridge runs
+                UpdateNativeSourceUi();
+            }
         }
-        if (enablingFirst &&
-            System.Windows.MessageBox.Show(
-                "RW3 sanal Xbox kolu oluşturacak ve fiziksel Wolverine'i HidHide ile geçici gizleyecek. " +
-                "Mevcut HidHide gizleme listesi etkinleşebilir. Oyunu yeniden başlat. " +
-                "İki Xbox seçeneğini de kapatmak veya RW3'ten çıkmak değişiklikleri geri alır.",
-                "Xbox geri bildirimi", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+        finally { _applyingOutput = false; }
+
+        var radio = plan.Mode switch { HapticMode.Audio => ModeAudio, HapticMode.Native => ModeNative, _ => ModeNormal };
+        if (initial || radio.IsChecked != true) radio.IsChecked = true;   // Mode_Checked stops, saves and starts
+        else if (before != null && (before.VirtualProfile != plan.VirtualProfile || before.Palms != plan.Palms ||
+                 (plan.Mode == HapticMode.Native && _run == RunState.Native && !_bridge.IsVirtualDualSenseRunning && before != plan)))
         {
-            option.IsChecked = false;
-            return;
+            // Another pad, palms on/off on a virtual pad, or a USB-DualSense source change: restart that pipeline.
+            StopAll();
+            _orch.ResetRetry();
+            _ = EnsureModeRunningAsync();
         }
-        if (SelectedMode != HapticMode.Audio || _busy) return;
-        if (_run == RunState.Audio) StopAll();
-        _orch.ResetRetry();
-        _ = EnsureModeRunningAsync();
+        else if (!_orch.UpdateCombinedOptions() && _run == RunState.Off && plan.Mode != HapticMode.Normal)
+        {
+            _orch.ResetRetry();
+            _ = EnsureModeRunningAsync();
+        }
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kol seçimi", ex); }
+        BuildMatrix();
+        RefreshStatus();
+    }
+
+    private static readonly Brush CellOn = new SolidColorBrush(Color.FromRgb(0x3D, 0x7B, 0xFF));
+    private static readonly Brush CellCurrent = new SolidColorBrush(Color.FromRgb(0x17, 0x24, 0x43));
+    private static readonly Brush CellLine = new SolidColorBrush(Color.FromRgb(0x22, 0x30, 0x4D));
+
+    /// <summary>The feature matrix: rows = feedback, columns = outputs. The selected output's column shows on/off and
+    /// toggles; another column's cell switches to that output; a row the selected output lacks switches to the closest
+    /// output that has it (OutputMatrix.Click).</summary>
+    private void BuildMatrix()
+    {
+        var g = FeatureMatrix;
+        g.Children.Clear(); g.ColumnDefinitions.Clear(); g.RowDefinitions.Clear();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 150 });
+        foreach (var _ in OutputMatrix.Outputs) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MaxWidth = 92 });
+        g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (int c = 0; c < OutputMatrix.Outputs.Length; c++)
+        {
+            var o = OutputMatrix.Outputs[c];
+            var head = new TextBlock
+            {
+                Text = OutputMatrix.Label(o), FontSize = 11.5, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
+                FontWeight = o == _output ? FontWeights.Bold : FontWeights.Normal,
+                Foreground = o == _output ? System.Windows.Media.Brushes.White : MutedBrush, Margin = new Thickness(2, 0, 2, 4)
+            };
+            Grid.SetColumn(head, c + 1);
+            g.Children.Add(head);
+        }
+        int row = 1;
+        foreach (var f in OutputMatrix.Features)
+        {
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 2, 8, 2) };
+            label.Children.Add(new TextBlock { Text = OutputMatrix.Label(f), FontWeight = FontWeights.SemiBold, FontSize = 12.5 });
+            label.Children.Add(new TextBlock { Text = FeatureSub(f), Foreground = MutedBrush, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+            Grid.SetRow(label, row);
+            g.Children.Add(label);
+            for (int c = 0; c < OutputMatrix.Outputs.Length; c++)
+            {
+                var o = OutputMatrix.Outputs[c];
+                var cell = MatrixCellFor(o, f);
+                Grid.SetRow(cell, row);
+                Grid.SetColumn(cell, c + 1);
+                g.Children.Add(cell);
+            }
+            row++;
+        }
+        OutputHint.Text = OutputMatrix.Describe(_output) +
+            (OutputMatrix.Plan(_output, _features).VirtualProfile != null || _output == GameOutput.DualSense
+                ? " Oyunu, seçimden sonra aç (açıksa yeniden başlat)." : "");
+        MatrixPadNote.Text = _padMode switch
+        {
+            WolverineControllerMode.Xbox => "Kol Xbox modunda: tetik motorları ve avuçlar kullanılabilir.",
+            WolverineControllerMode.Pc => "Kol PC modunda: avuçlar çalışır, tetik motorlarına ulaşılamaz (DualSense'te tetik efektleri gövdeye gider). Tetikler için kolu Xbox moduna al.",
+            _ => ""
+        };
+    }
+
+    private static string FeatureSub(OutputFeature f) => f switch
+    {
+        OutputFeature.PalmAudio => "Oyunun/bilgisayarın sesi avuçlarda (Sensa, melodi)",
+        OutputFeature.PalmGame => "DualSense HD haptiği gönderen oyunlar",
+        OutputFeature.GameRumble => "Oyunun normal titreşimi, gövde motorlarında",
+        OutputFeature.GameTriggers => "Tetik içi motorlar (kol Xbox modundayken)",
+        _ => ""
+    };
+
+    private System.Windows.Controls.Button MatrixCellFor(GameOutput o, OutputFeature f)
+    {
+        var support = OutputMatrix.Support(o, f);
+        bool current = o == _output, on = current && _features.HasFlag(f);
+        var cell = new System.Windows.Controls.Button { Style = (Style)FindResource("MatrixCell"), BorderBrush = CellLine };
+        cell.Background = on ? CellOn : current ? CellCurrent : System.Windows.Media.Brushes.Transparent;
+        string target = OutputMatrix.Label(OutputMatrix.Click(_output, _features, f, current ? null : o).Output);
+        (cell.Content, cell.ToolTip, cell.IsEnabled) = (support, current) switch
+        {
+            (FeatureSupport.Yes, true) => (on ? "●" : "○", on ? "Açık · tıkla: kapat" : "Kapalı · tıkla: aç", true),
+            (FeatureSupport.Yes, false) => ((object)"✓", $"{OutputMatrix.Label(o)} kolunda var · tıkla: {OutputMatrix.Label(o)} kola geç ve aç", true),
+            (FeatureSupport.ByGame, true) => ("oyun", "Oyun bunu kola doğrudan gönderir; RW3 karışmaz.", false),
+            (FeatureSupport.ByGame, false) => ("oyun", $"Kolun kendisinde oyun doğrudan gönderir · tıkla: {OutputMatrix.Label(o)}", true),
+            (FeatureSupport.No, true) => ("—", $"{OutputMatrix.Label(o)} kolunda yok · tıkla: {target} kola geç ve aç", true),
+            _ => ("—", $"{OutputMatrix.Label(o)} kolunda yok", false)
+        };
+        if (support != FeatureSupport.Yes || !current) cell.Foreground = on ? System.Windows.Media.Brushes.White : MutedBrush;
+        if (on) cell.Foreground = System.Windows.Media.Brushes.White;
+        if (support == FeatureSupport.ByGame) cell.FontSize = 11;
+        AutomationProperties.SetName(cell, $"{OutputMatrix.Label(f)} · {OutputMatrix.Label(o)}");
+        cell.Click += (_, _) => ClickFeature(f, current ? null : o);
+        return cell;
     }
 
     private void Mode_Checked(object sender, RoutedEventArgs e)
@@ -1054,18 +1189,15 @@ public partial class MainWindow : Window
             try { _store.Save(_settings); } catch (Exception ex) { NoteError("Settings save", ex); }
             DiagnosticsService.Info("Selected mode: " + mode + " (auto-run).");
         }
-        if (_normalMenu != null) _normalMenu.Checked = mode == HapticMode.Normal;
-        if (_audioMenu != null) _audioMenu.Checked = mode == HapticMode.Audio;
-        if (_nativeMenu != null) _nativeMenu.Checked = mode == HapticMode.Native;
         RefreshStatus();
         if (_initialized) _ = EnsureModeRunningAsync();
     }
 
+    /// <summary>☰ combo on the pad: the next output in the selector's order.</summary>
     private void CycleMode()
     {
-        if (ModeNormal.IsChecked == true) ModeAudio.IsChecked = true;
-        else if (ModeAudio.IsChecked == true) ModeNative.IsChecked = true;
-        else ModeNormal.IsChecked = true;
+        var next = OutputMatrix.Outputs[(Array.IndexOf(OutputMatrix.Outputs, _output) + 1) % OutputMatrix.Outputs.Length];
+        SetOutput(next, OutputMatrix.OnSelect(next, _features));
     }
 
     /// <summary>Starts the selected mode if it is not running (no-op for Normal or during tests).</summary>
@@ -1096,9 +1228,13 @@ public partial class MainWindow : Window
         var mode = SelectedMode;
         var hapticSource = _settings.NativeHapticSource ?? NativeHapticSource.Game;
         UpdateBridgeCheck();
-        NativeSourceRows.Visibility = mode == HapticMode.Native ? Visibility.Visible : Visibility.Collapsed;
-        AudioSourceRows.Visibility = mode == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
-        NormalSourceRows.Visibility = mode == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
+        // Detail settings under the matrix: DualSense's own rows, or the sound settings while the palms play sound.
+        bool palmSound = _features.HasFlag(OutputFeature.PalmAudio);
+        NativeSourceRows.Visibility = _output == GameOutput.DualSense ? Visibility.Visible : Visibility.Collapsed;
+        AudioSourceRows.Visibility = _output != GameOutput.DualSense && palmSound ? Visibility.Visible : Visibility.Collapsed;
+        NormalSourceRows.Visibility = _output == GameOutput.Physical && !palmSound ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var item in _outputMenus) item.Checked = item.Tag is GameOutput o && o == _output;
+        if (_palmMenu != null) _palmMenu.Checked = palmSound;
         RouteNativeHint.Text = !_bridge.IsVirtualDualSenseRunning
             ? "Köprü, mod seçiliyken kendiliğinden başlar (ilk seferde bir kez yönetici izni). Oyunu köprü çalışırken aç."
             : _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox
@@ -1885,9 +2021,7 @@ public partial class MainWindow : Window
             // On Genel the natural starting point is the selected mode card.
             if (ReferenceEquals(page, GeneralPage))
             {
-                var mode = ModeAudio.IsChecked == true ? ModeAudio :
-                           ModeNative.IsChecked == true ? ModeNative : ModeNormal;
-                if (mode.Focus()) return;
+                if (OutputTile(_output).Focus()) return;
             }
             Keyboard.Focus(page);
             page.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
@@ -2178,7 +2312,7 @@ public partial class MainWindow : Window
     {
         if (!_initialized || sender is not System.Windows.Controls.CheckBox box) return;
         bool on = box.IsChecked == true;
-        XboxStrictHide.IsChecked = AudioStrictHide.IsChecked = on;   // one setting, shown in both panels
+        XboxStrictHide.IsChecked = on;
         if (_settings.XboxStrictHide == on) return;
         _settings.XboxStrictHide = on;
         VirtualDualSenseBridge.StrictHide = on;   // the virtual DualSense switches its input path on the next loop;

@@ -21,8 +21,10 @@ public sealed class HapticOrchestrator
     /// <summary>A test or setup step owns the outputs right now.</summary>
     public Func<bool> Busy { get; init; } = () => false;
     public Func<bool> Exiting { get; init; } = () => false;
-    public Func<bool> IncludeXboxGameRumble { get; init; } = () => false;
-    public Func<bool> IncludeXboxGameTriggers { get; init; } = () => false;
+    /// <summary>The selector's plan (<see cref="OutputMatrix.Plan"/>): virtual pad profile, palms, game rumble/triggers.</summary>
+    public Func<OutputPlan> Plan { get; init; } = () => OutputMatrix.Plan(GameOutput.Physical, OutputFeature.None);
+    private bool IncludeXboxGameRumble() => Plan().Rumble;
+    private bool IncludeXboxGameTriggers() => Plan().Triggers;
     public Action<bool> SetAudioPriority { get; init; } = _ => { };
     /// <summary>Restart elevated with an argument (task first, UAC fallback). True = this process is exiting.</summary>
     public Func<string, bool> RestartElevated { get; init; } = _ => false;
@@ -49,7 +51,9 @@ public sealed class HapticOrchestrator
     public AudioHapticsBridge? XboxCompanion { get; private set; }
     public XboxAudioGameBridge? CombinedXbox { get; private set; }
 
-    public bool UseXboxGameBridge => IncludeXboxGameRumble() || IncludeXboxGameTriggers();
+    /// <summary>A virtual Xbox 360 / Series / PS4 pad is selected: the game sees it, not the Wolverine.</summary>
+    public bool UseXboxGameBridge => Plan().VirtualProfile != null;
+    private bool _virtualPalms;
 
     public HapticOrchestrator(NativeBridgeService bridge, XInputHaptics rumble, UserSettings settings)
     {
@@ -137,12 +141,21 @@ public sealed class HapticOrchestrator
         var profile = EffectiveProfile;
         if (UseXboxGameBridge)
         {
-            if (AudioRoute != WolverineMode.Xbox)
-                throw new InvalidOperationException("Birleşik Xbox çıkışı için Wolverine Xbox modunda olmalı.");
-            bool strict = VirtualDualSenseBridge.StrictHide && XboxSensa.Enabled;
+            var plan = Plan();
+            if (AudioRoute is not (WolverineMode.Xbox or WolverineMode.Pc))
+                throw new InvalidOperationException("Wolverine bulunamadı; kolu bağla.");
+            if (!VirtualDualSenseBridge.IsElevated)
+            {
+                // The virtual pad and HidHide need admin: the UAC-free task first (as the DualSense bridge does).
+                if (RestartElevated(App.StartVirtualDualSenseArg)) return false;
+                throw new InvalidOperationException("Sanal kol için yönetici izni gerekli.");
+            }
+            // Palms: PC mode over USB, Xbox mode over GIP (needs the Xbox-mode Sensa setting).
+            bool strict = true, palms = plan.Palms && (AudioRoute == WolverineMode.Pc || XboxSensa.Enabled);
             var combined = new XboxAudioGameBridge
             {
                 Strict = strict,
+                VirtualProfile = plan.VirtualProfile!,
                 EngineProbe = () => _bridge.SensaEngineSummary,
                 OutputLevel = _settings.OutputLevelPercent,
                 IncludeGameRumble = IncludeXboxGameRumble(),
@@ -155,7 +168,8 @@ public sealed class HapticOrchestrator
                 return false;
             }
             CombinedXbox = combined;
-            if (strict)
+            _virtualPalms = palms;
+            if (palms)
             {
                 // Strict: the sound goes to the palms (Sensa engine over GIP); the virtual pad bridge only does input,
                 // the game's rumble (XInput body) and the game's triggers (Sensa frame).
@@ -274,17 +288,18 @@ public sealed class HapticOrchestrator
         }
         bool audioAlive = AudioRoute switch
         {
+            WolverineMode.Xbox or WolverineMode.Pc when CombinedXbox is { } c => c.IsRunning && (!_virtualPalms || _bridge.IsAudioToSensaRunning),
             WolverineMode.Pc => _bridge.IsAudioToSensaRunning,
-            WolverineMode.Xbox => CombinedXbox is { } c ? c.IsRunning && (!c.Strict || _bridge.IsAudioToSensaRunning)
-                : XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
+            WolverineMode.Xbox => XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
             _ => XboxAudio?.IsCapturing ?? _rumble.Snapshot().IsCapturing
         };
         if (Run == RunState.Audio && !audioAlive)
         {
             LastError = (AudioRoute switch
             {
+                WolverineMode.Xbox or WolverineMode.Pc when CombinedXbox != null => CombinedXbox.Failure ?? (_virtualPalms ? _bridge.AudioFailure : null),
                 WolverineMode.Pc => _bridge.AudioFailure,
-                WolverineMode.Xbox => CombinedXbox?.Failure ?? (CombinedXbox?.Strict == true ? _bridge.AudioFailure : null) ?? XboxAudio?.Failure ?? _bridge.AudioFailure,
+                WolverineMode.Xbox => XboxAudio?.Failure ?? _bridge.AudioFailure,
                 _ => XboxAudio?.Failure ?? _rumble.Snapshot().LastError
             }) ?? "Ses yakalama beklenmedik biçimde durdu.";
             DiagnosticsService.Info("Audio mode stopped by the liveness check: " + LastError);
