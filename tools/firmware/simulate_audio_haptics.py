@@ -717,34 +717,43 @@ def check_deferred_profile_write(image, dsp):
     cpu.mem_write(0x200019B8, b"\x80\x00")
     page_attempts = []
 
-    def capture_page_commit(machine, access, register, width, command, data):
-        verify(command == 6, "Unexpected EEPROM command")
+    def capture_page_commit(machine, address, width, data):
         page_attempts.append(bytes(machine.mem_read(eeprom + offset, size)))
         machine.mem_write(0x40014FE0, struct.pack("<I", 4))
 
-    # The stock driver writes command 6 after copying each complete page.
-    cpu.hook_add(UC_HOOK_MEM_WRITE, capture_page_commit, begin=0x40014000, end=0x40014000)
+    # Observe the first status poll after the stock page command.
+    cpu.hook_add(UC_HOOK_CODE, capture_page_commit, begin=0xE55C, end=0xE55C)
+    # The checksum and save paths share code. Flush cached translations before
+    # running the save path with the EEPROM register hook installed.
+    cpu.ctl_flush_tb()
     replay.call(0x19620, RETURN, instruction_limit=300000)
-    # With this MMIO model the driver reports a nonzero status and retries
-    # each page four times. Treat snapshots as proposed page contents only.
-    verify(len(page_attempts) == 44 and page_attempts[-1] == changed, "Unexpected deferred page attempts")
-    verify(cpu.mem_read(0x200019B8, 2) == b"\x80\x00", "Failed save did not stay pending")
+    verify(len(page_attempts) == 11 and page_attempts[-1] == changed, "Unexpected deferred page count")
+    verify(cpu.mem_read(0x200019B8, 2) == b"\x00\x00", "Successful save stayed pending")
     verify(cpu.mem_read(eeprom + offset + size, 60) == b"\xA5" * 60,
            "Partial final page changed neighboring EEPROM bytes")
 
-    snapshots = page_attempts[::4]
-    for pages, snapshot in enumerate([original, *snapshots]):
+    def check_reload(snapshot, expected, rewrite):
         boot = Replay(image, dsp)
         boot.cpu.mem_map(eeprom, 4096)
         boot.cpu.mem_write(0x200094DA, b"\x01")
-        boot.cpu.mem_write(eeprom + offset, snapshot)
+        boot.cpu.mem_write(eeprom + offset, bytes(snapshot))
         boot.call(0x2DDDA, 0x2DE70, instruction_limit=200000)
-        expected = original if pages == 0 else changed if pages == len(snapshots) else factory
-        verify(bytes(boot.cpu.mem_read(profile, size)) == expected, f"Unexpected boot after {pages} pages")
+        verify(bytes(boot.cpu.mem_read(profile, size)) == expected, "Unexpected profile after simulated reboot")
         pending, = struct.unpack("<H", boot.cpu.mem_read(0x200019B8, 2))
-        verify(bool(pending & 0x80) == (0 < pages < len(snapshots)), "Wrong recovery write request")
-    return {"name": "stock_deferred_profile_write", "page_attempts": len(page_attempts),
-            "save_remained_pending": True, "incomplete_prefixes_rejected": len(snapshots) - 1,
+        verify(bool(pending & 0x80) == rewrite, "Wrong recovery write request")
+
+    check_reload(original, original, False)
+    check_reload(page_attempts[-1], changed, False)
+    for snapshot in page_attempts[:-1]:
+        check_reload(snapshot, factory, True)
+    # Cut before and after the first changed byte, and inside the final page
+    # before the new checksum is stored.
+    check_reload(changed[:0x20] + original[0x20:], original, False)
+    check_reload(changed[:0x21] + original[0x21:], factory, True)
+    check_reload(changed[:0x540] + original[0x540:], factory, True)
+    return {"name": "stock_deferred_profile_write", "pages_completed": len(page_attempts),
+            "pending_cleared": True, "incomplete_prefixes_rejected": len(page_attempts) - 1,
+            "partial_page_cases": 3,
             "old_and_full_images_accepted": True}
 
 

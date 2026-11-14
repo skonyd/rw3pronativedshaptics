@@ -277,15 +277,16 @@ the 16-bit field at `0x53E` to 300–3600 and flags an out-of-range value
 for rewrite. Both exact endpoints were accepted without a rewrite.
 The factory field value is 900.
 
-The deferred-save replay runs stock task `0x19620` and observes its
-128-byte page programming requests. Under the current MMIO model the
-driver returns a nonzero status and retries each of the eleven pages
-four times. The save remains pending. The final partial page preserves
-all 60 neighboring bytes. Rebooting from proposed page contents accepts
-the old block or the fully updated block. Each of the ten incomplete
-prefixes of this fixture is rejected and restores factory data. This
-test simulates page-boundary interruptions using snapshots. Successful
-controller completion and interruption within a page remain open.
+The deferred-save replay runs stock task `0x19620`. Delivering completion
+at the driver's status poll `0xE55C` lets the stock routine finish eleven
+128-byte pages and clear the pending save flag. The earlier 44 attempts
+came from the emulator's write-hook boundary and do not establish an
+EEPROM failure. The final partial page preserves all 60 neighboring
+bytes. Reload accepts the old and fully updated records. It restores
+factory data for ten incomplete page prefixes and two tested partial
+pages with changed data and the old checksum. A cut before the first
+changed byte preserves the old profile. Partial pages are constructed
+snapshots, with no electrical power-loss or cell-level model.
 
 ### Hardware and integration
 
