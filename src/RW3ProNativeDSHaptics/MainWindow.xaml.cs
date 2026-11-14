@@ -203,6 +203,7 @@ public partial class MainWindow : Window
         else if (startupArgs.Contains(App.StartVirtualDualSenseArg, StringComparer.OrdinalIgnoreCase))
             Dispatcher.BeginInvoke(new Action(async () => { await StartVirtualBridgeAsync(); }));
 
+        if (!_settings.GuideDone && !startXboxAudioBridge) Dispatcher.BeginInvoke(new Action(ShowGuide), System.Windows.Threading.DispatcherPriority.Loaded);
         ShowFeelResults();
         _timer.Tick += Timer_Tick;
         _padTimer.Tick += PadTimer_Tick;
@@ -423,6 +424,57 @@ public partial class MainWindow : Window
     }
 
     private async void PadModeRefresh_Click(object sender, RoutedEventArgs e) => await RefreshPadModeAsync();
+
+    // ───────────────────────── first-start guide ─────────────────────────
+    // One question for someone who does not want to tinker: how will you use the controller? Each answer sets the
+    // best defaults for it (and nothing else), so the app works without visiting the other pages.
+
+    private void ShowGuide_Click(object sender, RoutedEventArgs e) => ShowGuide();
+
+    private void ShowGuide()
+    {
+        TabGeneral.IsChecked = true;
+        GuidePadText.Text = _padMode switch
+        {
+            WolverineControllerMode.Xbox => "Kolun Xbox modunda bağlı: avuçlar ve tetik içi motorlar kullanılabilir.",
+            WolverineControllerMode.Pc => "Kolun PC modunda bağlı: avuçlarda titreşim çalışır. Tetiklerin içinde de hissetmek istersen sonra Ayarlar → Xbox moduna geç.",
+            _ => "Kol şu an görünmüyor; USB kabloyla ya da alıcıyla bağlayıp aç. Seçimini şimdi yapabilirsin."
+        };
+        GuideAutostart.IsChecked = true;
+        GuidePanel.Visibility = Visibility.Visible;
+        GuideAudioBtn.Focus();
+    }
+
+    private void GuideChoice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string choice }) return;
+        GuidePanel.Visibility = Visibility.Collapsed;
+        _settings.GuideDone = true;
+        if (choice == "Audio")
+        {
+            // Audio as it is (DSX-like), the sound's own level, every sound: works with every game.
+            AudioStandard.IsChecked = true;
+            AudioLevelSlider.Value = 100;
+            ModeAudio.IsChecked = true;
+        }
+        else if (choice == "Native")
+        {
+            // The game's own haptics and trigger effects, with its rumble on the body motors.
+            NativeSrcGame.IsChecked = true;
+            RouteTriggers.IsChecked = true;
+            RouteRumble.IsChecked = true;
+            ModeNative.IsChecked = true;
+        }
+        else ModeNormal.IsChecked = true;
+        if (GuideAutostart.IsChecked == true && !StartupService.IsEnabled)
+        {
+            try { StartupService.SetEnabled(true); AutostartCheckbox.IsChecked = true; }
+            catch (Exception ex) { NoteError("Autostart", ex); }
+        }
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Başlangıç rehberi", ex); }
+        DiagnosticsService.Info("First-start guide: " + choice + ", autostart " + StartupService.IsEnabled + ".");
+        RefreshStatus();
+    }
 
     // Xbox-only audio option: bass → heavy motor, treble → light motor. Usable and effective only while the
     // controller is detected in Xbox mode, so a saved choice can never act in PC mode (Sensa palms there).
@@ -1756,6 +1808,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 0b) First-start guide: D-pad up/down between its four controls, A presses / toggles. Nothing behind it.
+        if (GuidePanel.Visibility == Visibility.Visible && GeneralPage.Visibility == Visibility.Visible)
+        {
+            System.Windows.Controls.Control[] items = { GuideAudioBtn, GuideNativeBtn, GuideNormalBtn, GuideAutostart };
+            int at = Math.Max(0, Array.FindIndex(items, c => c.IsKeyboardFocused));
+            if (Has(p, XInputHaptics.ButtonDpadDown)) items[(at + 1) % items.Length].Focus();
+            else if (Has(p, XInputHaptics.ButtonDpadUp)) items[(at + items.Length - 1) % items.Length].Focus();
+            else if (Has(p, XInputHaptics.ButtonA))
+            {
+                if (items[at] is System.Windows.Controls.Button b) GuideChoice_Click(b, new RoutedEventArgs());
+                else GuideAutostart.IsChecked = GuideAutostart.IsChecked != true;
+            }
+            return;
+        }
+
         // 1) Test prompts waiting for an answer.
         if (TestPage.Visibility == Visibility.Visible)
         {
@@ -2278,7 +2345,6 @@ public partial class MainWindow : Window
     }
 
     private void Github_Click(object sender, RoutedEventArgs e) => OpenPath("https://github.com/skonyd/rw3pronativedshaptics");
-    private void Synapse_Click(object sender, RoutedEventArgs e) => OpenPath("https://www.razer.com/synapse-4");
 
     // ───────────────────────── helpers ─────────────────────────
 

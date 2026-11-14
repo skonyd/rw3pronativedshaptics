@@ -43,6 +43,8 @@ public sealed class UserSettings
     /// <summary>Which sound becomes vibration (audio mode and the native sound source): all system sound or only
     /// the foreground app (the game). Default: all system sound.</summary>
     public AudioCaptureScope AudioScope { get; set; }
+    /// <summary>The first-start guide was answered or closed. False shows it on the next start.</summary>
+    public bool GuideDone { get; set; }
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>
     public bool HidePadInGames { get; set; } = true;
     /// <summary>DualSense trigger effects in Xbox mode: 1 = impulse-trigger motors (+ haptics on the body

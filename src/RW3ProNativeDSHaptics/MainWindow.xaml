@@ -145,6 +145,25 @@
       </Setter>
     </Style>
 
+    <!-- Large left-aligned choice button (first-start guide) -->
+    <Style x:Key="GuideBtn" TargetType="Button">
+      <Setter Property="Foreground" Value="#EEF3FF"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="#0F1829" BorderBrush="{StaticResource Line}" BorderThickness="2" CornerRadius="12" Padding="18,12">
+            <ContentPresenter HorizontalAlignment="Left"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#16213A"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#FFFFFF"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="LevelBar" TargetType="ProgressBar">
       <Setter Property="Height" Value="8"/>
       <Setter Property="Minimum" Value="0"/>
@@ -187,6 +206,37 @@
     <!-- ===================== GENEL KULLANIM ===================== -->
     <Grid x:Name="GeneralPage" Grid.Row="1">
       <Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
+
+      <!-- First-start guide: one question, three answers; sets the best defaults for that answer. -->
+      <Border x:Name="GuidePanel" Grid.ColumnSpan="3" Panel.ZIndex="20" Visibility="Collapsed" Background="#F20B1322" CornerRadius="14">
+        <Border Background="#121C31" CornerRadius="16" Padding="30,24" MaxWidth="700" VerticalAlignment="Center" HorizontalAlignment="Center"
+                BorderBrush="{StaticResource Accent}" BorderThickness="2">
+          <StackPanel>
+            <TextBlock Text="Hoş geldin! Kolunu nasıl kullanmak istersin?" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+            <TextBlock x:Name="GuidePadText" Style="{StaticResource Hint}" FontSize="13" Margin="0,6,0,16"/>
+            <Button x:Name="GuideAudioBtn" Style="{StaticResource GuideBtn}" Tag="Audio" Click="GuideChoice_Click">
+              <StackPanel>
+                <TextBlock Text="Her oyunda titreşim (önerilen)" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock Text="Oyunun sesi avuçlarda titreşir. Her oyun, film ve müzikle çalışır; kurulum gerekmez." Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="GuideNativeBtn" Style="{StaticResource GuideBtn}" Tag="Native" Click="GuideChoice_Click">
+              <StackPanel>
+                <TextBlock Text="DualSense destekli oyunlar" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock Text="PlayStation oyunlarının PC sürümleri gibi: tetik efektleri ve oyunun kendi haptiği. Bir kez yönetici izni ister." Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="GuideNormalBtn" Style="{StaticResource GuideBtn}" Tag="Normal" Click="GuideChoice_Click">
+              <StackPanel>
+                <TextBlock Text="Uygulama karışmasın" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock Text="Kol normal bir Xbox kolu gibi çalışır; oyunun kendi titreşimi olduğu gibi gider." Style="{StaticResource Hint}" Margin="0,3,0,0"/>
+              </StackPanel>
+            </Button>
+            <CheckBox x:Name="GuideAutostart" Content="Windows açılınca arka planda başlat (önerilen)" Foreground="#EEF3FF" IsChecked="True" Margin="0,4,0,0"/>
+            <TextBlock Text="Seçimini sonra Genel sekmesinden değiştirebilirsin; bu rehber Ayarlar → Başlangıç rehberini aç ile yeniden açılır." Style="{StaticResource Hint}" Margin="0,10,0,0"/>
+          </StackPanel>
+        </Border>
+      </Border>
 
       <Border Style="{StaticResource CardBorder}">
         <DockPanel>
@@ -376,7 +426,7 @@
                            Checked="TestDevice_Checked"/>
             </StackPanel>
           </Grid>
-          <TextBlock DockPanel.Dock="Top" Text="Aynı 3 vuruşluk desen seçili kolda / motorda çalar. DualSense referans, Xbox klasik titreşim." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+          <TextBlock DockPanel.Dock="Top" Text="Kol titriyor mu? Sol, sağ ya da ikisi: 3 kısa vuruş çalar. Titreşim takılı kalırsa Sıfırla." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <Button x:Name="SensaLeftBtn" Content="◀  Sol" Style="{StaticResource Btn}" Click="SensaLeft_Click"/>
             <Button x:Name="SensaRightBtn" Content="Sağ  ▶" Style="{StaticResource Btn}" Click="SensaRight_Click"/>
@@ -384,7 +434,7 @@
             <Button x:Name="SensaResetBtn" Content="⟲  Sıfırla" Style="{StaticResource Btn}" Background="#4D3A1D"
                     ToolTip="Razer motorunu tamamen kapatıp temiz başlatır; takılan titreşimi keser." Click="SensaReset_Click"/>
           </StackPanel>
-          <TextBlock DockPanel.Dock="Top" Text="Genel kalibrasyon testi: kör ve kolla yönetilir (X/A/B cevap, Y tekrar, ☰ bitir). Avuç, tetik ve sap motorları farklı güç, frekans ve karışımlarla; 1-2 karşılaştırmalar. Sonuç ve ham veri kaydedilir." Style="{StaticResource Hint}" Margin="0,0,0,6" TextWrapping="Wrap"/>
+          <TextBlock DockPanel.Dock="Top" Text="Kalibrasyon: kolu eline al, titreşimin nereden geldiğini kumandayla seç (Ⓧ Ⓐ Ⓑ Ⓨ, ⧉ tekrar, ☰ bitir). Yaklaşık 6 dakika; sonuç kaydedilir." Style="{StaticResource Hint}" Margin="0,0,0,6" TextWrapping="Wrap"/>
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
             <Button x:Name="CalibBtn" Content="🎯  Genel kalibrasyon testi" Style="{StaticResource Btn}" Background="{StaticResource Accent}" Click="Calibration_Click"
                     AutomationProperties.Name="Genel kalibrasyon testi"/>
@@ -427,14 +477,14 @@
       <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardBorder}">
         <DockPanel>
           <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
-            <TextBlock Text="2 · Native v2 demolar" Style="{StaticResource CardTitle}" VerticalAlignment="Top"/>
+            <TextBlock Text="2 · Hazır titreşim örnekleri" Style="{StaticResource CardTitle}" VerticalAlignment="Top"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,28,0,0">
               <RadioButton x:Name="DemoDevWolverine" Content="Wolverine" GroupName="DemoDevice" Style="{StaticResource DeviceChip}" IsChecked="True"/>
               <RadioButton x:Name="DemoDevDualSense" Content="DualSense" GroupName="DemoDevice" Style="{StaticResource DeviceChip}"/>
             </StackPanel>
           </Grid>
           <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,12"
-                     Text="Sentetik PCM demoları; özgün oyun kaydı değildir. Wolverine kayıplı v2, DualSense Exclusive referans. Ön/arka yalnız algısal kodlamadır."/>
+                     Text="Bir örnek seç ve çal: kolunun neler hissettirebildiğini oyun açmadan dene. DualSense seçeneği yalnız takılı bir DualSense ile karşılaştırma içindir."/>
           <ComboBox x:Name="DemoSceneCombo" DisplayMemberPath="Title" DockPanel.Dock="Top" MinHeight="32" Margin="0,0,0,8"/>
           <Button x:Name="DemoPlayBtn" Content="Seçili demoyu çal" DockPanel.Dock="Top" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="DemoSelected_Click"/>
           <TextBlock x:Name="DemoStatus" DockPanel.Dock="Top" FontWeight="SemiBold" FontSize="14" Margin="0,4,0,0" TextWrapping="Wrap"/>
@@ -450,9 +500,9 @@
           <TextBlock/>
         </DockPanel>
       </Border>
-      <Border Grid.Row="2" Grid.ColumnSpan="3" Style="{StaticResource CardBorder}">
-        <StackPanel>
-          <TextBlock Text="3 · DualSense → W3 Pro • kanal laboratuvarı" Style="{StaticResource CardTitle}"/>
+      <Border Grid.Row="2" Grid.ColumnSpan="3" Style="{StaticResource CardBorder}" VerticalAlignment="Top">
+        <Expander Header="Geliştirici araçları · DualSense → W3 Pro kanal laboratuvarı" Foreground="#EEF3FF">
+        <StackPanel Margin="0,8,0,0">
           <TextBlock Text="Aynı değişmez 4ch/48k PCM: kanal 3 sol, kanal 4 sağ. PCM tekrarı ayrıştırıcıyı, Windows uç nokta testi ayrı oynatıcı + gerçek WASAPI yakalamayı sınar. Oyun kaydı değildir." Style="{StaticResource Hint}" Margin="0,0,0,8"/>
           <Grid Margin="0,0,0,8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -478,6 +528,7 @@
           </WrapPanel>
           <TextBlock x:Name="ChannelStatus" Text="Sol/sağ, farklı frekanslar, kısa vuruşlar ve hoparlör/sessizlik negatif kontrolleri. Mikrofon sesi fiziksel HD doğrulaması değildir." Style="{StaticResource Hint}"/>
         </StackPanel>
+        </Expander>
       </Border>
     </Grid>
 
@@ -504,24 +555,25 @@
             </StackPanel>
 
             <TextBlock Text="Ses ve haptik seviyeleri Genel sekmesinde, seçili modun altındaki kaydırıcılarda." Style="{StaticResource Hint}" Margin="0,0,0,14"/>
-
-            <TextBlock Text="Kontrolcü" Style="{StaticResource CardTitle}"/>
-            <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
-              <TextBlock Text="Xbox kontrolcü yuvası:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-              <ComboBox x:Name="DeviceSlotCombo" Width="170" SelectionChanged="DeviceSlot_Changed">
-                <ComboBoxItem Content="Otomatik"/>
-                <ComboBoxItem Content="Yuva 1"/>
-                <ComboBoxItem Content="Yuva 2"/>
-                <ComboBoxItem Content="Yuva 3"/>
-                <ComboBoxItem Content="Yuva 4"/>
-              </ComboBox>
-            </StackPanel>
             <TextBlock Text="Kol modu" Style="{StaticResource CardTitle}" Margin="0,4,0,0"/>
             <TextBlock x:Name="PadModeText" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,6"/>
             <WrapPanel Margin="0,0,0,8">
               <Button x:Name="PadModeXboxBtn" Content="Xbox moduna geç (tetik motorları)" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeXbox_Click"/>
               <Button Content="↻ Algıla" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="PadModeRefresh_Click"/>
             </WrapPanel>
+            <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
+                      Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
+            <TextBlock Text="Başlarken" Style="{StaticResource CardTitle}" Margin="0,16,0,0"/>
+            <TextBlock Text="Hangi modu seçeceğini bilmiyorsan rehber iki soruyla en uygun ayarı yapar." Style="{StaticResource Hint}" Margin="0,0,0,6"/>
+            <Button Content="Başlangıç rehberini aç" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="ShowGuide_Click"/>
+            <TextBlock Text="Diğer ayarlar Gelişmiş sekmesinde; varsayılanları çoğu kullanıcı için en iyisidir." Style="{StaticResource Hint}" Margin="0,14,0,0"/>
+          </StackPanel>
+
+
+          <!-- Gelişmiş -->
+          <ScrollViewer x:Name="SettingsAdvancedPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Focusable="False">
+          <StackPanel Margin="0,0,10,0">
+            <TextBlock Text="Kol ve tetikler" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="DualSense tetik efektleri (Xbox modunda)" Foreground="#EEF3FF" Margin="0,0,0,4"/>
             <WrapPanel Margin="0,0,0,8">
               <RadioButton x:Name="TriggerFeelMotors" Content="Haptik + tetik motorları" Tag="1" GroupName="TriggerFeel" Style="{StaticResource PresetCard}" Width="190" Checked="TriggerFeel_Checked"
@@ -554,12 +606,18 @@
               <ComboBoxItem Content="Normal rumble öncelikli"/>
               <ComboBoxItem Content="HD PCM öncelikli"/>
             </ComboBox>
-            <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
-                      Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
-          </StackPanel>
 
-          <!-- Gelişmiş -->
-          <StackPanel x:Name="SettingsAdvancedPanel" Visibility="Collapsed">
+            <TextBlock Text="Kontrolcü" Style="{StaticResource CardTitle}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+              <TextBlock Text="Xbox kontrolcü yuvası:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+              <ComboBox x:Name="DeviceSlotCombo" Width="170" SelectionChanged="DeviceSlot_Changed">
+                <ComboBoxItem Content="Otomatik"/>
+                <ComboBoxItem Content="Yuva 1"/>
+                <ComboBoxItem Content="Yuva 2"/>
+                <ComboBoxItem Content="Yuva 3"/>
+                <ComboBoxItem Content="Yuva 4"/>
+              </ComboBox>
+            </StackPanel>
             <TextBlock Text="Sensa çıkış yöntemi" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="Standart: hızlı, keskin vuruşlar. Hibrit (deneysel): karışık sürekli seslerde doğru frekanslar. Çok bantlı (deneysel): kısa vuruşlar zayıflar."
                        Style="{StaticResource Hint}" Margin="0,0,0,10"/>
@@ -593,6 +651,7 @@
             </WrapPanel>
             <TextBlock x:Name="AudioSyncStatus" Style="{StaticResource Hint}"/>
           </StackPanel>
+          </ScrollViewer>
         </DockPanel>
       </Border>
 
@@ -621,7 +680,6 @@
             <WrapPanel>
               <Button Content="Durum raporunu kopyala" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="CopyStatus_Click"/>
               <Button Content="Günlüğü aç" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="OpenLog_Click"/>
-              <Button Content="Razer Synapse" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="Synapse_Click"/>
               <Button Content="GitHub" Style="{StaticResource SmallBtn}" Margin="0,0,6,6" Click="Github_Click"/>
             </WrapPanel>
           </StackPanel>
