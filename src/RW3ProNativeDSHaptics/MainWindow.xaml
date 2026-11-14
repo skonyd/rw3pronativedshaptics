@@ -667,18 +667,21 @@
     <Grid x:Name="CalibPanel" Grid.RowSpan="3" Visibility="Collapsed" Background="#F70B1322" Panel.ZIndex="50" Margin="-28,-20,-28,-22">
       <DockPanel Margin="48,36,48,30">
         <TextBlock x:Name="CalibHint" DockPanel.Dock="Bottom" FontSize="15" Foreground="#9FB3D9" Margin="0,16,0,0"
-                   Text="Ⓧ Ⓐ Ⓑ seç · Ⓨ tekrar çal · ☰ testi bitir   (klavye: 1 2 3 · R · Esc)"/>
+                   Text="Ⓧ Ⓐ Ⓑ Ⓨ seç · ⧉ tekrar çal · ☰ testi bitir   (klavye: 1 2 3 4 · R · Esc)"/>
         <TextBlock x:Name="CalibProgress" DockPanel.Dock="Top" FontSize="17" Foreground="#9FB3D9"/>
         <TextBlock x:Name="CalibQuestion" DockPanel.Dock="Top" FontSize="36" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" Margin="0,14,0,28"/>
-        <UniformGrid x:Name="CalibOptions" DockPanel.Dock="Top" Rows="1" Columns="3" Visibility="Hidden">
+        <UniformGrid x:Name="CalibOptions" DockPanel.Dock="Top" Rows="1" Columns="4" Visibility="Hidden">
           <Button x:Name="CalibOpt0" Tag="0" Click="CalibOption_Click" Margin="0,0,12,0" MinHeight="120" Background="#22477F" BorderThickness="0" Foreground="White" Focusable="False">
             <StackPanel><TextBlock Text="Ⓧ" FontSize="30" HorizontalAlignment="Center" Foreground="#7FB2FF"/><TextBlock x:Name="CalibOptText0" FontSize="22" TextWrapping="Wrap" TextAlignment="Center" Margin="10,6"/></StackPanel>
           </Button>
           <Button x:Name="CalibOpt1" Tag="1" Click="CalibOption_Click" Margin="6,0" MinHeight="120" Background="#1E5A3A" BorderThickness="0" Foreground="White" Focusable="False">
             <StackPanel><TextBlock Text="Ⓐ" FontSize="30" HorizontalAlignment="Center" Foreground="#7FE0A6"/><TextBlock x:Name="CalibOptText1" FontSize="22" TextWrapping="Wrap" TextAlignment="Center" Margin="10,6"/></StackPanel>
           </Button>
-          <Button x:Name="CalibOpt2" Tag="2" Click="CalibOption_Click" Margin="12,0,0,0" MinHeight="120" Background="#6A2424" BorderThickness="0" Foreground="White" Focusable="False">
+          <Button x:Name="CalibOpt2" Tag="2" Click="CalibOption_Click" Margin="6,0" MinHeight="120" Background="#6A2424" BorderThickness="0" Foreground="White" Focusable="False">
             <StackPanel><TextBlock Text="Ⓑ" FontSize="30" HorizontalAlignment="Center" Foreground="#FF9C93"/><TextBlock x:Name="CalibOptText2" FontSize="22" TextWrapping="Wrap" TextAlignment="Center" Margin="10,6"/></StackPanel>
+          </Button>
+          <Button x:Name="CalibOpt3" Tag="3" Click="CalibOption_Click" Margin="12,0,0,0" MinHeight="120" Background="#5E5420" BorderThickness="0" Foreground="White" Focusable="False">
+            <StackPanel><TextBlock Text="Ⓨ" FontSize="30" HorizontalAlignment="Center" Foreground="#FFE37F"/><TextBlock x:Name="CalibOptText3" FontSize="22" TextWrapping="Wrap" TextAlignment="Center" Margin="10,6"/></StackPanel>
           </Button>
         </UniformGrid>
         <ScrollViewer DockPanel.Dock="Top" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">

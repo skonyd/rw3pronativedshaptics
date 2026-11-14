@@ -65,6 +65,10 @@ public sealed record CalResult(CalTrial Trial, int Answer, double ResponseMs, in
 public static class CalibrationPlan
 {
     public const string Nothing = "Hiçbir şey";
+    /// <summary>Fixed 4th answer on every locate trial (controller Y): felt, but could not tell where. A blind test
+    /// had ~3 trials "felt from the middle" with no answer for it (E-20261111-04).</summary>
+    public const string Middle = "Orta / yerini ayıramadım";
+    public const int MiddleIndex = 3;
     public static readonly string[] CompareOptions = { "1", "2", "Fark yok" };
 
     public static string Label(CalActuator a) => a switch
@@ -135,6 +139,7 @@ public static class CalibrationPlan
         {
             string correct = Label(s);
             var options = Distractors(s, available, rng).Prepend(correct).OrderBy(_ => rng.Next()).ToList();
+            options.Add(Middle);   // always the 4th answer (Y); never the correct one
             trials.Add(new CalTrial(CalTrialKind.Locate, "Nerede hissettin?", s, null, options, options.IndexOf(correct), group));
         }
 
@@ -230,8 +235,11 @@ public static class CalibrationScoring
             var with = loc.Where(r => r.Trial.First.Tones.Any(t => t.Actuator == a && t.Strength > .1)).ToList();
             if (with.Count == 0) continue;
             int ok = with.Count(r => r.Answer == r.Trial.Correct);
-            sb.AppendLine($"  {CalibrationPlan.Label(a),-16} {ok}/{with.Count} ({Pct(ok, with.Count)})");
+            int mid = with.Count(r => r.Answer == CalibrationPlan.MiddleIndex);
+            sb.AppendLine($"  {CalibrationPlan.Label(a),-16} {ok}/{with.Count} ({Pct(ok, with.Count)})" + (mid > 0 ? $", orta ×{mid}" : ""));
         }
+        int middle = loc.Count(r => r.Answer == CalibrationPlan.MiddleIndex);
+        sb.AppendLine($"ORTA (yeri ayırt edilemedi): {middle}/{loc.Count} ({Pct(middle, loc.Count)})");
 
         // Where it went → where it was felt.
         sb.AppendLine("NEREDEN → NEREYE (gönderilen → seçilen):");

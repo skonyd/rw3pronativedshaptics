@@ -1614,7 +1614,8 @@ public partial class MainWindow : Window
         if (CalibPanel.Visibility == Visibility.Visible)
         {
             int answer = Has(p, XInputHaptics.ButtonX) ? 0 : Has(p, XInputHaptics.ButtonA) ? 1 : Has(p, XInputHaptics.ButtonB) ? 2
-                : Has(p, XInputHaptics.ButtonY) ? CalibReplay : Has(p, XInputHaptics.ButtonMenu) ? CalibQuit : int.MinValue;
+                : Has(p, XInputHaptics.ButtonY) ? 3 : Has(p, XInputHaptics.ButtonView) ? CalibReplay
+                : Has(p, XInputHaptics.ButtonMenu) ? CalibQuit : int.MinValue;
             if (answer != int.MinValue) _calibAnswer?.TrySetResult(answer);
             return;
         }
@@ -1748,7 +1749,7 @@ public partial class MainWindow : Window
         if (CalibPanel.Visibility != Visibility.Visible) return;
         int answer = e.Key switch
         {
-            Key.D1 or Key.NumPad1 => 0, Key.D2 or Key.NumPad2 => 1, Key.D3 or Key.NumPad3 => 2,
+            Key.D1 or Key.NumPad1 => 0, Key.D2 or Key.NumPad2 => 1, Key.D3 or Key.NumPad3 => 2, Key.D4 or Key.NumPad4 => 3,
             Key.R => CalibReplay, Key.Escape => CalibQuit, Key.Enter or Key.Space => 1, _ => int.MinValue
         };
         if (answer == int.MinValue) return;
@@ -1772,6 +1773,10 @@ public partial class MainWindow : Window
         CalibOptions.Visibility = options == null ? Visibility.Hidden : Visibility.Visible;
         if (options == null) return;
         CalibOptText0.Text = options[0]; CalibOptText1.Text = options[1]; CalibOptText2.Text = options[2];
+        bool four = options.Count > 3;                   // locate trials add "Orta" (Y); 1-or-2 trials keep 3
+        CalibOpt3.Visibility = four ? Visibility.Visible : Visibility.Collapsed;
+        CalibOptions.Columns = four ? 4 : 3;
+        CalibOptText3.Text = four ? options[3] : "";
     }
 
     private async Task PlayCalibTrialAsync(CalibrationRig rig, CalTrial t, string progress, CancellationToken token)
@@ -1835,7 +1840,8 @@ public partial class MainWindow : Window
             var plan = CalibrationPlan.Build(caps, Environment.TickCount);
             string parts = string.Join(", ", new[] { caps.SensaPalms ? "avuçlar" : null, caps.SensaTriggers || caps.RumbleTriggers ? "tetikler" : null, caps.Body ? "saplar" : null }.Where(x => x != null));
             CalibQuestion.Text = $"{caps.Mode} modu · {parts}\n{plan.Count} deneme, yaklaşık {Math.Ceiling(plan.Count * 8 / 60.0)} dakika.\n" +
-                                 "Kolu oyun oynar gibi iki elinle tut. Her denemede 3 seçenek değişir; bazen iki yer birden titrer.\nHazır olunca Ⓐ";
+                                 "Kolu oyun oynar gibi iki elinle tut. Seçenekler her denemede değişir; bazen iki yer birden titrer.\n" +
+                                 "Hissettin ama yerini ayıramadıysan Ⓨ = Orta. Tekrar çalmak için ⧉.\nHazır olunca Ⓐ";
             if (await AwaitCalibAnswerAsync(token) == CalibQuit) return;
             for (int i = 0; i < plan.Count; i++)
             {
@@ -1848,7 +1854,8 @@ public partial class MainWindow : Window
                     CalibQuestion.Text = t.Question;
                     ShowCalibOptions(t.Options);
                     var sw = Stopwatch.StartNew();
-                    answer = await AwaitCalibAnswerAsync(token);
+                    do answer = await AwaitCalibAnswerAsync(token);
+                    while (answer >= t.Options.Count);          // Y on a 3-option trial: no such answer, keep waiting
                     ms = sw.Elapsed.TotalMilliseconds;
                     if (answer != CalibReplay) break;
                     replays++;

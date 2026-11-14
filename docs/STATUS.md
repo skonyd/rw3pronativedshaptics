@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-10. This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-14. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## What the app does
@@ -25,9 +25,9 @@ Updated 2026-11-10. This page replaces reading the dated reports in order; they 
 - Native v2 demos (Wolverine) follow the setup: through the running bridge (the bridge stays up), else Sensa in PC mode, else the body motors in Xbox mode. In Xbox mode the body motors give strength only: no 30-400 Hz pitch and weak left/right. The demos' intended feel needs PC mode (Sensa); the app says so after a demo.
 - Testing without a game: Test → "Oyun simülasyonu" sends game-like haptic PCM + trigger reports and reports each stage (bridge, Sensa / Xbox motors, mic).
 - **General calibration** (Test → "Genel kalibrasyon testi", since 2026-11-11). A blind, controller-driven test in PC or Xbox mode:
-  - Trials: shuffled locate trials (one or two actuators, varied strength / pitch / texture, 3 changing choices including mixes and "nothing", each stimulus twice) and "1 or 2: stronger / better" pairs in both orders.
-  - Controls: X/A/B answer, Y replays, Menu stops; keys 1/2/3, R, Esc.
-  - Output: raw data and a summary (accuracy per actuator, sent → chosen, consistency, threshold, pair verdicts) in `%LOCALAPPDATA%\RW3ProNativeDSHaptics\calibration\`.
+  - Trials: shuffled locate trials (one or two actuators, varied strength / pitch / texture, 3 changing choices including mixes and "nothing", plus a fixed 4th "Orta / yerini ayıramadım" since 2026-11-14; each stimulus twice) and "1 or 2: stronger / better" pairs in both orders.
+  - Controls: X/A/B answer, Y = Orta (locate trials only), View (⧉) replays, Menu stops; keys 1/2/3/4, R, Esc.
+  - Output: raw data and a summary (accuracy per actuator with "orta ×N", ORTA share, sent → chosen, consistency, threshold, pair verdicts) in `%LOCALAPPDATA%\RW3ProNativeDSHaptics\calibration\`.
   - Stops the running mode while it runs.
 - Settings and log: `%LOCALAPPDATA%\RW3ProNativeDSHaptics\` (`settings.json`, `logs\rw3.log`).
 

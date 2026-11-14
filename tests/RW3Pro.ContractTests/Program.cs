@@ -1005,7 +1005,10 @@ SpectralContracts.Run(Check);
     var pc = new CalCapabilities("PC", true, false, false, true);
     var px = CalibrationPlan.Build(xbox, 7); var pp = CalibrationPlan.Build(pc, 7);
     var locX = px.Where(t => t.Kind == CalTrialKind.Locate).ToList();
-    bool optionsOk = px.All(t => t.Options.Count == 3 && t.Options.Distinct().Count() == 3)
+    // Locate: 3 shuffled + "Orta" fixed 4th (Y), never correct. 1-or-2: the 3 fixed answers.
+    bool optionsOk = locX.All(t => t.Options.Count == 4 && t.Options.Distinct().Count() == 4
+            && t.Options[CalibrationPlan.MiddleIndex] == CalibrationPlan.Middle && t.Correct != CalibrationPlan.MiddleIndex)
+        && px.Where(t => t.Kind != CalTrialKind.Locate).All(t => t.Options.Count == 3 && !t.Options.Contains(CalibrationPlan.Middle))
         && locX.All(t => t.Correct >= 0 && t.Options[t.Correct] == CalibrationPlan.Label(t.First));
     bool twice = locX.GroupBy(t => t.Group).All(g => g.Count() == 2);
     var cmp = px.Where(t => t.Kind != CalTrialKind.Locate).ToList();
@@ -1021,8 +1024,13 @@ SpectralContracts.Run(Check);
     string calSummary = CalibrationScoring.Summarize(answers, xbox);
     bool scoring = calSummary.Contains($"KONUM: {locX.Count}/{locX.Count} doğru (%100)") && calSummary.Contains("→ Sensa tetik") && calSummary.Contains("NEREDEN → NEREYE");
     bool json = CalibrationScoring.ToJsonLine(1, answers[0]).Contains("\"responseMs\":900");
-    Check(optionsOk && twice && bothOrders && mixes && varied && pcNoTriggers && shuffled && scoring && json,
-        $"General calibration plan: Xbox {px.Count} / PC {pp.Count} trials; options {optionsOk}, locate twice {twice}, pairs both orders {bothOrders}, mixes {mixes}, varied {varied}, PC no triggers {pcNoTriggers}, shuffled {shuffled}, scoring {scoring}, json {json}");
+    // Every locate answered "Orta": 0 correct, all counted as middle, and the JSON line carries the middle text.
+    var midAnswers = px.Select(t => new CalResult(t, t.Kind == CalTrialKind.Locate ? CalibrationPlan.MiddleIndex : (t.FirstIsA ? 0 : 1), 900, 0)).ToList();
+    string midSummary = CalibrationScoring.Summarize(midAnswers, xbox);
+    bool middle = midSummary.Contains($"KONUM: 0/{locX.Count} doğru") && midSummary.Contains($"ORTA (yeri ayırt edilemedi): {locX.Count}/{locX.Count} (%100)")
+        && !calSummary.Contains("orta ×") && calSummary.Contains($"ORTA (yeri ayırt edilemedi): 0/{locX.Count}");
+    Check(optionsOk && twice && bothOrders && mixes && varied && pcNoTriggers && shuffled && scoring && json && middle,
+        $"General calibration plan: Xbox {px.Count} / PC {pp.Count} trials; options {optionsOk}, locate twice {twice}, pairs both orders {bothOrders}, mixes {mixes}, varied {varied}, PC no triggers {pcNoTriggers}, shuffled {shuffled}, scoring {scoring}, json {json}, middle {middle}");
 }
 {
     // Xbox-mode Sensa frame (4 body parts). Vectors are the exact frames sent in the 2026-11-11 hardware tests, which the
