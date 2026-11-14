@@ -379,7 +379,10 @@
                 </RadioButton>
               </UniformGrid>
             </Border>
-            <TextBlock x:Name="OutputHint" Style="{StaticResource Hint}" Margin="2,8,0,8" TextWrapping="Wrap"/>
+            <TextBlock x:Name="OutputHint" Style="{StaticResource Hint}" Margin="2,8,0,6" TextWrapping="Wrap"/>
+            <Border x:Name="OutputWarningBox" Background="#3A2A10" CornerRadius="8" Padding="10,6" Margin="0,0,0,8" Visibility="Collapsed">
+              <TextBlock x:Name="OutputWarning" Foreground="{StaticResource Warn}" FontSize="12" TextWrapping="Wrap"/>
+            </Border>
             <Border Background="#0F1829" CornerRadius="12" Padding="10,8" BorderBrush="{StaticResource Line}" BorderThickness="1">
               <StackPanel>
                 <Grid x:Name="FeatureMatrix"/>

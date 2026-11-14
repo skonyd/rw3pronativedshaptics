@@ -180,10 +180,22 @@ public static class OutputMatrix
 
     public static string Describe(GameOutput output) => output switch
     {
-        GameOutput.Physical => "Oyun Wolverine'i olduğu gibi görür; rumble ve tetik titreşimini oyun kendisi gönderir. Game Pass oyunları ve tarayıcılar öndeyken Xbox modunda avuçlar susabilir.",
-        GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler (Game Pass dahil); tetik titreşimi yoktur. Yönetici izni ister.",
-        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble + tetik titreşimi. Bazı Game Pass oyunları bu kolun girdisini almıyor; o zaman Xbox 360'ı seç.",
-        GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Tetik titreşimi yoktur.",
+        GameOutput.Physical => "Oyun Wolverine'i olduğu gibi görür; rumble ve tetik titreşimini oyun kendisi gönderir.",
+        GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler; tetik titreşimi yoktur. Yönetici izni ister.",
+        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble + tetik titreşimi. Yönetici izni ister.",
+        GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Tetik titreşimi yoktur. Yönetici izni ister.",
         _ => "Oyun bir DualSense görür: HD haptik avuçlarda, tetik efektleri tetik motorlarında. DualSense destekli oyunlar için."
+    };
+
+    /// <summary>The orange caveat under the selector (null = none): known limits and what is still untested.</summary>
+    public static string? Warning(GameOutput output, bool xboxMode) => output switch
+    {
+        GameOutput.Physical => xboxMode
+            ? "Xbox modunda Game Pass oyunları, tarayıcılar ve Claude/Codex öndeyken Windows avuçları (Sensa) susturur. Game Pass oyunlarında avuç için Xbox 360'ı seç."
+            : null,
+        GameOutput.Xbox360 => "Deneysel: oyunda henüz denenmedi. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
+        GameOutput.XboxSeries => "Deneysel: Banishers gibi bazı Game Pass oyunları bu kolu görür ama girdisini almaz (kol tepki vermez). O zaman Xbox 360'ı seç. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
+        GameOutput.DualShock4 => "Deneysel: oyunda henüz denenmedi. Oyun PS4 kolunu desteklemiyorsa kol tepki vermez. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
+        _ => null
     };
 }

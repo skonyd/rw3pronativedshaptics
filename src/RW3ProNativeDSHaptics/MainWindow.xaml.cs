@@ -477,7 +477,9 @@ public partial class MainWindow : Window
 
     private void ApplyPadModeOptions(WolverineControllerMode m)
     {
+        bool padChanged = _padMode != m;
         _padMode = m;
+        if (padChanged && _initialized) BuildMatrix();   // pad-mode note and warning follow PC ↔ Xbox
         bool xbox = m == WolverineControllerMode.Xbox;
         XboxBassTreble.IsEnabled = xbox && !XboxSensa.Enabled;
         XboxBodyEnvelope.Preferred = xbox && _settings.XboxBassTreble ? XboxMotorSplit.BassTreble : XboxMotorSplit.Stereo;
@@ -1132,9 +1134,10 @@ public partial class MainWindow : Window
             }
             row++;
         }
-        OutputHint.Text = OutputMatrix.Describe(_output) +
-            (OutputMatrix.Plan(_output, _features).VirtualProfile != null || _output == GameOutput.DualSense
-                ? " Oyunu, seçimden sonra aç (açıksa yeniden başlat)." : "");
+        OutputHint.Text = OutputMatrix.Describe(_output);
+        string? warning = OutputMatrix.Warning(_output, _padMode == WolverineControllerMode.Xbox);
+        OutputWarning.Text = "⚠  " + warning;
+        OutputWarningBox.Visibility = warning != null ? Visibility.Visible : Visibility.Collapsed;
         MatrixPadNote.Text = _padMode switch
         {
             WolverineControllerMode.Xbox => "Kol Xbox modunda: tetik motorları ve avuçlar kullanılabilir.",
