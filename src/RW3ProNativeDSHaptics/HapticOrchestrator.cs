@@ -104,7 +104,7 @@ public sealed class HapticOrchestrator
             StopOutputs();
             if (LastError != ex.Message) DiagnosticsService.Error(mode + " auto start", ex);
             LastError = ex.Message;
-            NextAutoStartTick = HapticModePolicy.RetryAfterFailure(mode, UseXboxGameBridge, Environment.TickCount64);
+            NextAutoStartTick = RetryAfterFailure(mode);
         }
         finally
         {
@@ -113,6 +113,14 @@ public sealed class HapticOrchestrator
         }
         if (startVirtual) await StartVirtualAutomaticallyAsync();
     }
+
+    /// <summary>The virtual Xbox pad is never retried by a non-elevated RW3 (each try would ask for UAC). Already elevated
+    /// (the user started it), it retries every 10 s: a replug or mode switch makes detection miss for a few seconds, and
+    /// until 2026-11-15 one miss left the game on the physical pad for the rest of the session.</summary>
+    private long RetryAfterFailure(HapticMode mode) =>
+        mode == HapticMode.Audio && UseXboxGameBridge && VirtualDualSenseBridge.IsElevated
+            ? Environment.TickCount64 + 10_000
+            : HapticModePolicy.RetryAfterFailure(mode, UseXboxGameBridge, Environment.TickCount64);
 
     private bool Superseded(HapticMode mode) => Busy() || Exiting() || SelectedMode() != mode;
 
@@ -249,7 +257,14 @@ public sealed class HapticOrchestrator
         if (tickCount % 8 == 0)
         {
             performance.Sample();
-            if (Run == RunState.Audio && performance.SustainedHighSamples >= 3)
+            if (Run == RunState.Audio && performance.SustainedHighSamples >= 3 && CombinedXbox != null)
+            {
+                // The virtual Xbox pad carries the game's controller input: stopping it mid-game hands the game back to the
+                // physical pad (2026-11-15: stopped 5 s after start by start-up CPU). Log only.
+                if (tickCount % 480 == 0)
+                    DiagnosticsService.Info($"CPU {performance.CpuPercent:F1}% over the {PerformanceMonitor.CpuBudgetPercent}% budget; virtual Xbox pad kept running.");
+            }
+            else if (Run == RunState.Audio && performance.SustainedHighSamples >= 3)
             {
                 StopOutputs();
                 LastError = "İşlemci sınırı (%3) üst üste aşıldı; sesten titreşim 1 dk durduruldu.";
@@ -274,7 +289,7 @@ public sealed class HapticOrchestrator
             }) ?? "Ses yakalama beklenmedik biçimde durdu.";
             DiagnosticsService.Info("Audio mode stopped by the liveness check: " + LastError);
             StopOutputs();
-            NextAutoStartTick = HapticModePolicy.RetryAfterFailure(HapticMode.Audio, UseXboxGameBridge, Environment.TickCount64);
+            NextAutoStartTick = RetryAfterFailure(HapticMode.Audio);
         }
         if (Run == RunState.Native && !Busy() && !_bridge.IsBridgeRunning && !_bridge.IsVirtualDualSenseRunning)
         {
