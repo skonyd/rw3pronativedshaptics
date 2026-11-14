@@ -905,6 +905,44 @@ def check_sensa_trigger_pwm(image, dsp):
     return {"name": "stock_sensa_trigger_pwm", "cases": trace}
 
 
+def check_stock_sensa_pitch(image, dsp):
+    """Validate stock palm oscillator output against its decoded pitch."""
+    table = struct.unpack_from("<513f", image, 0x358F8 - 0x8000)
+    error = max(abs(value - math.sin(math.tau * index / 512)) for index, value in enumerate(table))
+    verify(error < 1e-6, "Stock oscillator lookup does not match one sine period")
+    results = []
+    for pitch, expected_hz in ((0, 30), (24, 99), (60, 204), (127, 399)):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
+        cpu.mem_map(0xE000E000, 4096)
+        cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
+        frame = xbox_frame([([], [(35, pitch, 0)]), ([], []), ([], []), ([], [])])
+        cpu.mem_write(0x20000B34, frame + bytes(64))
+        cpu.mem_write(0x20000B2C, b"\x01")
+        replay.call(0x2B538, RETURN)
+        hz, = struct.unpack("<H", cpu.mem_read(OUT + 6, 2))
+        verify(hz == expected_hz, "Unexpected stock palm pitch mapping")
+        samples = []
+        for _ in range(32):
+            replay.call(0x227E4, RETURN, 0x2000507C, 0)
+            samples.extend(struct.unpack("<4f", cpu.mem_read(0x2000507C, 16)))
+        first_positive = next(index for index, value in enumerate(samples) if value > 0)
+        # A very small negative LUT/interpolation result at phase zero
+        # can follow the initial silent sample.
+        start = first_positive - 1
+        crossing = next(index for index in range(start + 2, len(samples)) if samples[index] < 0 < samples[index - 1])
+        previous, current = samples[crossing - 1:crossing + 1]
+        zero = crossing - 1 + previous / (previous - current)
+        half_period = zero - start
+        # The stock phase formula uses 4000 samples per second. Compare
+        # in samples without assuming the actual hardware timer cadence.
+        verify(abs(half_period - 2000 / hz) < 0.02,
+               f"Stock oscillator at {hz} Hz: first positive {first_positive}, half period {half_period}")
+        results.append({"pitch_code": pitch, "decoded_hz": hz, "half_period_samples": round(half_period, 3)})
+    return {"name": "stock_sensa_pitch", "sine_table_max_error": error, "cases": results}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stock", type=Path)
@@ -946,6 +984,7 @@ def main():
         full["half_gain_peak_match_count_delta"] = half["peak_match_count_delta"]
     report.append(full_gain)
     report.append(check_sensa_trigger_pwm(image, dsp))
+    report.append(check_stock_sensa_pitch(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

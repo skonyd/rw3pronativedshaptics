@@ -5,6 +5,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Firmware audio-to-haptics
 
+- E-20261114-22 verifies stock palm oscillator pitch in samples. For the
+  Bluetooth DSX music reference, compare muted-speaker and haptics-off
+  controls using the same synthetic source. Measure Wolverine output
+  bandwidth before choosing a PCM-to-duty playback band.
+
 - E-20261114-04 establishes wired and dongle GIP audio at the host USB boundary
   and locates the NXP ring copy. E-20261114-06 exercises queue priming and
   underrun with scheduled callbacks. Trace hardware interrupt delivery and

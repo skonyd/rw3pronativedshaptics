@@ -44,6 +44,8 @@ snapshots.
 Xbox Sensa trigger regions 249/149 reach independent SCT duty registers
 in replay. The tested pitch codes leave duty unchanged at fixed strength,
 and the stock transient cutoff clears the modeled output.
+The stock palm oscillator's lookup and four pitch codes now pass
+sample-domain checks. Its formula uses a 4 kHz constant.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

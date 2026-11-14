@@ -306,6 +306,34 @@ their output through 1016 counting calls and returned to zero on the
 the scheduled calls in the fixture. Physical cadence and motor response
 still need measurement.
 
+### Palm oscillator and music reference
+
+The stock routine `0x2B300` interpolates a 513-entry sine table at
+`0x358F8`. The replay checks it against one mathematical sine period
+and runs the stock Xbox decoder and transient synthesizer `0x227E4`.
+Pitch codes 0, 24, 60 and 127 decode to 30, 99, 204 and 399 Hz. Their
+measured half periods are 66.667, 20.202, 9.802 and 5.013 generated
+samples. These agree with the 4 kHz constant at `0x22B18` within 0.02
+samples. Timer delivery and actuator frequency response are outside this
+test. The constant describes the stock oscillator's sample domain.
+
+The owner hears recognizable music from the grips of a Bluetooth
+DualSense with DSX Audio to Haptics and the speaker muted. This is a
+user report. DSX+ advertises separate Bluetooth audio and haptics
+capabilities. We have no capture of the exact signal DSX sent in this
+session. [DSX+](https://store.steampowered.com/app/2345650/Instructions/).
+
+RW3's Wolverine route sends a small number of time-varying tone
+descriptions, which the stock firmware synthesizes locally. The
+current original firmware DSP likewise estimates two envelopes per
+side. Its gain can change strength, but these representations discard
+source phase and much of the spectrum. Test a stereo PCM-derived
+waveform at the stock sample-to-duty boundary to evaluate a wider
+bandwidth prototype. Start with bounded level and a low-pass filter,
+leave trigger channels untouched, and use identical input plus a muted
+speaker reference. Whether Wolverine can reproduce recognizable
+speech or music depends on the driver and actuators' physical response.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the
