@@ -336,30 +336,53 @@ speech or music depends on the driver and actuators' physical response.
 
 ### Stock SCT initialization
 
-The PWM replay now runs stock board routine `0x1F48C` after stock RAM
-decompression. The model supplies SYSCON reset alias semantics and leaves
-the clock selectors at the fixture's zero state. The firmware requests
-40 kHz, configures its center-aligned mode, and builds the following
-event and match layout.
+The PWM replay runs stock clock setup `0x9CA4` and SCT setup `0x1F48C`
+after stock RAM decompression. The stock clock query returns 96 MHz.
+The fixture supplies power-ready and PLL-lock bits plus reset alias
+semantics. The firmware requests 40 kHz, configures center-aligned mode
+with no SCT prescaling, and builds the following event and match layout.
 
 | SCT output | Period event | Duty event | Duty match address | Startup match |
 | --- | --- | --- | --- | --- |
-| 3 | 0 | 1 | 0x40085104 | 15 |
-| 5 | 2 | 3 | 0x4008510C | 15 |
+| 3 | 0 | 1 | 0x40085104 | 120 |
+| 5 | 2 | 3 | 0x4008510C | 120 |
 | 6 | 4 | 5 | 0x40085114 | 0 |
 | 7 | 6 | 7 | 0x4008511C | 0 |
 
-The generated period match is 150 under this clock fixture. The duty test
-now observes 30, 150 and 0 counts for 20%, 100% and 0%, respectively.
+The generated period match is 1200. The duty test observes 240, 1200
+and 0 counts for 20%, 100% and 0%, respectively.
 Unchanged and disabled requests still produce no duty write. Palm
-transients deviate from idle by up to eight counts. Original DSP bands
-deviate by 18 and nine at 100% and 50% calibration gain. The trigger duty
-test yields 30, 60 and 94 counts at strengths 20, 40 and 63. Isolation
-and stop checks still pass for all four outputs. Earlier raw counts in
-this report used a seeded 4500-count period and are historical.
+transients deviate from idle by up to 60 counts. Original DSP bands
+deviate by 144 and 72 at 100% and 50% calibration gain. The trigger duty
+test yields 240, 480 and 756 counts at strengths 20, 40 and 63. Isolation
+and stop checks pass for all four outputs. The older 4500-count and
+150-count values came from different clock or setup fixtures.
 
-The modeled register setup and write trace leave the operational clock
-tree, physical pin waveform, and interrupt cadence open.
+### Stock timer schedule
+
+Stock setup `0x329E4` configures CTIMER2 with MR0 23,999. Its synchronous
+bus runs at 96 MHz. Stock setup `0x32A64` configures CTIMER3 with MR0
+95,999. The asynchronous APB selector at `0x40040020` is written to 1,
+which selects the 12 MHz FRO. Both timers set the prescale register to
+zero and enable interrupt and counter reset on MR0. The resulting
+modeled intervals are 250 µs and 8 ms. The asynchronous clock must be
+accounted for when interpreting the 95,999 count.
+[NXP UM10912, sections 4.5.50 and 4.5.107](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/lpc/58795/1/lpc546_series.pdf)
+
+The replay derives match times from these registers, presents an MR0
+flag and enters stock handlers `0xB438` and `0xB49C`. In 24 simulated
+milliseconds it records 96 and 3 callbacks. Each handler clears its
+flag using the modeled write-one-to-clear behavior. The first fast tick
+updates a seeded 20% palm duty to 240 counts. The slow callback decrements
+its seeded countdown on each dispatch.
+
+Coincident matches are dispatched fast-timer first using the priority
+bytes (0x40 and 0x80) written by stock setup.
+Physical pin edges, exception entry latency, preemption, oscillator
+lock time and timer interactions with DMA remain unverified. The
+oscillator's 4 kHz sample-domain calculation and the CTIMER2 duty
+callback interval leave a separate question about when the stock
+synthesis path refills its sample slots during continuous playback.
 
 ### Hardware and integration
 
@@ -368,7 +391,7 @@ tree, physical pin waveform, and interrupt cadence open.
    timed button/analog sequence. Identify the NXP–Telink link and use it to
    connect the two B91 call graphs. The [B91 map](TELINK_B91.md) supplies anchors.
 2. Reconstruct NXP peripheral behavior in that order: USB endpoint transfer,
-   DMA descriptor completion, timer IRQ scheduling and SCT PWM capture. Add
+   DMA descriptor completion, timer priority/preemption and SCT PWM capture. Add
    ADC and GPIO/PINT input replay with USB reports as the acceptance output.
    Seed models from the [NXP reference manual](https://www.nxp.com/products/LPC546XX)
    and compare model traces against independently captured stock behavior.

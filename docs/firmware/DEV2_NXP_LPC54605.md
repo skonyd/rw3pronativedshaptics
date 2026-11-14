@@ -119,7 +119,10 @@ See [RAZER_COMMANDS.md](RAZER_COMMANDS.md): 104 commands, dispatcher 0x30524.
 5. **Sample clock:** the CTIMER2 match callback (0x2B6F0, a RAM callback) runs the SCT duty update 0x1F5CC when
    0x200044C4+0x29 == 1, then clears the timer interrupt.
    - 0x1F5CC switches on a mode byte at 0x200090E6: 0/2 normal, 3, 0xFE, 0xFF.
-   - CTIMER3 (0x2B718) runs two more periodic tasks, 0x2D534 and 0x2D210.
+   - Stock setup gives CTIMER2 a modeled 250 µs interval (96 MHz synchronous bus).
+   - CTIMER3 (0x2B718) runs 0x2D534 and 0x2D210 every 8 ms in the modeled stock
+     configuration (12 MHz FRO on the asynchronous bus). See the
+     [timer schedule replay](AUDIO_HAPTICS_REPLAY.md#stock-timer-schedule).
 
 ### Headset audio (console ↔ controller) passes through the NXP
 

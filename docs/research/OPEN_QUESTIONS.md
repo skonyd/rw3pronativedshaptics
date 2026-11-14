@@ -36,8 +36,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   corrects the emulator completion hook and verifies save and reload.
   E-20261114-21 covers Xbox trigger SCT output and transient cutoff.
   E-20261114-26 uses stock SCT initialization in the PWM replays.
-  Trace the operational clock tree and independently validate hardware timing and capture
-  actual PWM. Build an end-to-end acceptance trace before selecting a firmware
+  E-20261114-27 executes stock clock and CTIMER setups, then dispatches MR0
+  events at the modeled 250 µs and 8 ms intervals. Trace when palm samples
+  are replenished, model timer/DMA preemption and independently validate
+  hardware timing and pin-level PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.
   Verify a spare-unit restore before any hardware candidate. Bootloader

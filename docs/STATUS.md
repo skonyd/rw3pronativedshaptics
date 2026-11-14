@@ -46,9 +46,11 @@ in replay. The tested pitch codes leave duty unchanged at fixed strength,
 and the stock transient cutoff clears the modeled output.
 The stock palm oscillator's lookup and four pitch codes now pass
 sample-domain checks. Its formula uses a 4 kHz constant.
-The stock SCT initializer now generates the PWM channel/event mapping
-and period match used in the palm and trigger replays.
-Bootloader acceptance, recovery, wireless audio, PWM and integration timing
+The stock clock and SCT initializers now generate the PWM channel/event
+mapping and the 1200-count match for a 40 kHz carrier in replay.
+Stock CTIMER2/3 setup and IRQ handlers exercise modeled 250 µs and 8 ms
+intervals, derived from separate 96 MHz and 12 MHz clock sources.
+Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
 ## What the app does

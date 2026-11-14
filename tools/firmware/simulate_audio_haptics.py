@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import math
+from fractions import Fraction
 from pathlib import Path
 import struct
 import wave
@@ -22,6 +23,7 @@ DMA_SUBMIT, RETURN = 0x12F9C, 0xFFF0
 USB_RX, USB_RX_ACCOUNTING = 0x28C80, 0x2384C
 USB_BUFFER, USB_EVENT, USB_CONTEXT = 0x2000B3C0, 0x20022000, 0x20022100
 USB_RING = 0x200057AC
+CTIMER2, CTIMER3 = 0x40028000, 0x40048000
 
 
 def verify(condition, message):
@@ -248,7 +250,7 @@ def check_timer_pwm(image, dsp):
     """Run the stock CTIMER2 callback and capture SCT register writes."""
     replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
     cpu = replay.cpu
-    timer = 0x40028000
+    timer = CTIMER2
     match = match_registers[0]
     reload = match + 0x100
     period, = struct.unpack("<I", cpu.mem_read(match - 4, 4))
@@ -271,6 +273,87 @@ def check_timer_pwm(image, dsp):
         observed.append({"enabled": enabled, "duty_percent": duty, "match_counts": [v for _, v in expected]})
     return {"name": "stock_timer_pwm_registers", "period_match": period,
             "duty_match_registers": [hex(address) for address in match_registers], "cases": observed}
+
+
+def check_stock_timer_schedule(image, dsp):
+    """Schedule MR0 events from the configured clocks and run stock IRQ handlers."""
+    replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
+    cpu = replay.cpu
+    replay.call(0x32A64, RETURN, 1)
+    replay.call(0x329E4, RETURN, 1)
+
+    def read_word(address):
+        return read_sensa_pwm(cpu, (address,))[0]
+
+    verify(read_word(0x40040020) & 3 == 1, "Expected FRO 12 MHz on asynchronous APB")
+    replay.call(0xA9F4, RETURN, 0)
+    clocks = (cpu.reg_read(UC_ARM_REG_R0), 12_000_000)
+    verify(clocks[0] == 96_000_000, "Unexpected stock system clock")
+    period_match = read_word(match_registers[0] - 4)
+    carrier = clocks[0] // (2 * period_match)
+    verify(carrier == 40_000, "Unexpected stock PWM carrier")
+    timers = (CTIMER2, CTIMER3)
+    handlers = (0xB438, 0xB49C)
+    callbacks = (0x2B6F0, 0x2B718)
+    priorities = [cpu.mem_read(0xE000E400 + irq, 1)[0] for irq in (36, 13)]
+    verify(priorities == [0x40, 0x80], "Unexpected stock CTIMER interrupt priorities")
+    periods = []
+    for timer, clock in zip(timers, clocks):
+        verify(read_word(timer + 4) & 3 == 1 and read_word(timer + 0x14) & 7 == 3
+               and read_word(timer + 0x70) & 3 == 0, "Expected an enabled reset-and-interrupt MR0 timer")
+        prescale = read_word(timer + 0x0C) + 1
+        counts = read_word(timer + 0x18) + 1
+        periods.append(Fraction(prescale * counts * 1_000_000, clock))
+    verify(periods == [250, 8000], "Unexpected stock CTIMER periods")
+
+    def acknowledge(machine, access, address, size, value, data):
+        # Unicorn MMIO writes are ordinary memory writes. Apply IR's W1C
+        # effect immediately before the next executed instruction.
+        acknowledgements[address] = read_word(address) & ~value
+
+    def dispatch_instruction(machine, address, size, data):
+        for timer, flags in acknowledgements.items():
+            machine.mem_write(timer, struct.pack("<I", flags))
+        acknowledgements.clear()
+        if address in callbacks:
+            dispatched.append(address)
+
+    acknowledgements = {}
+    dispatched = []
+    cpu.hook_add(UC_HOOK_CODE, dispatch_instruction)
+    for timer in timers:
+        cpu.hook_add(UC_HOOK_MEM_WRITE, acknowledge, begin=timer, end=timer)
+        cpu.mem_write(timer, bytes(4))
+
+    # Fixture input: change palm duty on the first fast tick, and seed a
+    # countdown updated by the slower stock callback.
+    cpu.mem_write(0x200044BE, b"\x01")
+    cpu.mem_write(0x200044ED, b"\x01")
+    cpu.mem_write(0x20002284, struct.pack("<H", 20))
+    countdown = 0x200090AA
+    cpu.mem_write(countdown, struct.pack("<H", 3))
+    schedule = sorted((period * tick, priorities[index], index) for index, period in enumerate(periods)
+                      for tick in range(1, int(24_000 / period) + 1))
+    irq_counts = [0, 0]
+    duty_at_first_fast_tick = None
+    for timestamp, _, index in schedule:
+        timer = timers[index]
+        cpu.mem_write(timer, struct.pack("<I", 1))
+        dispatched.clear()
+        replay.call(handlers[index], RETURN)
+        verify(dispatched == [callbacks[index]] and read_word(timer) == 0,
+               f"Stock timer dispatch or acknowledgement failed at {timestamp} us")
+        irq_counts[index] += 1
+        if timestamp == periods[0]:
+            duty_at_first_fast_tick = read_word(match_registers[0])
+        remaining, = struct.unpack("<H", cpu.mem_read(countdown, 2))
+        verify(remaining == 3 - irq_counts[1], "Stock slow timer countdown disagrees with dispatch")
+    verify(irq_counts == [96, 3] and duty_at_first_fast_tick == 240, "Unexpected stock timing results")
+    return {"name": "stock_clock_timer_schedule", "timer_clocks_hz": list(clocks),
+            "periods_us": [int(period) for period in periods], "irq_counts_in_24_ms": irq_counts,
+            "irq_priorities": priorities,
+            "pwm_carrier_hz": carrier, "pwm_period_match": period_match,
+            "first_fast_tick_duty_match": duty_at_first_fast_tick}
 
 
 def check_dma_boundaries(image, dsp):
@@ -768,11 +851,29 @@ def initialize_stock_sensa_pwm(image, dsp):
     replay = Replay(image, dsp)
     cpu = replay.cpu
     replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
-    for page in (0xE000E000, 0x4000D000, 0x40028000, 0x40085000):
+    for page in (0xE000E000, 0x4000D000, 0x40020000, CTIMER2, 0x40040000, CTIMER3, 0x40085000):
         cpu.mem_map(page, 4096)
     cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
     model_syscon_reset(cpu)
+
+    def async_reset_alias(machine, access, address, size, value, data):
+        status = 0x40040000
+        old, = struct.unpack("<I", machine.mem_read(status, 4))
+        new = old | value if address == status + 4 else old & ~value
+        machine.mem_write(status, struct.pack("<I", new))
+
+    cpu.hook_add(UC_HOOK_MEM_WRITE, async_reset_alias, begin=0x40040004, end=0x40040008)
+    # Supply ready/lock signals without simulating oscillator settling.
+    for register, value in ((0x40020054, 0x220), (0x40000584, 1), (0x40000520, 1)):
+        cpu.mem_write(register, struct.pack("<I", value))
+    replay.call(0x9CA4, RETURN, instruction_limit=100000)
+    replay.call(0xA9F4, RETURN, 1)
+    pwm_clock = cpu.reg_read(UC_ARM_REG_R0)
+    verify(pwm_clock == 96_000_000, "Unexpected clock supplied to the SCT initializer")
     replay.call(0x1F48C, RETURN)
+    config, control = struct.unpack("<2I", cpu.mem_read(0x40085000, 8))
+    verify(config & 7 == 1 and control & 0x1FF8 == 0x18,
+           "Expected unified, center-aligned SCT on the bus clock without prescaling")
     events = struct.unpack("<4I", cpu.mem_read(0x20002270, 16))
     verify(events == (0, 2, 4, 6), "Unexpected stock SCT event mapping")
     match_registers = []
@@ -785,9 +886,9 @@ def initialize_stock_sensa_pwm(image, dsp):
         verify(set_mask == 0 and clear_mask == 1 << (event + 1),
                f"Unexpected SCT routing for output {output}")
         period, = struct.unpack("<I", cpu.mem_read(0x40085100 + 4 * event, 4))
-        verify(period == 150, "Unexpected SCT period in reset-clock fixture")
+        verify(period == pwm_clock // (2 * 40_000), "Unexpected SCT period in operational clock fixture")
         match_registers.append(0x40085100 + 4 * (event + 1))
-    verify(read_sensa_pwm(cpu, match_registers) == (15, 15, 0, 0), "Unexpected stock startup duty")
+    verify(read_sensa_pwm(cpu, match_registers) == (120, 120, 0, 0), "Unexpected stock startup duty")
     return replay, match_registers
 
 
@@ -896,7 +997,7 @@ def check_sensa_trigger_pwm(image, dsp):
             cpu = replay.cpu
             idle = read_sensa_pwm(cpu, match_registers)
             period_match, = struct.unpack("<I", cpu.mem_read(match_registers[side + 2] - 4, 4))
-            verify(period_match == 150, "Unexpected stock trigger period match")
+            verify(period_match == 1200, "Unexpected stock trigger period match")
             cpu.mem_write(0x200044ED, b"\x01")
 
             bodies = [([], []) for _ in range(4)]
@@ -992,6 +1093,7 @@ def main():
     report.append(check_stream_loss(image, dsp))
     report.append(check_toggle(image, dsp))
     report.append(check_timer_pwm(image, dsp))
+    report.append(check_stock_timer_schedule(image, dsp))
     report.append(check_dma_boundaries(image, dsp))
     report.append(check_stock_i2s_completion(image, dsp))
     report.append(check_stock_dma_descriptor(image, dsp))
