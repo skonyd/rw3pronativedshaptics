@@ -146,8 +146,24 @@ its write index, and returned 0xA8E for a fifth request without changing the
 previous entries. The DMA0 vector and driver at 0xC478 and 0xC804 dispatched
 completion A, completion B and error with the expected callback arguments and
 status acknowledgements. A status with no pending bits called no handler.
-The test injects completion status and observes a stub callback. Descriptor
-execution, the stock I2S completion handler and real interrupt timing remain open.
+The boundary test injects completion status and observes a stub callback.
+
+The completion test then links the actual DMA IRQ to the stock I2S completion
+routine at `0x12684`. It exercises one 192-byte completion, two successive
+96-byte completions, an error, and an error followed by a completion.
+The partial completion advances the data pointer and reduces the remaining
+length without notifying the application. The final completion clears the
+slot, advances the queue and calls the application once with status `0xA8C`.
+The injected error does not retire the slot or notify the application.
+An injected completion after that error retires the original slot. This
+does not establish how the DMA controller recovers from a physical error.
+
+A further case registers the real application callback `0x22FF8` instead
+of the observer. The chain reaches the next DMA submission with a 192-byte
+zero block when streaming is off, and with the original USB PCM when the
+stream is primed. The test seeds the in-flight descriptor byte counts and
+sets the IRQ status registers. DMA descriptor execution, startup and real
+interrupt timing remain open.
 
 Recovery timing depends on queue position in this fixture. After draining
 128 blocks, the first new PCM was selected after another 16 blocks of prefill.

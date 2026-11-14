@@ -322,6 +322,72 @@ def check_dma_boundaries(image, dsp):
             "irq_cases": ["no_pending", "complete_a", "complete_b", "error"]}
 
 
+def check_stock_i2s_completion(image, dsp):
+    """Dispatch DMA events through the stock I2S completion handler."""
+    dma, channel, i2s = 0x40082000, 13, 0x40097000
+    dma_handle, private, i2s_handle, pcm = 0x20023000, 0x20023100, 0x20023200, 0x20024000
+    observer = DSP + 0x800
+    report = []
+    for events in (((192, False),), ((96, False), (96, False)),
+                   ((192, True),), ((192, True), (192, False))):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        cpu.mem_map(dma, 4096)
+        cpu.mem_write(observer, b"\x70\x47")
+        cpu.mem_write(dma_handle, struct.pack("<IIIB", 0x12685, private, dma, channel))
+        cpu.mem_write(0x2000AB1C + 4 * channel, struct.pack("<I", dma_handle))
+        cpu.mem_write(private, struct.pack("<II", i2s, i2s_handle))
+        # State 3 lets the active completion retire without starting another
+        # transfer. The application callback is observed at the ABI boundary.
+        cpu.mem_write(i2s_handle, struct.pack("<4I", 3, 0, observer | 1, pcm))
+        cpu.mem_write(i2s_handle + 0x14, struct.pack("<II", pcm, 192))
+        calls = []
+        cpu.hook_add(UC_HOOK_CODE, lambda u, *_: calls.append(tuple(
+            u.reg_read(reg) for reg in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
+        )), begin=observer, end=observer)
+        remaining = 192
+        for size, error in events:
+            descriptor = cpu.mem_read(private + 0xC, 1)[0]
+            cpu.mem_write(private + 8 + descriptor * 2, struct.pack("<H", size))
+            cpu.mem_write(private + 0xE, b"\x01")
+            for offset, enabled in ((0x48, True), (0x58, not error), (0x40, error)):
+                cpu.mem_write(dma + offset, struct.pack("<I", (1 << channel) if enabled else 0))
+            replay.call(0xC478, RETURN)
+            remaining -= 0 if error else size
+            pointer, count = struct.unpack("<II", cpu.mem_read(i2s_handle + 0x14, 8))
+            verify(count == remaining and pointer == (pcm + 192 - remaining if remaining else 0),
+                   "Stock I2S completion advanced the buffer incorrectly")
+            verify(cpu.mem_read(i2s_handle + 0x35, 1)[0] == (0 if remaining else 1),
+                   "Stock I2S completion advanced the queue incorrectly")
+            verify(calls == ([] if remaining else [(i2s, i2s_handle, 0xA8C, pcm)]),
+                   "Unexpected I2S application callback")
+        report.append({"events": [{"descriptor_bytes": size, "dma_error": error}
+                                  for size, error in events],
+                       "remaining_bytes": remaining, "application_callbacks": len(calls)})
+
+    # Follow the real application callback through to its next DMA call.
+    cpu.mem_write(i2s_handle + 8, struct.pack("<I", TX | 1))
+    payload = tone(2, ((80,), (190,)))
+    for queue_index, (streaming, expected_address) in enumerate(((False, ZERO), (True, USB_RING)), 1):
+        cpu.mem_write(i2s_handle + 0x14 + queue_index * 8, struct.pack("<II", pcm, 192))
+        descriptor = cpu.mem_read(private + 0xC, 1)[0]
+        cpu.mem_write(private + 8 + descriptor * 2, struct.pack("<H", 192))
+        cpu.mem_write(private + 0xE, b"\x01")
+        cpu.mem_write(dma + 0x58, struct.pack("<I", 1 << channel))
+        cpu.mem_write(0x20000A59, bytes([streaming]))
+        if streaming:
+            replay.receive_usb(bytes((0x60, 0x20, 1, 0xC0, 0x81, 0)) + payload)
+            cpu.mem_write(0x20008F92, b"\x01")
+        replay.call(0xC478, DMA_SUBMIT)
+        verify(tuple(cpu.reg_read(reg) for reg in
+                     (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)) ==
+               (i2s, i2s_handle, expected_address, 192), "Unexpected buffer submitted by stock TX")
+        verify(bytes(cpu.mem_read(expected_address, 192)) == (payload if streaming else bytes(192)),
+               "Stock completion changed the submitted PCM")
+        verify(cpu.mem_read(i2s_handle + 0x35, 1)[0] == queue_index + 1, "Incorrect retired slot")
+    return {"name": "stock_i2s_completion", "cases": report, "rearmed_with": ["silence", "usb_pcm"]}
+
+
 def replay_capture(image, dsp, path):
     # The USB capture does not prove the negotiated format or firmware ingress.
     # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
@@ -376,6 +442,7 @@ def main():
     report.append(check_toggle(image, dsp))
     report.append(check_timer_pwm(image, dsp))
     report.append(check_dma_boundaries(image, dsp))
+    report.append(check_stock_i2s_completion(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

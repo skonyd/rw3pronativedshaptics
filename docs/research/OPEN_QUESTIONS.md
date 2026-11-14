@@ -10,8 +10,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   underrun with scheduled callbacks. Trace hardware interrupt delivery and
   timing. Identify the B91 runtime address mapping and NXP–Telink
   link to determine how dongle PCM reaches the controller.
-- Model descriptor execution and run the stock I2S DMA completion callback.
-  E-20261114-07 covers admission and IRQ status dispatch. Compare with an
+- Model descriptor generation and execution. E-20261114-08 covers the stock
+  I2S completion callback through the next DMA submission using injected
+  descriptor counts and IRQ events. Compare with an
   independent timing trace, including recovery at different ring positions. SCT register
   writes are now covered for seeded duty. Trace the synthesis inputs and
   capture actual PWM. Build an end-to-end acceptance trace before selecting a firmware
