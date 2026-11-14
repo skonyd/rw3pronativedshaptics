@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="RW3 Pro Haptics"
         Icon="Assets/App.ico"
-        Width="1000" Height="800" MinWidth="960" MinHeight="780"
+        Width="1000" Height="860" MinWidth="960" MinHeight="780"
         Background="#0B1222" Foreground="#EEF3FF" FontFamily="Segoe UI" FontSize="13"
         WindowStartupLocation="CenterScreen" Loaded="Window_Loaded"
         Closing="Window_Closing" StateChanged="Window_StateChanged">
@@ -99,7 +99,7 @@
       <Setter Property="Template">
         <Setter.Value><ControlTemplate TargetType="RadioButton">
           <Border x:Name="B" Background="#0F1829" BorderBrush="{StaticResource Line}" BorderThickness="2"
-                  CornerRadius="12" Padding="16,14">
+                  CornerRadius="12" Padding="14,11">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
           </Border>
           <ControlTemplate.Triggers>
@@ -253,11 +253,13 @@
               </RadioButton>
               <RadioButton x:Name="ModeNative" GroupName="Mode" Style="{StaticResource ChoiceCard}" Checked="Mode_Checked">
                 <StackPanel>
-                  <TextBlock Text="DualSense oyunları" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="DualSense oyunları" FontSize="15" FontWeight="SemiBold"/>
+                    <Border Background="#3A2A10" CornerRadius="6" Padding="5,0" Margin="8,2,0,0" VerticalAlignment="Center">
+                      <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
+                    </Border>
+                  </StackPanel>
                   <TextBlock Text="Oyun kolu DualSense sanır: tetik efektleri, HD haptik ya da sesten haptik." Style="{StaticResource Hint}" Margin="0,4,0,0"/>
-                  <Border Background="#3A2A10" CornerRadius="6" Padding="6,1" Margin="0,6,0,0" HorizontalAlignment="Left">
-                    <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Warn}"/>
-                  </Border>
                 </StackPanel>
               </RadioButton>
             </UniformGrid>
@@ -656,7 +658,7 @@
     <Grid Grid.Row="2" Margin="2,14,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBlock Style="{StaticResource Hint}" FontSize="11.5" Margin="0,0,16,0"
-                 Text="Native mod deneyseldir: Wolverine'e kayıplı Sensa parametreleri gider; özgün dalga biçimi ve faz korunmaz. Veriler yalnızca bu bilgisayarda tutulur."/>
+                 Text="Wolverine'in avuçları DualSense dalgasını birebir çalamaz: haptik, Sensa'nın frekans ve güç parametrelerine çevrilir. Ses kaydedilmez; veriler yalnız bu bilgisayarda kalır."/>
       <Border Grid.Column="1" Background="#121C31" CornerRadius="8" Padding="10,5">
         <TextBlock FontSize="11.5" Foreground="#C9D6F0"
                    Text="🎮  LB/RB sekme · D-pad gezin · A seç · B geri · ☰ mod değiştir"/>
