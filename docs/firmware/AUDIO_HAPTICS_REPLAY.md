@@ -483,6 +483,15 @@ the second `0x2A610` timeout. Resident bootloader execution,
 power-on hardware state, automatic exception delivery,
 external transaction responses and enumeration remain open.
 
+The first register read has a separate successful-transaction fixture.
+It drives the stock FLEXCOMM3 vector through six scripted I²C master
+states, using the device address 0x6B and register 0x0B observed at the
+boundary. Stock receives the deliberately synthetic `0x53` byte and
+returns success at `0x132CC`. The candidate and stock traces agree on
+RAM, stack and 348 peripheral writes. The two full USB replay reports
+each pass 35 checks with this scenario included.
+[NXP I²C master state codes](https://mcuxpresso.nxp.com/api_doc/dev/4601/a00196.html)
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

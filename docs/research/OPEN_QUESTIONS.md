@@ -13,8 +13,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
 - E-20261114-04 establishes wired and dongle GIP audio at the host USB boundary
   and locates the NXP ring copy. E-20261114-06 exercises queue priming and
   underrun with scheduled callbacks. Trace hardware interrupt delivery and
-  timing. Identify the B91 runtime address mapping and NXP–Telink
-  link to determine how dongle PCM reaches the controller.
+  timing. E-20261115-91 checks both B91 startup relocation layouts and
+  matches the dongle Xbox descriptor to the captured host endpoints.
+  Trace the dongle endpoint handler to its RF buffer and map the
+  controller-radio receive path to the NXP-facing interface.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.
@@ -47,8 +49,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   and worst-case preemption.
   E-20261114-33 covers the application reset vector and stock/candidate
   startup comparison through five modeled MRT-driven peripheral timeouts.
-  Next reconstruct external transaction completion and delivered interrupts
-  beyond the second wait at 0x2A610.
+  E-20261115-90 completes the first NXP I²C read through six simulated
+  FLEXCOMM3 events. Next identify additional peripheral replies and
+  reconstruct delivered interrupts beyond the second wait at 0x2A610.
   Independently validate timing and pin-level PWM. The runtime switch
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

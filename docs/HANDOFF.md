@@ -101,7 +101,8 @@ Next steps, in order:
   Continue with external transaction responses, source ownership
   and image placement checks in the
   [custom firmware plan](research/CUSTOM_FIRMWARE_PLAN.md).
-  The [B91 map](firmware/TELINK_B91.md) has initial anchors for both images.
+  The [B91 map](firmware/TELINK_B91.md) includes executable startup
+  relocation checks for both images and the dongle Xbox USB descriptor.
   No device image was modified or flashed. G0 still lacks a verified recovery path
   for a broken application.
 - Any tool continuing here must read CUSTOM_FIRMWARE_PLAN.md first and treat flashing as a hard stop that needs

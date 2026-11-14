@@ -815,7 +815,7 @@ def check_application_reset(image, dsp):
             "candidate_cleared_bytes": sum(size for _, size in regions), "runs": 4}
 
 
-def check_board_startup_boundary(image, dsp):
+def check_board_startup_boundary(image, dsp, respond_to_i2c=False):
     """Advance stock timeout handlers while board startup waits for peripherals."""
     ready_registers = (0x40020054, 0x40000584, 0x40000520)
     guards = (STATE, LEVELS, TAP_ENABLE, TAP_READY)
@@ -856,16 +856,25 @@ def check_board_startup_boundary(image, dsp):
                      writes.append((address, size, value)), begin=0x40000000, end=0x400FFFFF)
 
         def stop_at_wait(machine, address, size, data):
-            if machine.mem_read(wait_flags[address], 1)[0]:
+            if not respond_to_i2c and machine.mem_read(wait_flags[address], 1)[0]:
                 machine.emu_stop()
 
         for wait in wait_flags:
             cpu.hook_add(UC_HOOK_CODE, stop_at_wait, begin=wait, end=wait)
         irq_vector = read_sensa_pwm(cpu, (0x8000 + (16 + 9) * 4,))[0]
         verify(irq_vector & 1, "MRT0 vector is not a Thumb entry")
+        stack_at_wait = None
+
+        def run_vector(vector):
+            cpu.reg_write(UC_ARM_REG_SP, stack_at_wait)
+            cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
+            cpu.emu_start(vector, RETURN, count=20000)
+            verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, "Startup interrupt handler did not return")
+
         interrupts = []
-        for expected_wait in (0x2B428, 0x2B428, 0x2B428, 0x2A610, 0x2A610):
-            cpu.emu_start(entry, 0x2DCC0, count=20_000_000)
+        expected_waits = (0x2B428,) if respond_to_i2c else (0x2B428, 0x2B428, 0x2B428, 0x2A610, 0x2A610)
+        for expected_wait in expected_waits:
+            cpu.emu_start(entry, expected_wait if respond_to_i2c else 0x2DCC0, count=20_000_000)
             wait = cpu.reg_read(UC_ARM_REG_PC)
             verify(wait == expected_wait, f"Unexpected board startup checkpoint 0x{wait:X}")
             entry = wait | 1
@@ -874,13 +883,13 @@ def check_board_startup_boundary(image, dsp):
             foreground = cpu.context_save()
             # Reserve the basic exception frame and align the stack. This
             # enters the vector stub but does not emulate NVIC exception entry.
-            interrupt_sp = (cpu.reg_read(UC_ARM_REG_SP) - 32) & ~7
+            stack_at_wait = (cpu.reg_read(UC_ARM_REG_SP) - 32) & ~7
+            if respond_to_i2c:
+                device_byte, commands = respond_to_startup_i2c(cpu, run_vector, foreground)
+                break
             ticks = 0
             while cpu.mem_read(flag, 1)[0] and ticks < 80:
-                cpu.reg_write(UC_ARM_REG_SP, interrupt_sp)
-                cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
-                cpu.emu_start(irq_vector, RETURN, count=20000)
-                verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, "MRT0 handler did not return")
+                run_vector(irq_vector)
                 ticks += 1
             verify(ticks == 80 and not cpu.mem_read(flag, 1)[0], "Stock MRT0 did not expire the transfer")
             cpu.context_restore(foreground)
@@ -892,12 +901,46 @@ def check_board_startup_boundary(image, dsp):
         verify(read_sensa_pwm(cpu, guards) == (expected_guard,) * len(guards),
                "Stock board startup modified candidate guard words")
         results[candidate] = (bytes(cpu.mem_read(0x20000000, 0x13D28)), cpu.reg_read(UC_ARM_REG_SP),
-                              writes, lowest_stack_write)
+                              tuple(writes), lowest_stack_write)
     verify(results[False] == results[True], "Candidate changed stock board startup RAM, stack or MMIO writes")
+    if respond_to_i2c:
+        return {"name": "stock_board_i2c_reply", "stopped_at": hex(cpu.reg_read(UC_ARM_REG_PC)),
+                "synthetic_device_byte": device_byte, "master_commands": commands,
+                "stock_mmio_writes_matched": len(writes)}
     return {"name": "stock_board_startup_boundary", "stopped_at": hex(wait),
             "stock_ram_compared_bytes": 0x13D28, "timer_mr0": [23999, 95999],
             "stock_mmio_writes_matched": len(writes), "lowest_observed_stack_write": hex(lowest_stack_write),
             "timeouts_advanced_by_stock_mrt_irq": interrupts}
+
+
+def respond_to_startup_i2c(cpu, run_vector, foreground):
+    """Replay one synthetic register read at the FLEXCOMM3 I2C boundary."""
+    stat, control, data = 0x40089804, 0x40089820, 0x40089828
+    vector = read_sensa_pwm(cpu, (0x8000 + (16 + 17) * 4,))[0]
+    commands = []
+    # MSTPENDING plus idle (1), transmit-ready (5), or receive-ready (3).
+    # The synthetic identity byte is chosen to take the stock match branch.
+    for statuses, resume_at, expected_end in (((1, 5, 5), 0x2B428, 0x2B460),
+                                               ((1, 3, 1), 0x2B460, 0x132CC)):
+        for status in statuses:
+            cpu.mem_write(stat, struct.pack("<I", status))
+            if status == 3:
+                cpu.mem_write(data, struct.pack("<I", 0x53))
+            run_vector(vector)
+            commands.append(read_sensa_pwm(cpu, (control, data)))
+        verify(cpu.mem_read(0x200093F1, 1)[0] == 0, "I2C interrupt did not complete the phase")
+        cpu.context_restore(foreground)
+        cpu.mem_write(stat, struct.pack("<I", 1))
+        cpu.ctl_flush_tb()
+        cpu.emu_start(resume_at | 1, expected_end, count=200000)
+        pc = cpu.reg_read(UC_ARM_REG_PC)
+        verify(pc == expected_end, f"Stock code did not accept I2C completion: PC=0x{pc:X}")
+        foreground = cpu.context_save()
+    expected = [(2, 0xD6), (1, 0x0B), (1, 0x0B), (2, 0xD7), (4, 0x53), (4, 0x53)]
+    verify(commands == expected, "Unexpected stock I2C address, register or command sequence")
+    reply = cpu.mem_read(0x20000ED5, 1)[0]
+    verify(reply == 0x53 and cpu.reg_read(UC_ARM_REG_R0) == 1, "Stock caller missed the I2C reply")
+    return reply, commands
 
 
 def check_foreground_worker(image, dsp):
@@ -1590,6 +1633,7 @@ def main():
     report.append(check_dma_arrival_variation(image, dsp))
     report.append(check_application_reset(image, dsp))
     report.append(check_board_startup_boundary(image, dsp))
+    report.append(check_board_startup_boundary(image, dsp, respond_to_i2c=True))
     report.append(check_tx_tap_contract(image, dsp))
     report.append(check_worker_interleaving(image, dsp))
     report.append(check_foreground_worker(image, dsp))

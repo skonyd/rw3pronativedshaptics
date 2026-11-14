@@ -1,15 +1,15 @@
 # Current status (single source of truth)
 
-Updated 2026-11-14. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-15. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Firmware lab
 
 An original Cortex-M4 audio-to-haptics DSP module now runs in an offline replay
-alongside stock NXP routines from v2.04.00. Nine scenarios verify callback PCM
-selection, stereo isolation, stream loss, a simulated runtime switch and Sensa
-decoder output. The comparison currently ends at DMA arguments and decoded
-RAM. Both Telink images have initial byte-range maps with explicit unknowns.
+alongside stock NXP routines from v2.04.00. The lab compares PCM, decoded
+Sensa state and SCT duty-register writes. Both Telink stock loaders now
+run to their relocated application entry in RV32 replay. The dongle's
+relocated Xbox USB configuration agrees with the recorded host audio endpoints.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.
@@ -62,6 +62,8 @@ The lab now starts at the application reset vector and runs the stock
 scatter loader on dirty RAM. The prototype clears its own state before
 stock main. The startup trace matches stock RAM and MMIO writes through
 timer initialization and five peripheral waits advanced by the stock MRT0 handler.
+An additional NXP scenario drives stock FLEXCOMM3 interrupts through the
+first I²C register read with a synthetic peripheral response.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
