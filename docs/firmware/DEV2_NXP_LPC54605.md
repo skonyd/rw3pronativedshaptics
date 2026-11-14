@@ -127,7 +127,10 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 - The blocks are **192 bytes = 1 ms of 48 kHz, stereo, 16-bit**, the USB/GIP audio packet size.
 
 **Downstream: console → headset jack.**
-- USB audio is written into a 3-block ring at **0x20013A38** (3 × 192 bytes, index 0x20013C78).
+- The callback can select a 3-block ring at **0x20013A38** (3 × 192 bytes, index 0x20013C78)
+  or an alternate buffer at **0x200057AC**. See [callback replay](AUDIO_HAPTICS_REPLAY.md).
+  The writer at 0x2BEF4 expands samples from a flash table into the three-slot ring,
+  so a reference to this ring is insufficient evidence of USB audio ingress.
 - The **I2S TX DMA callback 0x22FF8** hands the next block to I2S every millisecond, towards the audio SoC.
 - With no audio it sends the zero block at 0x200056EC.
 - The streaming flag is 0x20000A59.
@@ -136,10 +139,11 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 0x2000712C (write offset at 0x20008F10+0xA4).
 
 **Consequence for the custom firmware:**
-- The console's game audio exists **as PCM in the NXP's RAM every millisecond** (wired Xbox mode). The I2S TX
-  callback 0x22FF8 is a natural hook.
-- So the NXP that drives Sensa also sees the audio, and an audio → Sensa patch needs **only the NXP image**.
-- The wireless path through the dongle and the radio SoC is still to be checked.
+- The I2S TX callback 0x22FF8 transfers 192-byte PCM blocks from NXP RAM to the
+  audio interface. It is a candidate observation point. Trace the USB producer
+  and correlate a capture with the selected buffer before choosing an integration point.
+- NXP-only audio-to-Sensa is a wired-path hypothesis. The wireless path through
+  the dongle and radio SoC remains open.
 
 ### Flash use
 

@@ -103,7 +103,7 @@ per body part, in order 216 (left palm), 116 (right palm), 249, 149:
 pad with 0 to the byte
 ```
 
-- Palms: pitch is mapped like PC mode (30 + p·370/127 Hz), and strength is a·32767/63.
+- Palms: pitch is mapped like PC mode (30 + p·370/127 Hz), and the Xbox decoder stores strength as a × 520 (63 → 32760).
 - Body parts 249/149 are the **left/right trigger motors** (blind test, E-20261111-04). Pitch and strength are
   stored raw (7 / 6 bits). Strength raises level and motor speed. The effect of the pitch field is not measured yet.
 - Sizes:

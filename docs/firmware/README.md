@@ -14,8 +14,12 @@ All of this is static analysis and emulation of Razer's official updater v2.04.0
 | Image | Chip | Role | Document |
 | --- | --- | --- | --- |
 | `Dev2FW` | NXP **LPC54605** (Cortex-M4F, 180 MHz). The image carries NXP SDK 2.14 paths `devices/LPC54605/drivers/…` | Controller main MCU: USB (XUSB in PC mode, GIP in Xbox mode), Razer commands, inputs, Sensa decoders, motors | [DEV2_NXP_LPC54605.md](DEV2_NXP_LPC54605.md) |
-| `Flash2FW` | Telink **B91** (RISC-V; `B91m_driver_sdk`) | Controller radio / audio SoC: 2.4 GHz, pairing, 3.5 mm jack | to do |
-| `Dev1FW` | Telink **B91** | HyperSpeed dongle | to do |
+| `Flash2FW` | Telink **B91** (RISC-V) | Controller radio / audio SoC | [TELINK_B91.md](TELINK_B91.md) |
+| `Dev1FW` | Telink **B91** | HyperSpeed dongle | [TELINK_B91.md](TELINK_B91.md) |
+
+The [audio replay](AUDIO_HAPTICS_REPLAY.md) builds and runs an original Cortex-M4
+DSP module with stock NXP routines in a controlled simulator. The resident
+bootloader, actual peripheral behavior and wireless protocol remain open.
 
 ## Reproduce
 

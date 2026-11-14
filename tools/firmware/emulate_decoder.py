@@ -12,7 +12,7 @@ Decoded body parts land in RAM at 0x20013530, 0x82 bytes each, as little-endian 
 - v[2..]: transients as (time ms, pitch, amplitude).
 - v[17..]: band 1, as point count then (time, pitch, amplitude) triples.
 - v[33..]: band 2, same layout.
-Palms: pitch in Hz (30 + p·370/127), amplitude a·32767/63. Body parts 2/3 (249/149): raw 7-bit pitch, raw 6-bit amplitude.
+Palms: pitch in Hz (30 + p·370/127), amplitude a·520. Body parts 2/3 (249/149): raw 7-bit pitch, raw 6-bit amplitude.
 See docs/SENSA_USB_PROTOCOL.md ("Xbox mode frame") and docs/FIRMWARE_ANALYSIS_20261110.md.
 """
 import struct, sys

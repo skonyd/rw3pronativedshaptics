@@ -3,6 +3,16 @@
 Updated 2026-11-14. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
+## Firmware lab
+
+An original Cortex-M4 audio-to-haptics DSP module now runs in an offline replay
+alongside stock NXP routines from v2.04.00. Nine scenarios verify callback PCM
+selection, stereo isolation, stream loss, a simulated runtime switch and Sensa
+decoder output. The comparison currently ends at DMA arguments and decoded
+RAM. Both Telink images have initial byte-range maps with explicit unknowns.
+Bootloader acceptance, recovery, wireless audio, PWM and integration timing
+remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
+
 ## What the app does
 
 | Mode (main window) | Source | Wolverine in PC mode (1532:0A4C) | Wolverine in Xbox mode (1532:0A3F) |

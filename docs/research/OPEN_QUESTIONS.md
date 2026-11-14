@@ -3,6 +3,18 @@
 Each entry has a next concrete step and lists what is already ruled out. Close an entry by moving its outcome
 to [EXPERIMENTS.md](EXPERIMENTS.md).
 
+## Firmware audio-to-haptics
+
+- Trace the USB and wireless producers of the NXP PCM buffers and correlate
+  them with repeatable wired and dongle recordings. Identify the two B91
+  images' runtime address mapping and the NXP–Telink link.
+- Add modeled DMA and timer completion with independent traces, then capture
+  SCT PWM. Build an end-to-end acceptance trace before selecting a firmware
+  hook or transport command. The existing runtime switch is a simulator input.
+- Identify board debug pads and obtain a read-only stock backup if supported.
+  Verify a spare-unit restore before any hardware candidate. Bootloader
+  behavior remains unknown with only the update package.
+
 ## Q1. Palms + trigger motors together (Xbox-mode 4-zone stream)
 
 - **Why:** the firmware has a 4-body-part Sensa descriptor (palms + 249/149, probably the triggers), used only

@@ -93,11 +93,11 @@ Next steps, in order:
 ### Firmware track: status and limits
 
 - The **analysis** (maps, catalog, emulation of the stock firmware's command handlers) is done and pushed.
-- **No firmware has been modified, built or flashed.** Claude declined to write modified firmware, firmware
-  patches or a harness to test a self-made firmware; that work was stopped. The project rule in AGENTS.md still
-  holds: no firmware patching or flashing without the user's explicit consent and a tested rollback, and the
-  rollback analysis (research/CUSTOM_FIRMWARE_PLAN.md, phase G0) found **no software recovery once the
-  application area is broken**.
+- An original Cortex-M4 DSP module now builds and runs alongside stock callback
+  and decoder routines in the offline [audio replay](firmware/AUDIO_HAPTICS_REPLAY.md).
+  The [B91 map](firmware/TELINK_B91.md) has initial anchors for both images.
+  No device image was modified or flashed. G0 still lacks a verified recovery path
+  for a broken application.
 - Any tool continuing here must read CUSTOM_FIRMWARE_PLAN.md first and treat flashing as a hard stop that needs
   the user's own decision.
 
