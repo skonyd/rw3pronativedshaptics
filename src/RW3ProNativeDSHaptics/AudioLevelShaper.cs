@@ -32,6 +32,27 @@ public sealed class AudioLevelShaper
     /// <summary>App-wide settings (Settings page); read for every block, so a change applies live.</summary>
     public static volatile bool AutoLevelEnabled, HumSuppressionEnabled;
 
+    /// <summary>
+    /// Standard ("DSX gibi", default since 2026-11-14): the audio becomes vibration as it is. No gain, no
+    /// compression, no auto level, no hum stage: a quiet sound gives a weak vibration, as in DSX, whose audio-to-haptics
+    /// profile has only a per-motor intensity (its saved profile: <c>audio_haptics_left/rightmotor_intensity</c>).
+    /// The one addition is a soft noise gate on the haptic band, so near-silence (room tone, a quiet music bed after
+    /// volume compensation) gives no vibration at all instead of a constant faint hum. When on, it overrides
+    /// <see cref="AutoLevelEnabled"/> and <see cref="HumSuppressionEnabled"/>. User report 2026-11-14: with auto level +
+    /// hum suppression on, audio mode "vibrated all the time and never stopped".
+    /// </summary>
+    public static volatile bool StandardEnabled = true;
+
+    /// <summary>Haptic-band envelope (≈ -30 dBFS) below which the standard gate closes.</summary>
+    public const float GateThreshold = 0.03f;
+    /// <summary>Gate opens in 1 ms (hits keep their attack) and the envelope releases over 80 ms (no chatter).</summary>
+    public const float GateAttackSeconds = 0.001f, GateReleaseSeconds = 0.080f;
+    private static readonly float GateAttack = Coef(GateAttackSeconds), GateRelease = Coef(GateReleaseSeconds), GateGlide = Coef(0.005f);
+    private float _gateEnv, _gate;
+
+    /// <summary>Current standard-gate gain 0..1 (for status and tests).</summary>
+    public float GateGain => _gate;
+
     private readonly BiquadLowPass _bandL = new(250), _bandR = new(250);
     private static readonly float PowerUp = Coef(LevelUpSeconds), PowerDown = Coef(LevelDownSeconds);
     private static readonly float FastAttack = Coef(0.002f), FastRelease = Coef(0.060f);
@@ -46,10 +67,38 @@ public sealed class AudioLevelShaper
     {
         _bandL.Reset(); _bandR.Reset();
         _mean = _power = Target * Target; _gain = 1f; _fast = _base = 0; _hum = 1f;
+        _gateEnv = 0; _gate = 0;
     }
 
     /// <summary>Processes interleaved stereo in place with the app-wide settings.</summary>
-    public void Process(Span<float> stereo) => Process(stereo, AutoLevelEnabled, HumSuppressionEnabled);
+    public void Process(Span<float> stereo)
+    {
+        if (StandardEnabled) ProcessStandard(stereo);
+        else Process(stereo, AutoLevelEnabled, HumSuppressionEnabled);
+    }
+
+    /// <summary>
+    /// Standard mode: unity gain above <see cref="GateThreshold"/>; below it a downward expander (gain = (env/T)²,
+    /// so 6 dB under the threshold comes out 18 dB lower) fades the rest to nothing. One gain for both channels.
+    /// </summary>
+    public void ProcessStandard(Span<float> stereo)
+    {
+        for (int i = 0; i + 1 < stereo.Length; i += 2)
+        {
+            float l = stereo[i], r = stereo[i + 1];
+            if (!float.IsFinite(l)) l = 0;
+            if (!float.IsFinite(r)) r = 0;
+            float bl = _bandL.Process(l), br = _bandR.Process(r);
+            float band = MathF.Max(MathF.Abs(bl), MathF.Abs(br));
+            _gateEnv = band > _gateEnv ? band + (_gateEnv - band) * GateAttack : band + (_gateEnv - band) * GateRelease;
+            float ratio = _gateEnv / GateThreshold;
+            float want = ratio >= 1f ? 1f : ratio * ratio;
+            _gate = want > _gate ? want : want + (_gate - want) * GateGlide;   // open at once, close over ~5 ms
+            stereo[i] = Math.Clamp(l * _gate, -1f, 1f);
+            stereo[i + 1] = Math.Clamp(r * _gate, -1f, 1f);
+        }
+        _gain = 1f; _hum = 1f;
+    }
 
     public void Process(Span<float> stereo, bool autoLevel, bool humSuppression)
     {

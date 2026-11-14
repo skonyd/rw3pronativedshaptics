@@ -1825,6 +1825,31 @@ SpectralContracts.Run(Check);
     new AudioLevelShaper().Process(copy, false, false);
     bool passthrough = plain.SequenceEqual(copy);
     bool defaultsOff = !AudioLevelShaper.AutoLevelEnabled && !AudioLevelShaper.HumSuppressionEnabled;
+    // Standard ("DSX gibi", default): no boost or compression above the gate; near-silence fades to nothing;
+    // a hit after silence keeps its attack; after the hit the faint bed is gated off again within ~0.4 s.
+    bool stdDefault = AudioLevelShaper.StandardEnabled;
+    var loud = ShSine(60, 0.3, 2); var loudIn = (float[])loud.Clone(); new AudioLevelShaper().ProcessStandard(loud);
+    double loudRatio = ShRms(loud, 48000, 2 * 48000) / ShRms(loudIn, 48000, 2 * 48000);
+    var mid = ShSine(60, 0.06, 2); var midIn = (float[])mid.Clone(); new AudioLevelShaper().ProcessStandard(mid);
+    double midRatio = ShRms(mid, 48000, 2 * 48000) / ShRms(midIn, 48000, 2 * 48000);
+    var faint = ShSine(60, 0.01, 2); var faintIn = (float[])faint.Clone(); new AudioLevelShaper().ProcessStandard(faint);
+    double faintDb = 20 * Math.Log10(ShRms(faint, 48000, 2 * 48000) / ShRms(faintIn, 48000, 2 * 48000));
+    var gateSh = new AudioLevelShaper(); var quietThenHit = ShSine(60, 0.005, 1.6);
+    var hitBurst = ShSine(120, 0.5, 0.03);
+    for (int i = 0; i < hitBurst.Length; i++) quietThenHit[i + 2 * 48000] += hitBurst[i];   // interleaved: hit at frame 48000 = 1.0 s
+    gateSh.ProcessStandard(quietThenHit);
+    double hitIn = 0.5 / Math.Sqrt(2), hitOut = ShRms(quietThenHit, 48000 + 96, 48000 + 1440);   // 2..30 ms into the hit
+    double tailOut = ShRms(quietThenHit, 48000 + 1440 + 14400, 48000 + 1440 + 19200);     // 300..400 ms after it
+    bool stdUnity = loudRatio is > 0.98 and < 1.02 && midRatio is > 0.97 and < 1.02;
+    bool stdGate = faintDb < -12;
+    bool stdHit = hitOut > hitIn * 0.85 && tailOut < 0.005 * 0.3;
+    // Standard on overrides the app-wide auto level / hum flags: a quiet bed is not raised toward the target.
+    AudioLevelShaper.AutoLevelEnabled = true; AudioLevelShaper.HumSuppressionEnabled = true;
+    var bed = ShSine(60, 0.05, 6); var bedIn = (float[])bed.Clone(); new AudioLevelShaper().Process(bed);
+    AudioLevelShaper.AutoLevelEnabled = false; AudioLevelShaper.HumSuppressionEnabled = false;
+    bool stdOverrides = ShRms(bed, 5 * 48000, 6 * 48000) <= ShRms(bedIn, 5 * 48000, 6 * 48000) * 1.02;
+    Check(stdDefault && stdUnity && stdGate && stdHit && stdOverrides,
+        $"Audio standard (DSX-like): default {stdDefault}; -10 dB tone x{loudRatio:0.000}, -24 dB x{midRatio:0.000}, -43 dB {faintDb:0.0} dB (gate); hit after near-silence {hitOut / hitIn:0.00} of input, tail {tailOut:0.0000}; overrides auto/hum {stdOverrides}");
     Check(follows && fastDown && slowUp && silenceHeld && humDown && hitPasses && passthrough && defaultsOff,
         $"Audio level shaper: 12 dB input spread -> {spreadDb:+0.0;-0.0} dB out, tiny input capped x4; blast gain {gainBefore:0.00}->{gainLow:0.00} fast, slow recovery, silence held; drone {20 * Math.Log10(droneLate / droneEarly):0.0} dB, hit opens hum gain to {maxHum:0.00}; off = passthrough");
 }

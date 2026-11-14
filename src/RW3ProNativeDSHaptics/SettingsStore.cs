@@ -38,6 +38,9 @@ public sealed class UserSettings
     public bool XboxBassTreble { get; set; }
     /// <summary>PC mode, virtual DualSense: trigger effects as clicks/texture in the palms (Sensa) instead of body rumble.</summary>
     public bool PalmTriggerFeel { get; set; }
+    /// <summary>Audio mode: standard level handling like DSX (audio as it is + soft noise gate). When true the auto
+    /// level and hum options are ignored. Default on, also for settings files written before it existed.</summary>
+    public bool AudioStandard { get; set; } = true;
     /// <summary>Audio mode: vibration level follows the content, not the volume knob (AudioLevelShaper).</summary>
     public bool AudioAutoLevel { get; set; }
     /// <summary>Soft ceiling on the big body motor (rattles against a table at full power). See BodyMotorLimit.</summary>

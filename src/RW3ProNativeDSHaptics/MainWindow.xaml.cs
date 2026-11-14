@@ -131,10 +131,13 @@ public partial class MainWindow : Window
             _ => AudioProfileExisting
         }).IsChecked = true;
         XboxBassTreble.IsChecked = _settings.XboxBassTreble;
+        AudioLevelShaper.StandardEnabled = _settings.AudioStandard;
         AudioLevelShaper.AutoLevelEnabled = _settings.AudioAutoLevel;
         AudioLevelShaper.HumSuppressionEnabled = _settings.AudioHumSuppression;
+        AudioStandard.IsChecked = _settings.AudioStandard;
         AudioAutoLevel.IsChecked = _settings.AudioAutoLevel;
         AudioHumSuppression.IsChecked = _settings.AudioHumSuppression;
+        AudioAutoLevel.IsEnabled = AudioHumSuppression.IsEnabled = !_settings.AudioStandard;
         SensaStereoPrototype.DirectTransientRecords = _settings.DirectTransientRecords;
         DirectTransientRecords.IsChecked = _settings.DirectTransientRecords;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
@@ -427,12 +430,15 @@ public partial class MainWindow : Window
     private void AudioShaping_Changed(object sender, RoutedEventArgs e)
     {
         if (!_initialized) return;
+        _settings.AudioStandard = AudioStandard.IsChecked == true;
         _settings.AudioAutoLevel = AudioAutoLevel.IsChecked == true;
         _settings.AudioHumSuppression = AudioHumSuppression.IsChecked == true;
-        AudioLevelShaper.AutoLevelEnabled = _settings.AudioAutoLevel;          // read per block: applies live
+        AudioAutoLevel.IsEnabled = AudioHumSuppression.IsEnabled = !_settings.AudioStandard;
+        AudioLevelShaper.StandardEnabled = _settings.AudioStandard;            // read per block: applies live
+        AudioLevelShaper.AutoLevelEnabled = _settings.AudioAutoLevel;
         AudioLevelShaper.HumSuppressionEnabled = _settings.AudioHumSuppression;
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Ses seviyesi", ex); }
-        DiagnosticsService.Info($"Audio level shaping: auto level {_settings.AudioAutoLevel}, hum suppression {_settings.AudioHumSuppression}.");
+        DiagnosticsService.Info($"Audio level shaping: standard {_settings.AudioStandard}, auto level {_settings.AudioAutoLevel}, hum suppression {_settings.AudioHumSuppression}.");
     }
 
     private void XboxBassTreble_Changed(object sender, RoutedEventArgs e)

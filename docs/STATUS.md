@@ -112,6 +112,11 @@ Updated 2026-11-14. For the work history and next steps when switching AI tools,
   - No regression found.
 - Mode orchestration is in `HapticOrchestrator` (decisions in `HapticModePolicy`, contract-tested).
   `MainWindow.xaml.cs` is still large (~1,860 lines). The next split candidates are the test/simulator page and the settings page.
+- **Audio mode "Standart (DSX gibi)"** (2026-11-14, default on, also for existing settings): the audio becomes vibration as it is, with no gain, compression, auto level or hum stage. A soft noise gate on the < 250 Hz band (threshold ≈ -30 dBFS, opens in 1 ms, releases over 80 ms, expander below) stops the vibration in near-silence.
+  - Why: the user reported audio mode "vibrated all the time and never stopped" while playing. Their settings had auto level + hum suppression on: auto level lifts quiet content up to ×4 toward -20 dBFS, and hum suppression only lowers a steady bed to 40 %.
+  - DSX reference: its saved audio-to-haptics profile (DSX 3.1.7, user's install) has only per-motor intensity (0–10) and speaker/headset volume, no threshold or level stage.
+  - Contract-tested (unity above the gate, -43 dB tone -19.7 dB, a hit after near-silence passes at 0.99, auto/hum ignored while on). Not yet felt in a game.
+  - Auto level and hum suppression remain as options; they apply only with Standart off.
 - Audio mode level shaping (2026-11-10, both off by default; mode screen → "Seviye"). Not yet felt or mic-tested. Contract tests:
   - Auto level: follows the haptic band (< 250 Hz) over ~3.5 s toward -20 dBFS, gain ×0.5..×4. It turns down in 0.4 s and up in 3.5 s, and holds the gain in silence. A 12 dB input spread leaves 1.7 dB.
   - Hum suppression: a steady sound fades to 40 % over a few seconds (-6.4 dB on an 8 s drone). A hit 1.5× above the drone baseline opens it fully in 2 ms.

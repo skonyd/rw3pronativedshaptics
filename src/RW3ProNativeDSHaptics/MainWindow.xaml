@@ -271,7 +271,10 @@
               <RadioButton x:Name="AudioProfileDynamic" GroupName="AudioProfile" Tag="Dynamic" Content="Dynamic" Foreground="#EEF3FF" Checked="AudioProfile_Checked"/>
               <TextBlock x:Name="AudioProfileHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,5,0,0"/>
               <TextBlock Text="Seviye" Style="{StaticResource CardTitle}" Margin="0,10,0,4"/>
-              <CheckBox x:Name="AudioAutoLevel" Content="Otomatik seviye: titreşim ses düğmesine değil içeriğe bağlı" Foreground="#EEF3FF"
+              <CheckBox x:Name="AudioStandard" Content="Standart (DSX gibi): ses olduğu gibi titreşime döner, sessizlikte durur" Foreground="#EEF3FF"
+                        Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
+              <TextBlock Text="Önerilen. Kısık ses zayıf, yüksek ses güçlü titreşir; sesi yükseltmez, sıkıştırmaz. Çok sessiz kısımlarda (oda sesi, hafif müzik altlığı) titreşim tamamen kesilir. Açıkken aşağıdaki iki seçenek devre dışıdır." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              <CheckBox x:Name="AudioAutoLevel" Margin="0,6,0,0" Content="Otomatik seviye: titreşim ses düğmesine değil içeriğe bağlı" Foreground="#EEF3FF"
                         Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
               <TextBlock Text="Son ~3.5 saniyenin seviyesini sabit bir hedefe çeker (×0.5–×4). Kısık seste yükseltir, çok açıkta hızla düşürür; ani patlamayı şişirmez, sessizliği büyütmez." Style="{StaticResource Hint}" TextWrapping="Wrap"/>
               <CheckBox x:Name="AudioHumSuppression" Content="Uğultu bastırma: sürekli titreşimi kıs, vuruşları öne çıkar" Foreground="#EEF3FF" Margin="0,6,0,0"
