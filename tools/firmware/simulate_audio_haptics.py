@@ -44,13 +44,13 @@ class Replay:
     def count_step(self, *_):
         self.steps += 1
 
-    def call(self, entry, end, *args):
+    def call(self, entry, end, *args, instruction_limit=20000):
         cpu = self.cpu
         cpu.reg_write(UC_ARM_REG_SP, 0x20027000)
         cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
         for reg, value in zip((UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3), args):
             cpu.reg_write(reg, value)
-        cpu.emu_start(entry | 1, end, count=20000)
+        cpu.emu_start(entry | 1, end, count=instruction_limit)
         verify(cpu.reg_read(UC_ARM_REG_PC) == end, f"Routine 0x{entry:X} did not reach 0x{end:X}")
 
     def tick(self, pcm, streaming, primed, slot, alternate=False, enabled=True):
@@ -557,7 +557,22 @@ def check_dma_arrival_variation(image, dsp):
     return {"name": "stock_dma_arrival_variation", "cases": report}
 
 
-def check_sensa_pwm(image, dsp, continuous=False):
+def initialize_sensa_gain_tables(replay, gain_percent):
+    # Four profiles of 11 frequency/gain knots in the calibration input area.
+    # Supply controlled profiles, then let the stock routine expand all tables.
+    cpu = replay.cpu
+    for channel in range(4):
+        base = 0x200093FB + 0x2C * channel
+        cpu.mem_write(base + 4, struct.pack("<11H", *range(0, 501, 50)))
+        cpu.mem_write(base + 0x1A, struct.pack("<11H", *([gain_percent] * 11)))
+    replay.call(0x10088, RETURN, 0, instruction_limit=500000)
+    for channel in range(4):
+        table = struct.unpack("<501f", cpu.mem_read(0x20002404 + 0x7D4 * channel, 501 * 4))
+        verify(all(abs(value - gain_percent / 100) < 1e-6 for value in table),
+               "Stock gain initializer produced an unexpected table")
+
+
+def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
     for side in (None, 0, 1):
@@ -594,10 +609,7 @@ def check_sensa_pwm(image, dsp, continuous=False):
         for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
             cpu.mem_write(address, bytes([value]))
         if continuous:
-            # The stock oscillator multiplies by a per-palm RAM table.
-            # Use a flat fixture until its device-specific initializer is modeled.
-            for channel in range(2):
-                cpu.mem_write(0x20002404 + 0x7D4 * channel, struct.pack("<501f", *([1.0] * 501)))
+            initialize_sensa_gain_tables(replay, gain_percent)
         trace = []
         for tick in range(32 if continuous else 16):
             if continuous and tick == 16:
@@ -687,7 +699,13 @@ def main():
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
     report.append(check_sensa_pwm(image, dsp))
-    report.append(check_sensa_pwm(image, dsp, continuous=True))
+    full_gain = check_sensa_pwm(image, dsp, continuous=True)
+    half_gain = check_sensa_pwm(image, dsp, continuous=True, gain_percent=50)
+    for full, half in zip(full_gain["cases"], half_gain["cases"]):
+        verify(half["peak_match_count_delta"] < full["peak_match_count_delta"],
+               "Lower stock gain did not reduce PWM deviation")
+        full["half_gain_peak_match_count_delta"] = half["peak_match_count_delta"]
+    report.append(full_gain)
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

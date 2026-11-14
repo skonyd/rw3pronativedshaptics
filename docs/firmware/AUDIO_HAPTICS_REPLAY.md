@@ -238,7 +238,15 @@ frame dispatcher, synthesis and SCT duty writer. Each palm deviates from
 idle by up to 540 match counts. The other palm matches its idle trace
 throughout. Disabling the DSP and explicitly submitting an empty Sensa
 frame restores the idle PWM trace. The PCM-to-frame adapter and enable
-switch run in the harness. Device gain tables and physical timing remain open.
+switch run in the harness.
+
+The current replay runs stock initializer `0x10088` instead of injecting
+the final table. Four controlled sets of 11 frequency/gain knots at
+`0x200093FB` produce four tables of 501 floats. Every generated entry
+matched the expected value for flat 100% and 50% profiles. For both palms,
+the peak match-count deviation was 540 at 100% and 270 at 50%. The inputs
+are controlled profiles. The controller's actual profile loading and
+physical timing remain open.
 
 ### Hardware and integration
 
