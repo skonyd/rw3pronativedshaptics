@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         _bridge.SourceGainPercent = _settings.NativeGainPercent;
         if (_settings.ExperimentalMultiband && _settings.OutputMethod == 0) _settings.OutputMethod = (int)SensaOutputMethod.Multiband;
         _settings.ExperimentalMultiband = false;
-        _settings.OutputMethod = Math.Clamp(_settings.OutputMethod, 0, 2);
+        _settings.OutputMethod = Math.Clamp(_settings.OutputMethod, 0, 3);
         _bridge.OutputMethod = (SensaOutputMethod)_settings.OutputMethod;
         _settings.Transport = Math.Clamp(_settings.Transport, 0, 1);
         // Standalone install: without the licensed Razer DLLs the Synapse path cannot run, Direct USB can.
@@ -164,8 +164,9 @@ public partial class MainWindow : Window
         ApplyXboxMix();
         HhHideCheckbox.IsChecked = _settings.HidePadInGames;
         ((SensaOutputMethod)_settings.OutputMethod switch
-            { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
+            { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, SensaOutputMethod.Melody => MethodMelody, _ => MethodStandard }).IsChecked = true;
         UpdateNativeSourceUi();
+        AudioMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
 
@@ -2158,15 +2159,24 @@ public partial class MainWindow : Window
         if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
     }
 
+    private void AudioMelody_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        int method = AudioMelody.IsChecked == true ? (int)SensaOutputMethod.Melody : (int)SensaOutputMethod.Standard;
+        if (method == _settings.OutputMethod) return;
+        ((SensaOutputMethod)method == SensaOutputMethod.Melody ? MethodMelody : MethodStandard).IsChecked = true;   // applies through OutputMethod_Checked
+    }
+
     private void OutputMethod_Checked(object sender, RoutedEventArgs e)
     {
         if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
         int method = int.Parse(tag);
+        AudioMelody.IsChecked = method == (int)SensaOutputMethod.Melody;
         if (method == _settings.OutputMethod) return;
         if (_busy || _starting)
         {
             ((SensaOutputMethod)_settings.OutputMethod switch
-                { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
+                { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, SensaOutputMethod.Melody => MethodMelody, _ => MethodStandard }).IsChecked = true;
             return;
         }
         StopAll();
@@ -2220,6 +2230,7 @@ public partial class MainWindow : Window
         {
             SensaOutputMethod.Hybrid => "Hibrit açık" + (multi + standard > 0 ? $" • son çalışmada karelerin %{100.0 * multi / (multi + standard):F0}'i çok bantlı" : "") + ".",
             SensaOutputMethod.Multiband => "Çok bantlı açık: kısa vuruşlar zayıf hissedilebilir.",
+            SensaOutputMethod.Melody => "Melodi açık: her elde bas + oktav katlanmış melodi, nokta başına frekans. Müzik için; frekans filtresi 'Tam haptik bant' olmalı.",
             _ => "Standart (önerilen)."
         };
     }

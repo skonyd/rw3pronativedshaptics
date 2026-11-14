@@ -114,12 +114,17 @@ public sealed class HapticOrchestrator
 
     private bool Superseded(HapticMode mode) => Busy() || Exiting() || SelectedMode() != mode;
 
+    /// <summary>The frequency filter in use. Melody output needs the full band: a bass-only filter would remove the
+    /// melody before the analyser hears it.</summary>
+    private AudioHapticProfile EffectiveProfile =>
+        _settings.OutputMethod == (int)SensaOutputMethod.Melody ? AudioHapticProfile.Existing : _settings.AudioProfile;
+
     /// <summary>Audio owns body motors only; native trigger interpretation is the other mode.</summary>
     private async Task<bool> StartAudioAsync(HapticMode mode)
     {
         AudioRoute = await Task.Run(WolverineModeDetector.Detect);
         if (Superseded(mode) || !_settings.AudioOutputEnabled) return false;
-        var profile = _settings.AudioProfile;
+        var profile = EffectiveProfile;
         if (UseXboxGameBridge)
         {
             if (AudioRoute != WolverineMode.Xbox)
@@ -131,7 +136,7 @@ public sealed class HapticOrchestrator
                 IncludeGameTriggers = IncludeXboxGameTriggers()
             };
             await Task.Run(() => combined.Start(profile));
-            if (Superseded(mode) || !_settings.AudioOutputEnabled || !UseXboxGameBridge || profile != _settings.AudioProfile)
+            if (Superseded(mode) || !_settings.AudioOutputEnabled || !UseXboxGameBridge || profile != EffectiveProfile)
             {
                 await Task.Run(combined.Dispose);
                 return false;
@@ -148,7 +153,7 @@ public sealed class HapticOrchestrator
             // The frequency filter applies on this path too (as in PC mode). Until 2026-11-14 any filter other than
             // "full band" silently moved Xbox-mode audio from the palms to the body motors.
             await _bridge.StartAudioToSensaAsync(profile: profile);
-            if (Superseded(mode) || !_settings.AudioOutputEnabled || profile != _settings.AudioProfile) { _bridge.Stop(); return false; }
+            if (Superseded(mode) || !_settings.AudioOutputEnabled || profile != EffectiveProfile) { _bridge.Stop(); return false; }
         }
         else if (AudioRoute == WolverineMode.Xbox || profile != AudioHapticProfile.Existing)
         {

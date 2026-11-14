@@ -2,10 +2,20 @@ using System;
 
 namespace RW3ProNativeDSHaptics;
 
-/// <summary>One band of one hand: 4 strength points (0..1) and one pitch (0..1 over 30–400 Hz).</summary>
-public readonly record struct SensaBand(double A0, double A1, double A2, double A3, double Pitch)
+/// <summary>One band of one hand: 4 strength points (0..1) and a pitch (0..1 over 30–400 Hz). <see cref="Pitch"/> is
+/// point 0's pitch; points 1–3 may carry their own (<see cref="Pitch1"/>.. NaN = same as point 0). The firmware keeps a
+/// pitch per point (E-20261114-22), so a band can glide or change note inside one frame.</summary>
+public readonly record struct SensaBand(double A0, double A1, double A2, double A3, double Pitch,
+    double Pitch1 = double.NaN, double Pitch2 = double.NaN, double Pitch3 = double.NaN)
 {
     public static SensaBand Silent(double pitch) => new(0, 0, 0, 0, pitch);
+    public double PitchAt(int point) => point switch
+    {
+        1 when double.IsFinite(Pitch1) => Pitch1,
+        2 when double.IsFinite(Pitch2) => Pitch2,
+        3 when double.IsFinite(Pitch3) => Pitch3,
+        _ => Pitch
+    };
 }
 
 /// <summary>One hit (transient record) in a hand's frame: strength 0..1, position 0..1 within the 33 ms frame.</summary>
@@ -73,11 +83,10 @@ public static class SensaFrameEncoder
             if (i < bands.Length)
             {
                 var b = bands[i];
-                byte p = Quantize7(b.Pitch);
-                Put(frame, ref bit, Quantize6(b.A0), 6); Put(frame, ref bit, p, 7);
-                Put(frame, ref bit, Quantize6(b.A1), 6); Put(frame, ref bit, p, 7);
-                Put(frame, ref bit, Quantize6(b.A2), 6); Put(frame, ref bit, p, 7);
-                Put(frame, ref bit, Quantize6(b.A3), 6); Put(frame, ref bit, p, 7);
+                Put(frame, ref bit, Quantize6(b.A0), 6); Put(frame, ref bit, Quantize7(b.PitchAt(0)), 7);
+                Put(frame, ref bit, Quantize6(b.A1), 6); Put(frame, ref bit, Quantize7(b.PitchAt(1)), 7);
+                Put(frame, ref bit, Quantize6(b.A2), 6); Put(frame, ref bit, Quantize7(b.PitchAt(2)), 7);
+                Put(frame, ref bit, Quantize6(b.A3), 6); Put(frame, ref bit, Quantize7(b.PitchAt(3)), 7);
             }
             else bit += 52;   // silent band: strength 0, pitch 0
         }

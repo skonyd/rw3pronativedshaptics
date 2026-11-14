@@ -338,6 +338,9 @@
               <CheckBox x:Name="AudioStandard" Content="Standart (DSX gibi): ses olduğu gibi, sessizlikte durur" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
               <TextBlock Text="Önerilen. Kısık ses zayıf, yüksek ses güçlü titreşir; çok sessiz kısımlarda titreşim tamamen kesilir." Style="{StaticResource Hint}"/>
+              <CheckBox x:Name="AudioMelody" Content="Melodi modu (müzik): bas ve melodi avuçlarda tanınır biçimde çalar" Foreground="#EEF3FF" Margin="0,8,0,0"
+                        Checked="AudioMelody_Changed" Unchecked="AudioMelody_Changed"/>
+              <TextBlock Text="Bir el iki ton çalar: bas kendi frekansında, melodi (vokal, solo) bir iki oktav aşağıda. Kolu kulağına dayayınca ezgi duyulur; sözler duyulmaz. Oyunlarda vuruşlar için Standart daha keskindir." Style="{StaticResource Hint}"/>
 
               <!-- the game's own Xbox feedback, merged through a virtual Xbox pad -->
               <TextBlock Text="Oyunun kendi titreşimini de ekle (Xbox modu)" FontWeight="SemiBold" Margin="0,12,0,2"/>
@@ -625,6 +628,7 @@
               <RadioButton x:Name="MethodStandard" Content="Standart" Tag="0" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
               <RadioButton x:Name="MethodHybrid" Content="Hibrit" Tag="2" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
               <RadioButton x:Name="MethodMultiband" Content="Çok bantlı" Tag="1" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
+              <RadioButton x:Name="MethodMelody" Content="Melodi" Tag="3" GroupName="OutputMethod" Style="{StaticResource PresetCard}" Width="118" Checked="OutputMethod_Checked"/>
             </WrapPanel>
             <TextBlock x:Name="OutputMethodStatus" Style="{StaticResource Hint}" Margin="0,0,0,10"/>
 

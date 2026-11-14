@@ -116,8 +116,38 @@ public sealed class HapticFeatureExtractor
         }
     }
 
+    // ── "Melodi" output: raw-audio bass + folded melody (MelodyAnalyzer), opt-in like the spectrum ──
+    private MelodyAnalyzer? _melody;
+    private readonly float[] _melodyL = new float[MelodyAnalyzer.RingSamples], _melodyR = new float[MelodyAnalyzer.RingSamples];
+
+    public void EnableMelody(bool enabled)
+    {
+        lock (_spectrumGate) lock (_gate) _melody = enabled ? new MelodyAnalyzer() : null;
+    }
+
+    public bool MelodyEnabled { get { lock (_gate) return _melody != null; } }
+
+    /// <summary>4 points per channel for the next frame (engine thread). False until 85 ms of audio exist.</summary>
+    public bool TryTakeMelody(Span<MelodyPoint> left, Span<MelodyPoint> right)
+    {
+        lock (_spectrumGate)
+        {
+            MelodyAnalyzer? m; int valid;
+            lock (_gate)
+            {
+                m = _melody;
+                if (m == null || m.Count < MelodyAnalyzer.WindowSamples) return false;
+                valid = m.Snapshot(_melodyL, _melodyR);
+            }
+            m.Analyze(_melodyL, valid, left);   // FFT outside the capture lock
+            m.Analyze(_melodyR, valid, right);
+            return true;
+        }
+    }
+
     private void AppendOriginal(float l, float r)
     {
+        _melody?.Append(l, r);
         if (_pcmLeft == null) return;
         _pcmLeft[_pcmPosition] = l; _pcmRight![_pcmPosition] = r;
         _pcmPosition = (_pcmPosition + 1) % HapticSpectrumAnalyzer.WindowSamples;
@@ -166,6 +196,7 @@ public sealed class HapticFeatureExtractor
             _left.Reset(); _right.Reset();
             _samplesInSlot = 0;
             _pcmPosition = _pcmCount = 0;
+            _melody?.Reset();
             _sampleIndex = _completedSlots * SlotSamples;
             CloseSlot(); // A newly published all-zero slot prevents holding the previous sound.
         }

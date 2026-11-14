@@ -11,6 +11,9 @@ public enum SensaOutputMethod
     Multiband = 1,
     /// <summary>Experimental: Standard for onsets/hits, Multiband only for steady mixed sounds.</summary>
     Hybrid = 2,
+    /// <summary>Music: bass (band 1) + octave-folded melody (band 2) from the raw audio, a pitch per point
+    /// (<see cref="MelodyAnalyzer"/>). Direct USB and Xbox GIP only.</summary>
+    Melody = 3,
 }
 
 /// <summary>

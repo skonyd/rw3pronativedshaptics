@@ -263,7 +263,8 @@ public sealed class SensaStereoPrototype : IDisposable
             Volatile.Write(ref _stop, 0);
             Volatile.Write(ref _providerActive, 0);
             Volatile.Write(ref _renderTicks, 0);
-            Features.EnableSpectralAnalysis(OutputMethod != SensaOutputMethod.Standard);
+            Features.EnableSpectralAnalysis(OutputMethod is SensaOutputMethod.Multiband or SensaOutputMethod.Hybrid);
+            Features.EnableMelody(OutputMethod == SensaOutputMethod.Melody);
             DirectFramesSent = 0;
             MultibandFrames = MultibandHeadroomReductions = HybridMultiFrames = HybridStandardFrames = 0;
             _worker = new Thread(Transport == SensaTransport.DirectUsb ? RunDirect : Run) { IsBackground = true, Name = "RW3-SensaStereo" };
@@ -321,6 +322,9 @@ public sealed class SensaStereoPrototype : IDisposable
             bool multibandMode = method == SensaOutputMethod.Multiband, hybridMode = method == SensaOutputMethod.Hybrid;
             var lPolicy = new HybridOutputPolicy(); var rPolicy = new HybridOutputPolicy();
             var lBands = new SensaBand[3]; var rBands = new SensaBand[3];
+            bool melodyMode = method == SensaOutputMethod.Melody;
+            var mL = new MelodyPoint[4]; var mR = new MelodyPoint[4];
+            double lBassHz = 0, lMelHz = 0, rBassHz = 0, rMelHz = 0;
             long cursor = Features.CompletedSlots;
             SideFeatures lastL = default, lastR = default;
             double lastSourceAt = -1, tickSec = TickMs / 1000.0, next = clock.Elapsed.TotalSeconds;
@@ -380,6 +384,15 @@ public sealed class SensaStereoPrototype : IDisposable
                 double level = HapticOutputLevel.Apply(gain, OutputLevelPercent);
                 bool records = DirectTransientRecords && SendTransients && !manual;
                 bool leftOn = DirectSensaMapping.Points(fl, level, la, records), rightOn = DirectSensaMapping.Points(fr, level, ra, records);
+                int mln = 0, mrn = 0;
+                if (melodyMode && !manual && Features.TryTakeMelody(mL, mR))
+                {
+                    // Melody: bands from the raw audio; a melody alone (no bass) is still sound to play.
+                    mln = MelodyAnalyzer.Bands(mL, level, lBands, ref lBassHz, ref lMelHz);
+                    mrn = MelodyAnalyzer.Bands(mR, level, rBands, ref rBassHz, ref rMelHz);
+                    leftOn |= mln > 0; rightOn |= mrn > 0;
+                }
+                bool useMelody = mln > 0 || mrn > 0;
                 var (trigL, trigR) = gipMode ? XboxSensa.Triggers() : (0, 0);
                 bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
@@ -391,8 +404,8 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         HapticSpectrum ls = default, rs = default;
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
-                        int ln = leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
-                        int rn = rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
+                        int ln = useMelody ? mln : leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
+                        int rn = useMelody ? mrn : rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
                         int length = SensaXboxFrameEncoder.Encode(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn),
                             records && leftOn ? DirectSensaMapping.Hit(fl, level) : null, records && rightOn ? DirectSensaMapping.Hit(fr, level) : null,
                             trigL, trigR, xframe);
@@ -412,8 +425,8 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         HapticSpectrum ls = default, rs = default;
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
-                        int ln = DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
-                        int rn = DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
+                        int ln = useMelody ? mln : DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
+                        int rn = useMelody ? mrn : DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
                         int length = SensaFrameEncoder.EncodeBands(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn), frame,
                             records ? DirectSensaMapping.Hit(fl, level) : null, records ? DirectSensaMapping.Hit(fr, level) : null);
                         ok = tx.Send(frame.AsSpan(0, length));
@@ -981,6 +994,7 @@ public sealed class SensaStereoPrototype : IDisposable
             if (ReferenceEquals(_worker, worker))
             {
                 Features.EnableSpectralAnalysis(false);
+                Features.EnableMelody(false);
                 Features.ClearForSilence();
                 _worker = null;
             }

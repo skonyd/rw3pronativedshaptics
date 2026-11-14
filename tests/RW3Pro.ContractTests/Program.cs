@@ -1720,6 +1720,50 @@ SpectralContracts.Run(Check);
         "UAC-free bridge task: highest privileges, interactive user, normal priority, escaped exe path, only this exe");
 }
 
+// Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
+{
+    static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)
+    {
+        var fx = new HapticFeatureExtractor();
+        fx.EnableMelody(true);
+        int n = (int)(seconds * 48000);
+        var buf = new float[2 * n];
+        for (int i = 0; i < n; i++) { var (l, r) = signal(i / 48000.0); buf[2 * i] = (float)l; buf[2 * i + 1] = (float)r; }
+        fx.PushStereo(buf);
+        var L = new MelodyPoint[4]; var R = new MelodyPoint[4];
+        return fx.TryTakeMelody(L, R) ? (L, R) : (Array.Empty<MelodyPoint>(), Array.Empty<MelodyPoint>());
+    }
+    static double Sin(double hz, double t) => Math.Sin(2 * Math.PI * hz * t);
+    bool Near(double hz, double target, double tol) => Math.Abs(hz - target) <= tol;
+    // 60 Hz bass + 220 Hz melody, left; 880 Hz melody alone, right (folds to 220: two octaves down).
+    var (a, b) = Run(t => (0.3 * Sin(60, t) + 0.2 * Sin(220, t), 0.2 * Sin(880, t)), 0.3);
+    bool basic = a.Length == 4 && Near(a[3].BassHz, 60, 2) && Near(a[3].MelodyHz, 220, 3) && a[3].BassAmp > 0.2 && a[3].MelodyAmp > 0.12
+        && Near(b[3].MelodyHz, 220, 3) && b[3].BassAmp == 0;
+    // A voice-like tone: 330 Hz fundamental with a louder 2nd harmonic. The harmonic sum must keep 330 (not 660 → 165).
+    var (v, _) = Run(t => (0.08 * Sin(330, t) + 0.12 * Sin(660, t) + 0.05 * Sin(990, t), 0), 0.3);
+    bool fundamental = v.Length == 4 && Near(v[3].MelodyHz, 330, 4);
+    // A note change inside the last frame: 196 Hz then 262 Hz from 33 ms before the end; the 4 points follow it.
+    var (c, _) = Run(t => (0.2 * (t < 0.3 - 0.040 ? Sin(196, t) : Sin(262, t)), 0), 0.3);
+    bool change = c.Length == 4 && Near(c[0].MelodyHz, 196, 6) && Near(c[3].MelodyHz, 262, 6);
+    // Silence: no bands; folded range; bands carry per-point pitch into the frame bits.
+    var (s, _) = Run(t => (0, 0), 0.3);
+    double lb = 0, lm = 0;
+    var bands = new SensaBand[3];
+    bool silent = s.Length == 4 && MelodyAnalyzer.Bands(s, 1.4, bands, ref lb, ref lm) == 0;
+    bool fold = MelodyAnalyzer.Fold(1760) == 220 && MelodyAnalyzer.Fold(110) == 220 && MelodyAnalyzer.Fold(300) == 300;
+    int nb = MelodyAnalyzer.Bands(c, 1.4, bands, ref lb, ref lm);
+    var frame = new byte[SensaFrameEncoder.MaxFrameLength];
+    SensaFrameEncoder.EncodeBands(bands.AsSpan(0, nb), bands.AsSpan(0, nb), frame, null, null);
+    int Bits(int at, int w) { int x = 0; for (int i = 0; i < w; i++) x = (x << 1) | ((frame[(at + i) >> 3] >> (7 - ((at + i) & 7))) & 1); return x; }
+    // left hand band 2 starts after header 7 + band 1 (1 + 52) + its flag 1; point k pitch at +6 + 13k
+    int band2 = 7 + 53 + 1;
+    int p0 = Bits(band2 + 6, 7), p3 = Bits(band2 + 6 + 39, 7);
+    bool perPoint = nb == 2 && p0 == SensaFrameEncoder.Quantize7(SensaFrameEncoder.PitchOf(c[0].MelodyHz))
+        && p3 == SensaFrameEncoder.Quantize7(SensaFrameEncoder.PitchOf(c[3].MelodyHz)) && p3 > p0;
+    Check(basic && fundamental && change && silent && fold && perPoint,
+        $"Melody output: bass {(a.Length > 0 ? a[3].BassHz : 0):0.0} Hz, melody {(a.Length > 0 ? a[3].MelodyHz : 0):0.0} Hz, 880→{(b.Length > 0 ? b[3].MelodyHz : 0):0.0} Hz, voice-like fundamental {(v.Length > 0 ? v[3].MelodyHz : 0):0.0} Hz, note change {(c.Length > 0 ? c[0].MelodyHz : 0):0}→{(c.Length > 0 ? c[3].MelodyHz : 0):0} Hz, silence {silent}, per-point pitch codes {p0}→{p3}");
+}
+
 // Mode orchestration decisions (HapticModePolicy, used by HapticOrchestrator).
 {
     bool May(HapticMode m, RunState run = RunState.Off, bool starting = false, bool busy = false, bool exiting = false,
