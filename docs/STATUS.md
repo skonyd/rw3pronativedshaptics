@@ -55,6 +55,9 @@ the last PWM duty until fresh samples arrive. An ARM trampoline at the
 simulated I²S TX enqueue boundary copies PCM for a separately scheduled ARM worker.
 The stock/candidate comparisons preserve I²S bytes, a preceding game
 effect, palm isolation and return to idle after disable or source underrun.
+The worker can run from stock foreground call site 0x2F5FA in Unicorn and
+defers when a game Sensa frame is already pending. Strict HEX validation
+pins the original writable image envelope at 0x8000–0x37800.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

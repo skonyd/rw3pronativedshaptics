@@ -41,8 +41,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   intermediate 8 ms result from E-20261114-27.
   E-20261114-29 tests an ARM trampoline at TX 0x2315C in the scheduled
   stock/candidate trace, with a compiled worker and forced mailbox
-  interleaving. Next wire the worker into a stock scheduling context,
-  memory placement, live source arbitration and worst-case preemption.
+  interleaving. E-20261114-32 exercises the worker at stock foreground
+  call site 0x2F5FA with priority for a pending game frame. Next establish
+  whole-loop cadence, safe memory placement, race-free frame publication
+  and worst-case preemption.
   Independently validate timing and pin-level PWM. The runtime switch
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

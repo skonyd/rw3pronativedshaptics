@@ -15,9 +15,9 @@ from unicorn.arm_const import (
     UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_SP,
 )
 
+from audit_dev2_hex import STOCK_SHA256
 from emulate_decoder import DECODER, OUT, decode, xbox_frame
 
-STOCK_SHA256 = "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8"
 DSP, STATE, LEVELS = 0x100000, 0x20021000, 0x20021100
 RING, ZERO, TX = 0x20013A38, 0x200056EC, 0x22FF8
 DMA_SUBMIT, RETURN = 0x12F9C, 0xFFF0
@@ -27,6 +27,7 @@ USB_RING = 0x200057AC
 CTIMER2, CTIMER3 = 0x40028000, 0x40048000
 TX_TAIL, TAP, TAP_BUFFER = 0x2315C, DSP + 0x800, 0x20024000
 WORKER = DSP + 0x900
+MAIN_DISPATCH_CALL, FOREGROUND = 0x2F5FA, DSP + 0xA00
 TAP_ENABLE, TAP_READY, TAP_SOURCE = (TAP_BUFFER + offset for offset in (192, 196, 200))
 
 
@@ -735,17 +736,48 @@ def check_dma_arrival_variation(image, dsp):
     return {"name": "stock_dma_arrival_variation", "cases": report}
 
 
-def install_simulated_tx_tap(replay):
-    cpu = replay.cpu
-    # This stock Thumb-2 instruction is B.W 0x12F9C. Redirect it only
-    # in Unicorn. The trampoline resumes the original target and LR.
-    verify(bytes(cpu.mem_read(TX_TAIL, 4)) == bytes.fromhex("eff71ebf"),
-           "Unexpected stock I2S tail branch")
-    displacement = TAP - (TX_TAIL + 4)
+def redirect_simulated_branch(cpu, address, target, original, link=False):
+    verify(bytes(cpu.mem_read(address, 4)) == bytes.fromhex(original), "Unexpected stock Thumb branch")
+    displacement = target - (address + 4)
     verify(0 <= displacement < 1 << 22 and displacement % 2 == 0, "Unsupported Thumb branch displacement")
-    cpu.mem_write(TX_TAIL, struct.pack("<HH", 0xF000 | displacement >> 12,
-                                      0xB800 | (displacement >> 1 & 0x7FF)))
+    second = 0xF800 if link else 0xB800
+    cpu.mem_write(address, struct.pack("<HH", 0xF000 | displacement >> 12,
+                                       second | (displacement >> 1 & 0x7FF)))
     cpu.ctl_flush_tb()
+
+
+def install_simulated_tx_tap(replay):
+    # Stock B.W 0x12F9C. Redirect only in Unicorn; the trampoline resumes
+    # the original target with the original arguments and LR.
+    redirect_simulated_branch(replay.cpu, TX_TAIL, TAP, "eff71ebf")
+
+
+def check_foreground_worker(image, dsp):
+    replay, _ = initialize_stock_sensa_pwm(image, dsp)
+    cpu = replay.cpu
+    redirect_simulated_branch(cpu, MAIN_DISPATCH_CALL, FOREGROUND, "fbf79dff", link=True)
+    pcm = tone(0, ((83,), ()))
+    frame = xbox_frame([([], []), ([], [(35, 24, 0)]), ([], []), ([], [])])
+    trace = []
+    cpu.hook_add(UC_HOOK_CODE, lambda _, address, size, data: trace.append(address),
+                 begin=WORKER, end=WORKER)
+    cpu.hook_add(UC_HOOK_CODE, lambda _, address, size, data: trace.append(address),
+                 begin=0x2B538, end=0x2B538)
+    for ready, game_pending, run_worker in ((0, True, False), (1, True, False), (1, False, True)):
+        cpu.mem_write(TAP_BUFFER, pcm + struct.pack("<3I", 1, ready, USB_RING))
+        cpu.mem_write(0x20000B34, frame + bytes(64))
+        cpu.mem_write(0x20000B2C, bytes([game_pending]))
+        trace.clear()
+        replay.call(MAIN_DISPATCH_CALL, MAIN_DISPATCH_CALL + 4)
+        verify(trace == ([WORKER, 0x2B538] if run_worker else [0x2B538]), "Foreground worker order changed")
+        verify(cpu.mem_read(0x20000B2C, 1) == bytes(1), "Foreground hook lost the stock pending frame")
+        verify(cpu.mem_read(TAP_READY, 4) == struct.pack("<I", ready and not run_worker),
+               "Foreground hook did not preserve or release the mailbox as expected")
+        verify(not any(cpu.mem_read(LEVELS + 2, 2)), "Foreground worker leaked into the stock frame's palm")
+        if run_worker:
+            verify(any(cpu.mem_read(LEVELS, 2)), "Foreground worker did not process the published PCM")
+    return {"name": "foreground_arm_worker_callsite", "site": hex(MAIN_DISPATCH_CALL),
+            "cases": 3, "stock_dispatcher_runs_once": True, "pending_game_frame_has_priority": True}
 
 
 def check_tx_tap_contract(image, dsp):
@@ -829,6 +861,7 @@ def check_pcm_to_scheduled_pwm(image, dsp, blocks, active_side=None, disable_tic
         cpu = replay.cpu
         if enabled:
             install_simulated_tx_tap(replay)
+            redirect_simulated_branch(cpu, MAIN_DISPATCH_CALL, FOREGROUND, "fbf79dff", link=True)
         for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
             cpu.mem_write(address, bytes([value]))
         submitted = False
@@ -840,7 +873,7 @@ def check_pcm_to_scheduled_pwm(image, dsp, blocks, active_side=None, disable_tic
         def submit_frame(bodies):
             cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
             cpu.mem_write(0x20000B2C, b"\x01")
-            replay.call(0x2B538, RETURN)
+            replay.call(MAIN_DISPATCH_CALL, MAIN_DISPATCH_CALL + 4)
             verify(cpu.mem_read(0x20000B2C, 1) == b"\x00", "Stock Sensa dispatcher stayed pending")
 
         def consume_tap(tick):
@@ -863,7 +896,12 @@ def check_pcm_to_scheduled_pwm(image, dsp, blocks, active_side=None, disable_tic
             elif ready:
                 verify(pcm == bytes(192), "Underrun did not publish silent PCM")
             replay.steps = 0
-            replay.call(WORKER, RETURN)
+            # The no-packet path in the foreground wrapper does no DSP
+            # work. The host clears its simulated idle/disabled state.
+            if ready:
+                replay.call(MAIN_DISPATCH_CALL, MAIN_DISPATCH_CALL + 4)
+            else:
+                replay.call(WORKER, RETURN)
             verify(cpu.mem_read(TAP_READY, 4) == bytes(4), "Worker did not release the TX mailbox")
             peak_instructions = max(peak_instructions, replay.steps)
             levels = bytes(cpu.mem_read(LEVELS, 4))
@@ -1388,7 +1426,7 @@ def main():
         parser.error("--active-stereo-excerpt needs --verified-pcm-trace and a nonnegative index")
     image, dsp = args.stock.read_bytes(), args.dsp.read_bytes()
     verify(hashlib.sha256(image).hexdigest() == STOCK_SHA256, "Expected unmodified Dev2FW 2.04.00")
-    verify(len(dsp) > WORKER - DSP, "Rebuild the simulator module with the TX tap and worker")
+    verify(len(dsp) > FOREGROUND - DSP, "Rebuild the simulator module with the TX tap and worker")
     cases = (
         ("left_80", ((80,), ()), True, True, 0.85),
         ("right_190", ((), (190,)), True, True, 0.85),
@@ -1411,6 +1449,7 @@ def main():
     report.append(check_dma_arrival_variation(image, dsp))
     report.append(check_tx_tap_contract(image, dsp))
     report.append(check_worker_interleaving(image, dsp))
+    report.append(check_foreground_worker(image, dsp))
     report.append(check_scheduled_dsp(image, dsp))
     report.append(check_sensa_pwm(image, dsp))
     report.append(check_stock_profile_calibration(image, dsp))

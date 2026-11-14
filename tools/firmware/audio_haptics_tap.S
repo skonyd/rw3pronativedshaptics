@@ -35,3 +35,28 @@ done:
 resume:
     .word 0x12f9d
     .ltorg
+
+/* The foreground call at 0x2F5FA must still tail-call the stock Sensa
+ * dispatcher. The simulation invokes the original call instruction.
+ */
+.section .text.audio_haptics_foreground, "ax", %progbits
+.thumb_func
+.global audio_haptics_foreground
+audio_haptics_foreground:
+    push {r0-r3, r4, lr}
+    mrs r4, APSR
+    ldr r0, =0x200240C0
+    ldr r1, [r0, #4]
+    cbz r1, dispatch
+    ldr r1, =0x20000B2C
+    ldrb r1, [r1]
+    cbnz r1, dispatch
+    bl audio_haptics_replay_worker
+dispatch:
+    msr APSR_nzcvq, r4
+    pop.w {r0-r3, r4, lr}
+    ldr.w pc, dispatcher
+    .align 2
+dispatcher:
+    .word 0x2b539
+    .ltorg

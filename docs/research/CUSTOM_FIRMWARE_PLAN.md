@@ -71,17 +71,26 @@ Findings go to [EXPERIMENTS.md](EXPERIMENTS.md) as usual. This page keeps the pl
 
 ### Remaining work before an image candidate
 
-The replay builds original Cortex-M4 code and changes one branch in emulator
+The replay builds original Cortex-M4 code and changes two branches in emulator
 memory. Its test addresses have no verified allocation on the controller.
 The application spans 0x8000–0x37800. Its largest uniform span is
 734 zero bytes between the vector content and reset code, compared with
-2,450 bytes of linked replay text including simulator gaps. Fill bytes may
+2,638 bytes of linked replay text including simulator gaps. Fill bytes may
 be reserved. The stock scatter table ends its RAM allocations at 0x20013D28
 and the initial stack pointer is 0x20027FF8. Their distance alone does not
 prove safe space under stack, DMA and runtime usage.
+The stock HEX audit validates 194,560 data bytes, all record checksums,
+the 0x8401 start address and the decoded SHA-256:
+
+```powershell
+python -B tools/firmware/audit_dev2_hex.py <Dev2FW.txt>
+```
+
 Choose and verify placement against the stock scatter load, interrupt stacks,
-ROM and updater behavior. Then test a real stock-context worker invocation,
-runtime toggle and concurrent ownership with stock rumble/Sensa commands.
+ROM and updater behavior. The worker has a foreground callsite candidate
+at 0x2F5FA with stock pending game frame priority tested. Extend that
+test to the real loop cadence, runtime toggle, stale mailbox behavior and
+concurrent ownership with stock rumble/Sensa commands.
 Stress missing completions and simultaneous timer/DMA events, and validate
 timing and output on a stock trace. Keep the wired NXP path as the first
 integration boundary. The dongle capture currently supplies host-side PCM for

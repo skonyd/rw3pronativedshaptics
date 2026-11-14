@@ -421,8 +421,11 @@ to the simulator.
 The scheduled comparison runs unmodified stock against stock
 with the emulated tap on the same input. It uses stock USB receive,
 linked I²S descriptors, DMA0 IRQ, both timer handlers, the
-Sensa dispatcher and the PWM writer. The host harness toggles
-the tap and calls the worker outside the DMA interrupt. In each
+Sensa dispatcher and the PWM writer. The worker runs via the
+stock foreground dispatch call site `0x2F5FA` in Unicorn. Its ARM
+wrapper preserves the original Sensa dispatcher call. If a game
+frame is already pending, the dispatcher runs first and the worker
+leaves the PCM in the mailbox until a subsequent call. In each
 case all 128 original I²S blocks are preserved in order. The
 tap copies 56 audio blocks during the normal enabled window
 and 96 before the underrun in the separate source-loss test. The preceding
@@ -434,13 +437,14 @@ also clears the candidate. The final 12 ms of PWM matches
 stock. The instruction count is an emulator count.
 
 This establishes a candidate observation site and an executable
-pre-flash replay. The harness still owns source arbitration,
-runtime switching, event scheduling and worker invocation.
-The comparison covers sequential ownership. Full NVIC preemption
+pre-flash replay. The harness still owns audio frame publication,
+the runtime switch, event scheduling and idle reset on disable.
+The pending-flag test verifies priority at one call boundary.
+Game frames can arrive at other times. Full NVIC preemption
 and the actual radio link remain open. Use
 `--verified-pcm-trace <path> --active-stereo-excerpt 3000`
 for the 128-slot active stereo comparison from either lab capture.
-Both full-capture runs passed 31 report checks. Their scheduled excerpts
+Both full-capture runs passed 32 report checks. Their scheduled excerpts
 used 128 blocks per transport, with peak deviations of 96/84 SCT counts
 on the wired sample and 120/84 on the dongle sample, with zero trigger
 deviation. The full USB traces contain 6,552 and 6,272 slots respectively.
