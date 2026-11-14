@@ -13,8 +13,10 @@ relocated Xbox USB configuration agrees with the recorded host audio endpoints.
 The stock dongle endpoint dispatcher and receive handler now replay all
 6,272 captured endpoint-6 slots byte-for-byte through the PCM ring,
 acknowledge each slot and publish its cursor to the stock event ring.
-The stock reader and downstream stereo input loop run with fixture
-requests for contiguous, wrapped and underfilled ring states.
+The stock reader runs through the stock-initialized stereo resampler
+and returns processed PCM for contiguous, wrapped and underfilled
+ring states. Separate step and rate-offset tests check the kernel.
+The real scheduling and RF handoff still need to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

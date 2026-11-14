@@ -19,9 +19,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   1024-word PCM ring with every captured slot and exercises the
   downstream stereo split. E-20261115-93 runs the event helper at
   0x5310 and the ring consumer from 0x5664 for seeded requests and
-  clock values. Next run the stock context initializer and resampler
-  beyond 0x18B28, reproduce producer-to-consumer scheduling, follow the
-  processed output to a verified RF packet and reproduce the controller-radio
+  clock values. E-20261115-94 executes the stock context initializer
+  and returns resampled PCM to the ring consumer's caller. Next identify
+  that caller and its scheduling source, follow the processed output
+  to a verified RF packet and reproduce the controller-radio
   receive path to the NXP-facing interface.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of

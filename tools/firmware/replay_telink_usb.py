@@ -7,8 +7,9 @@ import struct
 
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_READ
 from unicorn.riscv_const import (
-    UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A2, UC_RISCV_REG_GP,
-    UC_RISCV_REG_PC, UC_RISCV_REG_RA, UC_RISCV_REG_SP, UC_RISCV_REG_X0,
+    UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A2, UC_RISCV_REG_A3, UC_RISCV_REG_GP,
+    UC_RISCV_REG_MSTATUS, UC_RISCV_REG_PC, UC_RISCV_REG_RA, UC_RISCV_REG_S1,
+    UC_RISCV_REG_SP, UC_RISCV_REG_X0,
 )
 
 from replay_telink_startup import execute_addigp, field, replay_startup, require
@@ -17,6 +18,8 @@ from usb_audio_trace import inspect
 
 USB_DISPATCH, USB_HANDLER, EVENT_CALL = 0x3C60, 0x51B8, 0x5310
 PCM_CONSUMER, PCM_PROCESS_CALL = 0x5664, 0x5858
+RESAMPLER, RESAMPLER_ADJUST = 0x18AB8, 0x18A5C
+RESAMPLER_CONTEXT_PTR = 0x8809C
 ENDPOINT_STATUS = 0x80100841
 ENDPOINT_LENGTH, ENDPOINT_STREAM, ENDPOINT_ACK = 0x80100816, 0x80100826, 0x8010082E
 RING_STATE, RING_WORDS, RING_SIZE = 0x90A2C, 0x91254, 1024
@@ -29,8 +32,16 @@ def signed_word(value):
     return (value & 0x7FFFFFFF) - (value & 0x80000000)
 
 
+def signed_half(value):
+    return (value & 0x7FFF) - (value & 0x8000)
+
+
+def saturate(value, bits):
+    return min((1 << (bits - 1)) - 1, max(-(1 << (bits - 1)), value))
+
+
 def andes_next(cpu, pc):
-    """Execute the Andes instructions reached by this handler."""
+    """Execute the Andes register and memory operations reached by this replay."""
     word, = struct.unpack("<I", cpu.mem_read(pc, 4))
     opcode = word & 0x707F
     dest = field(word, 7, 5)
@@ -69,7 +80,9 @@ def andes_next(cpu, pc):
             result, sign_bit = field(left, lower, upper - lower + 1), upper - lower
         if opcode == 0x305B and result & (1 << sign_bit):
             result -= 1 << (sign_bit + 1)
-    elif word & 0xFE00707F == 0x0C00005B:
+    elif word & 0xFE00707F == 0x0A00005B:  # LEA.H
+        result = left + (right << 1)
+    elif word & 0xFE00707F == 0x0C00005B:  # LEA.W
         result = left + (right << 2)
     elif opcode in (0x202B, 0x402B):
         common = (field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 18)
@@ -86,6 +99,23 @@ def andes_next(cpu, pc):
         result = cpu.reg_read(UC_RISCV_REG_X0 + dest) - left * right
     elif word & 0xFE00707F == 0xF200007F:  # MAXW
         result = max(signed_word(left), signed_word(right))
+    elif word & 0xFE00707F == 0x0200007F:  # RSUB16
+        lower = (signed_half(left) - signed_half(right)) >> 1
+        upper = (signed_half(left >> 16) - signed_half(right >> 16)) >> 1
+        result = (upper << 16) | (lower & 0xFFFF)
+    elif word & 0xFE00707F == 0x0400107F:  # KADDH
+        result = saturate(signed_word(left) + signed_word(right), 16)
+    elif word & 0xFE00707F == 0x0C00107F:  # KHMBB
+        result = saturate((signed_half(left) * signed_half(right)) >> 15, 16)
+    elif word & 0xFE00707F == 0x4800107F:  # KMADA
+        accumulator = signed_word(cpu.reg_read(UC_RISCV_REG_X0 + dest))
+        result = saturate(accumulator + signed_half(left) * signed_half(right)
+                          + signed_half(left >> 16) * signed_half(right >> 16), 32)
+    elif word & 0xFE00707F == 0x8E00107F:  # KMMWB2
+        result = saturate((signed_word(left) * signed_half(right)) >> 15, 32)
+    elif word & 0xFE00707F == 0xD400107F:  # SRAI.U (RV32)
+        right_shift = field(word, 20, 5)
+        result = (signed_word(left) * 2 + (1 << right_shift)) >> (right_shift + 1)
     else:
         raise ValueError(f"Unsupported Andes instruction 0x{word:08X} at 0x{pc:X}")
     cpu.reg_write(UC_RISCV_REG_X0 + dest, result & 0xFFFFFFFF)
@@ -93,13 +123,85 @@ def andes_next(cpu, pc):
 
 
 def run_until(cpu, pc, end, vendor_budget):
+    # A previously translated block can contain the requested end address.
+    # The instruction hook also stops there before an instruction executes.
+    cpu.stock_stop_address = end
     for _ in range(vendor_budget):
-        cpu.emu_start(pc, end, count=4000)
+        cpu.emu_start(pc, end, count=100_000)
         pc = cpu.reg_read(UC_RISCV_REG_PC)
         if pc == end:
             return
         pc = andes_next(cpu, pc)
-    raise ValueError(f"Stock routine did not reach 0x{end:X}")
+    raise ValueError(f"Stock routine did not reach 0x{end:X}, stopped near 0x{pc:X}")
+
+
+def initialize_resampler(cpu, stack):
+    # Execute the original stereo initializer call site. S1 is set to the
+    # value loaded earlier in the startup routine at 0x1AD62.
+    cpu.reg_write(UC_RISCV_REG_SP, stack)
+    cpu.reg_write(UC_RISCV_REG_S1, 4096)
+    cpu.reg_write(UC_RISCV_REG_MSTATUS, cpu.reg_read(UC_RISCV_REG_MSTATUS) | 0x6000)
+    run_until(cpu, 0x1AD70, 0x1AD98, vendor_budget=16_384)
+    context, = struct.unpack("<I", cpu.mem_read(RESAMPLER_CONTEXT_PTR, 4))
+    require(context == 0x93164 and cpu.mem_read(context + 0x10, 4) == b"\x01\x00\x00\x00",
+            "Stock stereo resampler context did not initialize")
+    return context
+
+
+def replay_resampler(cpu, stack):
+    """Exercise the stock kernel with repeatable inputs and clock adjustments."""
+    context = initialize_resampler(cpu, stack)
+    source, output, returned = 0xA5000, 0xA5200, 0x700
+
+    def call(entry, a1, a2, a3):
+        for register, value in ((UC_RISCV_REG_SP, stack), (UC_RISCV_REG_RA, returned),
+                                (UC_RISCV_REG_A0, context), (UC_RISCV_REG_A1, a1),
+                                (UC_RISCV_REG_A2, a2), (UC_RISCV_REG_A3, a3)):
+            cpu.reg_write(register, value)
+        run_until(cpu, entry, returned, vendor_budget=16_384)
+        return cpu.reg_read(UC_RISCV_REG_A0)
+
+    def process(pcm):
+        capacity = 50 * 4
+        guard = b"\xA5" * (capacity + 8)
+        cpu.mem_write(source, pcm)
+        cpu.mem_write(output - 4, guard)
+        count = call(RESAMPLER, source, 48, output)
+        tail_size = capacity + 4 - count * 4
+        require(47 <= count <= 49 and bytes(cpu.mem_read(output - 4, 4)) == guard[:4]
+                and bytes(cpu.mem_read(output + count * 4, tail_size)) == guard[:tail_size],
+                "Unexpected output size or write outside the stock resampler buffer")
+        return bytes(cpu.mem_read(output, count * 4))
+
+    silence = bytes(192)
+    step_left = struct.pack("<hh", 25_000, 0) * 48
+    step_right = struct.pack("<hh", 0, 25_000) * 48
+    require(process(silence) == silence, "Stock resampler did not start silent")
+    left = tuple(struct.iter_unpack("<hh", process(step_left)))
+    tail = tuple(struct.iter_unpack("<hh", process(silence)))
+    require(process(silence) == silence, "Stock resampler did not return to silence")
+    right = tuple(struct.iter_unpack("<hh", process(step_right)))
+    require(len(left) == len(tail) == len(right) == 48
+            and [(r, l) for l, r in left] == list(right) and all(r == 0 for _, r in left)
+            and all(r == 0 for _, r in tail), "Stock resampler mixed channels or changed nominal frame count")
+    require(abs(left[13][0]) < 500 and left[14][0] > 24_000 and left[-1][0] in (25_000, 25_001)
+            and 24_000 < tail[13][0] and abs(tail[14][0]) < 500 and tail[-1][0] == 0,
+            "Unexpected stock resampler step or tail")
+    right_tail = tuple(struct.iter_unpack("<hh", process(silence)))
+    require([(r, l) for l, r in tail] == list(right_tail) and process(silence) == silence,
+            "Stock resampler did not flush the right step")
+
+    drift = {}
+    for offset, expected_frames in ((10_000, 476), (-10_000, 485)):
+        call(RESAMPLER_ADJUST, offset & 0xFFFFFFFF, 0, 0)
+        blocks = [process(silence) for _ in range(10)]
+        output_frames = sum(len(block) // 4 for block in blocks)
+        require(output_frames == expected_frames and all(not any(block) for block in blocks),
+                f"Unexpected stock rate adjustment for {offset} relative to 1,000,000")
+        drift[str(offset)] = output_frames
+    return {"initializer_call_site": "0x1ad80", "kernel": hex(RESAMPLER), "nominal_frames_per_block": 48,
+            "step_crossing_frame_zero_based": 14, "opposite_channel_silent": True, "tail_returns_to_zero": True,
+            "drift_480_input_frames": drift}
 
 
 def replay_pcm_split(cpu, source, pcm, stack):
@@ -122,21 +224,32 @@ def replay_pcm_split(cpu, source, pcm, stack):
             "sample_frames": 48, "separate_channels_preserved": True}
 
 
+def inspect_encoder_marker(cpu):
+    # This argument is prepared on the stock LC3 Plus setup assertion path.
+    # It identifies code with an encoder reference, without selecting a codec.
+    reference = 0x24EF4
+    execute_addigp(cpu, struct.unpack("<I", cpu.mem_read(reference, 4))[0])
+    address = cpu.reg_read(UC_RISCV_REG_A0)
+    marker = bytes(cpu.mem_read(address, 128)).split(b"\0", 1)[0]
+    require(marker.endswith(b"/lc3_plus/src/setup_enc_lc3.c"), "Missing relocated LC3 Plus encoder reference")
+    return {"setup_source_reference": hex(reference), "string_address": hex(address)}
+
+
 def replay_ring_consumer(cpu, first_word, expected_advance, pcm, stack):
     """Dispatch the stock ring consumer with one modeled caller request."""
     saved = cpu.context_save()
     read_counter = RING_STATE + 12
     previous_read = bytes(cpu.mem_read(read_counter, 4))
-    consumer_context = 0x8809C
-    previous_context = bytes(cpu.mem_read(consumer_context, 4))
-    context, left, right = 0xA1000, 0xA2000, 0xA2200
+    consumer_state, leftovers = 0x88090, RING_WORDS + RING_SIZE * 4
+    previous_state = bytes(cpu.mem_read(consumer_state, 20))
+    previous_leftovers = bytes(cpu.mem_read(leftovers, 16))
+    context = initialize_resampler(cpu, stack)
+    channels = struct.unpack("<II", cpu.mem_read(context + 0xBB8, 8))
     output = 0xA2400
     returned = 0x700
+    output_guard = b"\xA5" * 196
     cpu.mem_write(read_counter, struct.pack("<I", first_word))
-    cpu.mem_write(consumer_context, struct.pack("<I", context))
-    cpu.mem_write(context + 0xBB8, struct.pack("<II", left, right))
-    for address in (left, right):
-        cpu.mem_write(address, b"\xA5" * 152)
+    cpu.mem_write(output - 4, output_guard)
     for register, value in ((UC_RISCV_REG_SP, stack), (UC_RISCV_REG_RA, returned),
                             (UC_RISCV_REG_A0, output), (UC_RISCV_REG_A1, 47)):
         cpu.reg_write(register, value)
@@ -151,22 +264,36 @@ def replay_ring_consumer(cpu, first_word, expected_advance, pcm, stack):
         expected = tuple(value + (value < 0) for value in original)
         require(struct.unpack("<96h", cpu.mem_read(pointer, 192)) == expected,
                 "Unexpected stock fixed-point PCM rounding")
-        # Execute the real JAL into the downstream processor. In this
-        # fixture the processor's context buffers are supplied by the host.
+        # Execute the real JAL into the stock-initialized processor.
         run_until(cpu, PCM_PROCESS_CALL, 0x18B28, vendor_budget=8)
-        for side, address in enumerate((left, right)):
-            actual = bytes(cpu.mem_read(address, 152))
+        for side, address in enumerate(channels):
+            actual = bytes(cpu.mem_read(address, 150))
             expected_channel = struct.pack("<48h", *expected[side::2])
-            require(actual == b"\xA5" * 54 + expected_channel + b"\xA5" * 2,
+            require(actual == bytes(54) + expected_channel,
                     "Stock downstream loop did not preserve its caller's channels")
+        run_until(cpu, 0x18B28, PCM_PROCESS_CALL + 4, vendor_budget=16_384)
+        filtered_count = cpu.reg_read(UC_RISCV_REG_A0)
+        require(filtered_count == 48, "Unexpected stock resampler count at the consumer return site")
+        filtered = bytes(cpu.mem_read(pointer, filtered_count * 4))
+        require(any(filtered) == any(pcm), "Unexpected stock resampler silence from the ring")
+        run_until(cpu, PCM_PROCESS_CALL + 4, returned, vendor_budget=256)
+        require(cpu.reg_read(UC_RISCV_REG_A0) == 47 and cpu.mem_read(output, 47 * 4) == filtered[:47 * 4]
+                and cpu.mem_read(consumer_state, 4) == b"\x01\x00\x00\x00"
+                and cpu.mem_read(leftovers, 4) == filtered[-4:]
+                and cpu.mem_read(output - 4, 4) == output_guard[:4]
+                and cpu.mem_read(output + 47 * 4, 4) == output_guard[-4:],
+                "Stock consumer returned the wrong PCM or wrote outside its caller buffer")
         source_word = (expected_advance - 48) % RING_SIZE
         return {"source_ring_word": source_word, "read_cursor_after": signed_word(advanced), "frames_read": 48,
                 "wrap_within_block": source_word + 48 > RING_SIZE,
-                "negative_samples_rounded_toward_zero": sum(value < 0 for value in original)}
+                "negative_samples_rounded_toward_zero": sum(value < 0 for value in original),
+                "frames_returned": 47, "frames_retained": 1,
+                "pcm_sha256": hashlib.sha256(filtered[:47 * 4]).hexdigest()}
     finally:
         cpu.context_restore(saved)
         cpu.mem_write(read_counter, previous_read)
-        cpu.mem_write(consumer_context, previous_context)
+        cpu.mem_write(consumer_state, previous_state)
+        cpu.mem_write(leftovers, previous_leftovers)
 
 
 def replay_endpoint(cpu, slots):
@@ -184,7 +311,8 @@ def replay_endpoint(cpu, slots):
     adjacent = tuple(bytes(cpu.mem_read(address, 4)) for address in (RING_WORDS - 4, ring_end))
 
     def stop_for_andes(machine, address, size, data):
-        if size == 4 and machine.mem_read(address, 1)[0] & 0x7F in (0x0B, 0x2B, 0x5B, 0x7F):
+        if address == machine.stock_stop_address or (
+                size == 4 and machine.mem_read(address, 1)[0] & 0x7F in (0x0B, 0x2B, 0x5B, 0x7F)):
             machine.emu_stop()
 
     def read_endpoint(machine, access, address, size, value, data):
@@ -261,12 +389,14 @@ def replay_endpoint(cpu, slots):
         index = next_index
     require(adjacent == tuple(bytes(cpu.mem_read(address, 4)) for address in (RING_WORDS - 4, ring_end)),
             "USB firmware ring write modified an adjacent word")
+    resampler = replay_resampler(cpu, stack)
     return {"dispatcher": hex(USB_DISPATCH), "handler": hex(USB_HANDLER),
             "no_pending_leaves_ring_untouched": True, "event_call": hex(EVENT_CALL),
             "ack_register_value": 1, "event_records_verified": len(slots),
             "ring_start": hex(RING_WORDS), "ring_words": RING_SIZE, "slots": len(slots),
             "exact_pcm_bytes": index * 4, "ring_wraps": wraps, "pcm_sha256": digest.hexdigest(),
-            "downstream_input_split": split, "consumer_scenarios": consumers}
+            "downstream_input_split": split, "consumer_scenarios": consumers,
+            "resampler_fixtures": resampler, "lc3_plus_setup": inspect_encoder_marker(cpu)}
 
 
 def main():

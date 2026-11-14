@@ -130,6 +130,33 @@ rounding. This checks what the routine reads under these initial
 conditions. The product's real startup scheduling and memory state
 require independent evidence.
 
-The integrated check stops at `0x18B28`. Stock stream negotiation,
-producer-to-consumer pacing, resampling, codec choice, RF send/receive
-and the NXP-facing handoff remain open.
+### Stock stereo resampler and caller buffer
+
+The stereo initialization call at `0x1AD80` enters `0x26B00`, which
+calls `0x26700` to build its coefficient table. The replay enables
+RV32 floating-point execution to run these stock routines. It starts
+at the call setup with the value of S1 loaded earlier by the firmware.
+The initializer installs the resulting context at `0x8809C`.
+The modeled Andes DSP instructions cover the register results used by
+this path. The replay does not model their saturation status flags.
+[Andes GNU opcode definitions](https://github.com/andestech/binutils/blob/dd22be9/include/opcode/riscv-opc.h)
+[Q15 saturation semantics](https://doc.nucleisys.com/nmsis/core/api/nmsis_core_dsp_intrinsic/nmsis_core_dsp_intrinsic_non_simd/api_nmsis_core_dsp_intrinsic_non_simd_q15_sat_alu.html)
+
+The same four ring scenarios now run through the actual `0x18AB8`
+kernel and return to the caller of `0x5664`. Each 47-frame request
+reads 48 frames and returns 47 processed frames. The last processed
+frame is retained at `0x92254`. The test checks the returned bytes,
+retained frame and caller-buffer guards. The nominal stereo step
+fixtures cross from under 500 to over 24,000 at zero-based frame 14,
+with the opposing channel staying at zero and the filter tail
+decaying to zero. For 480 frames of silence, the isolated resampler
+produces 476 frames at a +10,000 test ratio offset and 485 at −10,000
+relative to the base 1,000,000. These offsets exercise the adjustment
+routine directly. Physical drift and end-to-end latency remain unmeasured.
+
+The replay now reaches the ring consumer's return buffer. The stock
+instruction at `0x24EF4` loads the relocated LC3 Plus encoder setup
+source marker at `0x86540` on an assertion path. This locates code
+associated with the encoder. The real consumer scheduler, stream
+negotiation, active codec, RF send/receive and NXP-facing handoff remain
+open.
