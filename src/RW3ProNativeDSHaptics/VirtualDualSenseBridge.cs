@@ -57,6 +57,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
     /// <summary>PC mode: trigger effects are felt in the palms (Sensa) through <see cref="TriggerPalmSynth"/>
     /// instead of as body rumble. Xbox mode is unaffected.</summary>
     public bool PalmTriggerFeel { get; set; }
+    /// <summary>Native haptic source "Oyun sesinden": the owner feeds the extractor from PC sound, so this bridge
+    /// pushes nothing into it (neither game PCM nor the palm trigger synth). Trigger effects and rumble are unaffected:
+    /// in PC mode the trigger feel then goes to the body motors.</summary>
+    public volatile bool AudioHaptics;
+    private bool PalmFeel => PalmTriggerFeel && !AudioHaptics;
     private readonly TriggerPalmSynth _palm = new();
     private long _framesTick;
     private byte[] _mixBuffer = Array.Empty<byte>();
@@ -296,7 +301,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _envL = el; _envR = er; _envTick = Environment.TickCount64;
         }
         Volatile.Write(ref _framesTick, Environment.TickCount64);
-        if (_mode == WolverineControllerMode.Pc && PalmTriggerFeel && _palm.Active) PushWithPalm(span, XboxMix.PcmEnabled);
+        if (AudioHaptics) { }   // extractor is fed from PC sound
+        else if (_mode == WolverineControllerMode.Pc && PalmFeel && _palm.Active) PushWithPalm(span, XboxMix.PcmEnabled);
         else if ((_mode == WolverineControllerMode.Pc || (_mode == WolverineControllerMode.Xbox && XboxSensa.Active)) && XboxMix.PcmEnabled)
             _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);   // Xbox mode: palms through Sensa over GIP
         Interlocked.Increment(ref _hapticBlocks);
@@ -482,7 +488,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     // PC mode: no trigger motors reachable (XUSB). Trigger effects become body rumble on that side,
                     // or, with the palm feel, Sensa in that palm (then not also body rumble).
                     var mix = XboxMix;
-                    bool palm = PalmTriggerFeel && mix.TriggersEnabled;
+                    bool palm = PalmFeel && mix.TriggersEnabled;
                     if (palm)
                     {
                         lock (_gate)

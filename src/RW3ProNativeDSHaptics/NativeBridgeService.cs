@@ -106,7 +106,7 @@ public sealed class NativeBridgeService : IDisposable
     public int AudioSensitivityPercent
     {
         get => _audioSensitivityPercent;
-        set { _audioSensitivityPercent = Math.Clamp(value, 50, 400); ApplyGain(); }
+        set { _audioSensitivityPercent = Math.Clamp(value, 10, 300); XboxAudioSink.LevelPercent = _audioSensitivityPercent; ApplyGain(); }
     }
 
     private void ApplyGain() =>
@@ -305,6 +305,7 @@ public sealed class NativeBridgeService : IDisposable
             _virtual.TriggerMotors = _triggerMotors;
             _virtual.PalmTriggerFeel = _palmTriggerFeel;
             _virtual.XboxMix = _xboxMix;
+            _virtual.AudioHaptics = _nativeAudioHaptics;
             _virtual.OutputLevelPercent = OutputLevelPercent;
             _virtual.EngineProbe = () => SensaEngineSummary;
             // The bridge feeds the engine's feature extractor; if the engine thread is gone, nothing
@@ -316,15 +317,67 @@ public sealed class NativeBridgeService : IDisposable
                 bool ok = _sensa.Start();
                 return "Sensa engine was stopped; restart " + (ok ? "ok" : "failed: " + _sensa.Status);
             };
-            return _virtual.Start(_sensa.Features, xinputSlot);
+            bool started = _virtual.Start(_sensa.Features, xinputSlot);
+            if (started && _nativeAudioHaptics) StartNativeAudio();
+            return started;
         }
         finally { _gate.Release(); }
     }
 
-    public void StopVirtualDualSense() => _virtual?.Stop();
+    public void StopVirtualDualSense() { StopNativeAudio(); _virtual?.Stop(); }
+
+    // ── Native mode, haptic source "Oyun sesinden": PC sound → the same Sensa extractor, while the virtual
+    //    DualSense keeps doing trigger effects and rumble. The game's haptic PCM is then not pushed (one producer).
+    private AudioHapticsBridge? _nativeAudio;
+    private bool _nativeAudioHaptics;
+
+    /// <summary>Native mode palm haptics from the PC's sound instead of the game's HD PCM. Applies live.</summary>
+    public bool NativeAudioHaptics
+    {
+        get => _nativeAudioHaptics;
+        set
+        {
+            _nativeAudioHaptics = value;
+            if (_virtual != null) _virtual.AudioHaptics = value;
+            if (!value) StopNativeAudio();
+            else if (IsVirtualDualSenseRunning) StartNativeAudio();
+        }
+    }
+
+    public bool IsNativeAudioRunning => _nativeAudio?.IsCapturing == true;
+    public bool NativeAudioHasRecentSound => _nativeAudio?.HasRecentSound == true;
+    public string? NativeAudioFailure => _nativeAudio?.Failure;
+
+    private void StartNativeAudio()
+    {
+        if (_nativeAudio?.IsCapturing == true) return;
+        _nativeAudio?.Dispose(); _nativeAudio = null;
+        _sensitivityActive = true; ApplyGain();
+        _sensa.Features.ClearForSilence();
+        try
+        {
+            _nativeAudio = new AudioHapticsBridge(new SensaAudioSink(_sensa.Features));
+            _nativeAudio.Start();
+            DiagnosticsService.Info("Native mode: palm haptics from PC sound ('" + _nativeAudio.DeviceName + "'); game HD PCM not used.");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticsService.Error("Native mode audio haptics", ex);
+            _nativeAudio?.Dispose(); _nativeAudio = null;
+        }
+    }
+
+    private void StopNativeAudio()
+    {
+        if (_nativeAudio == null) return;
+        _nativeAudio.Dispose(); _nativeAudio = null;
+        _sensitivityActive = false; ApplyGain();
+        _sensa.Features.ClearForSilence();
+    }
 
     public void Stop()
     {
+        StopNativeAudio();
         _virtual?.Stop();
         _sensitivityActive = false;
         ApplyGain();

@@ -6,6 +6,17 @@ namespace RW3ProNativeDSHaptics;
 
 public enum HapticMode { Normal, Audio, Native }
 
+/// <summary>Where "Oyunun DualSense titreşimi" takes the palm haptics from.</summary>
+public enum NativeHapticSource
+{
+    /// <summary>The game's DualSense HD haptic PCM.</summary>
+    Game,
+    /// <summary>The PC's sound (loopback), for games that support DualSense triggers but send no HD haptics.</summary>
+    Audio,
+    /// <summary>No palm haptics; trigger effects and rumble still run.</summary>
+    Off
+}
+
 public sealed class UserSettings
 {
     public HapticMode Mode { get; set; } = HapticMode.Normal;
@@ -23,8 +34,12 @@ public sealed class UserSettings
     /// <summary>Path to the controller: 0 Synapse (HAR + Razer runtime), 1 Direct USB (own encoder, no Synapse).</summary>
     /// <summary>0 = Synapse, 1 = Direct USB (default: the app needs no Razer software).</summary>
     public int Transport { get; set; } = 1;
-    /// <summary>Sesten titreşim sensitivity in percent (Normal 100 / Yüksek 160 / Çok yüksek 250).</summary>
+    /// <summary>Audio-to-haptics vibration level in percent (slider, 10..300; 100 = the sound's own level). Used by
+    /// audio mode and by the native mode's "Oyun sesinden" haptic source, on palms (Sensa) and body motors alike.</summary>
     public int AudioSensitivityPercent { get; set; } = 100;
+    /// <summary>Native mode palm haptics source. Null in files written before 2026-11-14: derived from
+    /// <see cref="XboxNativeMix"/>.PcmEnabled (on = game, off = off).</summary>
+    public NativeHapticSource? NativeHapticSource { get; set; }
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>
     public bool HidePadInGames { get; set; } = true;
     /// <summary>DualSense trigger effects in Xbox mode: 1 = impulse-trigger motors (+ haptics on the body

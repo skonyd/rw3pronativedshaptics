@@ -24,6 +24,13 @@ remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 | Sesten titreşim | PC audio (WASAPI loopback) | Sensa palms, stereo | Sensa palms over GIP, stereo (setting "Xbox modunda Sensa", default on; off: body motors, left motor ← left channel) |
 | Oyunun DualSense titreşimi | game's DualSense output via the virtual DualSense (HIDMaestro) or a USB DualSense | haptic PCM → Sensa palms; trigger effects → body motors | haptic PCM → Sensa palms and trigger effects → trigger motors, in one Sensa frame over GIP (setting; off: body motors + GameInput impulse) |
 
+- **Main page (2026-11-14):** each mode's options sit under the mode cards.
+  - Sesten titreşim: level slider (10–300 %, 100 = the sound's own level; Sensa feature gain and body-motor gain, live), "Standart (DSX gibi)", the game's own Xbox rumble/LT-RT (virtual Xbox pad), and an "advanced" expander (frequency filter, auto level, hum suppression, bass/treble split).
+  - Oyunun DualSense titreşimi: palm haptic source **Oyunun HD haptiği / Oyun sesinden / Kapalı** with a level slider (game HD → native gain; sound → the same audio level), plus trigger effects and the game's rumble. "Oyun sesinden" is for games with DualSense triggers but no HD haptics: the virtual DualSense keeps the triggers and rumble, and the palms follow the PC sound through the same Sensa extractor. The bridge then pushes no game PCM and no palm trigger synth (one producer). A USB DualSense endpoint is used only for the game-HD source.
+  - The native mode now auto-starts with any source on. Before, it auto-started only with HD PCM on, so the common "triggers, no HD" setup waited for a manual click.
+  - Settings no longer has the Native gain / audio sensitivity presets (now the sliders).
+  - Not yet felt: "Oyun sesinden" in a real game.
+
 - **Sensa without Synapse:** own frame encoder + HID feature report 4 ("Direct USB"), over the cable and the HyperSpeed dongle.
   Synapse/HAR remains an optional legacy backend, used only when Synapse runs and has attached the controller.
 - **Virtual DualSense bridge:** needs administrator rights. The game sees a DualSense: buttons/sticks from the Wolverine (XInput in PC mode, GameInput in Xbox mode, live readback check), haptic PCM in, trigger reports in.

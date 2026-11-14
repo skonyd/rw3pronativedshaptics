@@ -66,8 +66,11 @@ public sealed class HapticOrchestrator
     public async Task EnsureRunningAsync()
     {
         var mode = SelectedMode();
+        var source = HapticModePolicy.ResolveSource(_settings.NativeHapticSource, _settings.XboxNativeMix.PcmEnabled);
+        var mix = _settings.XboxNativeMix;
+        bool nativeAny = source != NativeHapticSource.Off || mix.RumbleEnabled || mix.TriggersEnabled;
         if (!HapticModePolicy.MayAutoStart(mode, Run, Starting, Busy(), Exiting(), Environment.TickCount64, NextAutoStartTick,
-                _settings.AudioOutputEnabled, _settings.XboxNativeMix.PcmEnabled)) return;
+                _settings.AudioOutputEnabled, nativeAny)) return;
         bool startVirtual = false;
         Starting = true;
         try
@@ -76,10 +79,10 @@ public sealed class HapticOrchestrator
             {
                 if (!await StartAudioAsync(mode)) return;
             }
-            else if (await Task.Run(NativeBridgeService.FindDualSenseEndpoint) == null)
+            else if (!HapticModePolicy.UseUsbDualSense(await Task.Run(NativeBridgeService.FindDualSenseEndpoint) != null, source))
             {
-                // No USB DualSense: the virtual bridge is the native source. Started after the finally block -
-                // a `return` here would skip it (2026-11-09 bug: the mode then waited forever).
+                // No USB DualSense (or a source it cannot give): the virtual bridge is the native source. Started after
+                // the finally block - a `return` here would skip it (2026-11-09 bug: the mode then waited forever).
                 startVirtual = true;
             }
             else

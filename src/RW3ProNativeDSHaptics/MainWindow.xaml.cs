@@ -116,13 +116,23 @@ public partial class MainWindow : Window
         BigMotorCeiling.IsChecked = _settings.BigMotorCeiling;
         XboxSensa.Enabled = _settings.XboxSensa;
         XboxSensaOutput.IsChecked = _settings.XboxSensa;
-        RouteImpulse.IsChecked = _bridge.TriggerMotors;
         (_settings.TriggerFeel == 1 ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
         var mix = _settings.XboxNativeMix ?? new XboxNativeMix();
-        RoutePcm.IsChecked = mix.PcmEnabled;
+        _settings.NativeHapticSource = HapticModePolicy.ResolveSource(_settings.NativeHapticSource, mix.PcmEnabled);
+        _bridge.NativeAudioHaptics = _settings.NativeHapticSource == NativeHapticSource.Audio;
+        (_settings.NativeHapticSource switch
+        {
+            NativeHapticSource.Audio => NativeSrcAudio,
+            NativeHapticSource.Off => NativeSrcOff,
+            _ => NativeSrcGame
+        }).IsChecked = true;
         RouteRumble.IsChecked = mix.RumbleEnabled;
         RouteTriggers.IsChecked = mix.TriggersEnabled;
-        RouteAudio.IsChecked = _settings.AudioOutputEnabled;
+        // The audio mode itself is the switch; the old "Sesten gövde titreşimi" checkbox (off = the mode did nothing) is gone.
+        _settings.AudioOutputEnabled = true;
+        _settings.AudioSensitivityPercent = Math.Clamp(_settings.AudioSensitivityPercent, 10, 300);
+        _settings.NativeGainPercent = Math.Clamp(_settings.NativeGainPercent, 10, 300);
+        AudioLevelSlider.Value = _settings.AudioSensitivityPercent;
         (_settings.AudioProfile switch
         {
             AudioHapticProfile.Controlled => AudioProfileControlled,
@@ -148,7 +158,7 @@ public partial class MainWindow : Window
         HhHideCheckbox.IsChecked = _settings.HidePadInGames;
         ((SensaOutputMethod)_settings.OutputMethod switch
             { SensaOutputMethod.Hybrid => MethodHybrid, SensaOutputMethod.Multiband => MethodMultiband, _ => MethodStandard }).IsChecked = true;
-        (_settings.AudioSensitivityPercent >= 250 ? SensMax : _settings.AudioSensitivityPercent >= 160 ? SensHigh : SensNormal).IsChecked = true;
+        UpdateNativeSourceUi();
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
 
@@ -156,7 +166,6 @@ public partial class MainWindow : Window
         catch (Exception ex) { DiagnosticsService.Error("Priority lookup", ex); }
 
         SelectLevelPreset(_settings.OutputLevelPercent);
-        (_settings.NativeGainPercent >= 300 ? GainMax : _settings.NativeGainPercent >= 200 ? GainStrong : GainNormal).IsChecked = true;
         (_settings.AudioSyncDelayMs switch { < 0 => SyncAuto, 0 => Sync0, <= 150 => Sync150, <= 300 => Sync300, _ => Sync450 }).IsChecked = true;
         UpdateAudioSyncStatus();
         DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
@@ -485,67 +494,95 @@ public partial class MainWindow : Window
         if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
         _settings.TriggerFeel = int.Parse(tag);
         _bridge.TriggerMotors = _settings.TriggerFeel == 1;
-        RouteImpulse.IsChecked = _bridge.TriggerMotors;
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Trigger feel", ex); }
         DiagnosticsService.Info("Trigger effects in Xbox mode: " + (_settings.TriggerFeel == 1 ? "trigger motors + haptics" : "classic (body motors)") + ".");
     }
 
     private void ApplyXboxMix()
     {
+        var source = _settings.NativeHapticSource ?? NativeHapticSource.Game;
         _settings.XboxNativeMix = new((int)XboxPcmLevel.Value, (int)XboxRumbleLevel.Value,
             (int)XboxTriggerLevel.Value, (XboxBodyPriority)XboxBodyMixPriority.SelectedIndex,
-            RoutePcm.IsChecked == true, RouteRumble.IsChecked == true, RouteTriggers.IsChecked == true);
+            source == NativeHapticSource.Game, RouteRumble.IsChecked == true, RouteTriggers.IsChecked == true);
         _bridge.XboxMix = _settings.XboxNativeMix;
     }
 
-    private void RouteImpulse_Changed(object sender, RoutedEventArgs e)
+    private bool _updatingNativeLevel;
+
+    /// <summary>Native panel: the level slider follows the chosen haptic source (game HD → native gain, sound → the
+    /// audio level shared with the audio mode), and the hint says what the choice does on this controller.</summary>
+    private void UpdateNativeSourceUi()
     {
+        var source = _settings.NativeHapticSource ?? NativeHapticSource.Game;
+        _updatingNativeLevel = true;
+        try
+        {
+            NativeLevelRow.Visibility = source == NativeHapticSource.Off ? Visibility.Collapsed : Visibility.Visible;
+            NativeLevelLabel.Text = source == NativeHapticSource.Audio ? "Ses titreşim seviyesi" : "Haptik seviyesi";
+            NativeLevelSlider.Value = source == NativeHapticSource.Audio ? _settings.AudioSensitivityPercent : _settings.NativeGainPercent;
+        }
+        finally { _updatingNativeLevel = false; }
+        bool xbox = _padMode == WolverineControllerMode.Xbox;
+        NativeSourceHint.Text = source switch
+        {
+            NativeHapticSource.Audio => "Oyunun sesi avuçlarda titreşir (DSX'teki ses→haptik gibi); tetik efektleri ve oyunun titreşimi DualSense gibi çalışmaya devam eder. " +
+                                        (xbox && !XboxSensa.Enabled ? "Xbox modunda 'Xbox modunda Sensa' açık olmalı." : "Seviye, Sesten titreşim modundakiyle aynıdır."),
+            NativeHapticSource.Off => "Avuçlar titreşmez. Oyunun tetik efektleri ve normal titreşimi aşağıdaki seçimlere göre çalışır.",
+            _ => "Oyunun DualSense'e gönderdiği HD haptik avuçlarda çalar. Oyun HD haptik göndermiyorsa 'Oyun sesinden'i seç."
+        };
+    }
+
+    private void NativeSource_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out NativeHapticSource source)) return;
         if (!_initialized) return;
-        (RouteImpulse.IsChecked == true ? TriggerFeelMotors : TriggerFeelClassic).IsChecked = true;
+        if (_settings.NativeHapticSource == source) return;
+        _settings.NativeHapticSource = source;
+        ApplyXboxMix();
+        _bridge.NativeAudioHaptics = source == NativeHapticSource.Audio;   // live while the virtual bridge runs
+        UpdateNativeSourceUi();
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Haptik kaynağı", ex); }
+        DiagnosticsService.Info("Native haptic source: " + source + ".");
+        // A USB DualSense only gives game HD haptics; other sources need the virtual bridge: restart when that changes.
+        if (SelectedMode == HapticMode.Native && _run == RunState.Native && !_bridge.IsVirtualDualSenseRunning)
+        {
+            StopAll();
+            _nextAutoStartTick = 0;
+            _ = EnsureModeRunningAsync();
+        }
+        else if (SelectedMode == HapticMode.Native && _run == RunState.Off) { _nextAutoStartTick = 0; _ = EnsureModeRunningAsync(); }
         RefreshStatus();
     }
 
-    private bool _updatingGameFeedbackPreset;
-
-    private void GameFeedbackPreset_Changed(object sender, SelectionChangedEventArgs e)
+    private void SetAudioLevel(int percent)
     {
-        if (!_initialized || _updatingGameFeedbackPreset ||
-            GameFeedbackPreset.SelectedItem is not ComboBoxItem { Tag: string preset } || preset == "Custom") return;
-
-        _updatingGameFeedbackPreset = true;
-        try
-        {
-            RoutePcm.IsChecked = preset == "Full";
-            RouteRumble.IsChecked = true;
-            RouteTriggers.IsChecked = preset != "Rumble";
-            if (preset != "Rumble") RouteImpulse.IsChecked = true;
-        }
-        finally { _updatingGameFeedbackPreset = false; }
-
-        RouteSource_Changed(sender, e);
+        percent = Math.Clamp(percent, 10, 300);
+        if (_settings.AudioSensitivityPercent == percent) return;
+        _settings.AudioSensitivityPercent = percent;
+        _bridge.AudioSensitivityPercent = percent;   // Sensa feature gain + body motor gain, live
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Ses titreşim seviyesi", ex); }
     }
 
-    private void UpdateGameFeedbackPreset()
+    private void AudioLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_updatingGameFeedbackPreset) return;
-        var mix = _settings.XboxNativeMix;
-        int index = (mix.PcmEnabled, mix.RumbleEnabled, mix.TriggersEnabled, _bridge.TriggerMotors) switch
+        if (!_initialized) return;
+        SetAudioLevel((int)e.NewValue);
+        if (_settings.NativeHapticSource == NativeHapticSource.Audio) UpdateNativeSourceUi();
+    }
+
+    private void NativeLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized || _updatingNativeLevel) return;
+        int value = (int)e.NewValue;
+        if (_settings.NativeHapticSource == NativeHapticSource.Audio)
         {
-            (false, true, true, true) => 0,
-            (true, true, true, true) => 1,
-            (false, true, false, _) => 2,
-            _ => 3
-        };
-        _updatingGameFeedbackPreset = true;
-        try { GameFeedbackPreset.SelectedIndex = index; }
-        finally { _updatingGameFeedbackPreset = false; }
-        GameFeedbackPresetHint.Text = index switch
-        {
-            0 => "Normal titreşim gövdede kalır. Wolverine Xbox modunda L2/R2 efektleri, tetiği çekme miktarına göre tetik içinde titreşimle taklit edilir.",
-            1 => "HD haptik deneysel olarak gövdeye çevrilir ve normal titreşim aktarılır. Wolverine Xbox modunda L2/R2 efektleri çekişe göre tetik içinde titreşim üretir.",
-            2 => "Oyunun sanal DualSense'e gönderdiği standart titreşim gövdeye aktarılır.",
-            _ => "Oyunun desteklediği kaynakları aşağıdan seç. Tetik içi çıkış için Wolverine Xbox modunda olmalı."
-        };
+            SetAudioLevel(value);
+            AudioLevelSlider.Value = _settings.AudioSensitivityPercent;
+            return;
+        }
+        _settings.NativeGainPercent = Math.Clamp(value, 10, 300);
+        _bridge.SourceGainPercent = _settings.NativeGainPercent;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Haptik seviyesi", ex); }
     }
 
     private void XboxMix_Changed(object sender, RoutedEventArgs e)
@@ -576,10 +613,9 @@ public partial class MainWindow : Window
 
     private void RouteSource_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_initialized || _updatingGameFeedbackPreset) return;
-        ApplyXboxMix();
-        _settings.AudioOutputEnabled = RouteAudio.IsChecked == true;
-        if (SelectedMode == HapticMode.Audio || (SelectedMode == HapticMode.Native && !_bridge.IsVirtualDualSenseRunning))
+        if (!_initialized) return;
+        ApplyXboxMix();   // applies live to a running virtual DualSense
+        if (SelectedMode == HapticMode.Native && !_bridge.IsVirtualDualSenseRunning)
         {
             if (_run != RunState.Off) StopAll();
             _nextAutoStartTick = 0;
@@ -913,31 +949,28 @@ public partial class MainWindow : Window
     private void RefreshStatus()
     {
         var mode = SelectedMode;
-        UpdateGameFeedbackPreset();
+        var hapticSource = _settings.NativeHapticSource ?? NativeHapticSource.Game;
         NativeSourceRows.Visibility = mode == HapticMode.Native ? Visibility.Visible : Visibility.Collapsed;
         AudioSourceRows.Visibility = mode == HapticMode.Audio ? Visibility.Visible : Visibility.Collapsed;
         NormalSourceRows.Visibility = mode == HapticMode.Normal ? Visibility.Visible : Visibility.Collapsed;
         RouteNativeHint.Text = !_bridge.IsVirtualDualSenseRunning
-            ? "Oyunu açmadan önce sanal DualSense köprüsünü başlat. PCM tek başına ses köprüsünden de alınabilir."
-            : _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox && _bridge.TriggerMotors
-                ? "Açık gövde kaynakları gövdeye, açıksa L2/R2 efektleri bağımsız tetik motorlarına gider."
-                : "Açık kaynaklar gövdeye yönlendirilir.";
+            ? "Köprü, mod seçiliyken kendiliğinden başlar (ilk seferde bir kez yönetici izni). Oyunu köprü çalışırken aç."
+            : _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox
+                ? (_bridge.TriggerMotors ? "Xbox modu: tetik efektleri tetik motorlarında, rumble gövdede." : "Xbox modu, klasik: tetik efektleri gövdede (Ayarlar → tetik efektleri).")
+                : "PC modu: tetik motorlarına ulaşılamaz; tetik efektleri gövdede" + (_settings.PalmTriggerFeel && hapticSource != NativeHapticSource.Audio ? " yerine avuçlarda." : ".");
         RouteVirtualButton.Content = _bridge.IsVirtualDualSenseRunning ? "Sanal köprüyü durdur" : "Sanal köprüyü başlat";
         RouteVirtualButton.IsEnabled = !_busy && !_starting;
-        RouteImpulse.IsEnabled = RouteTriggers.IsChecked == true;
         bool running = _run != RunState.Off;
-        LevelPanel.Visibility = _run == RunState.Native && _settings.XboxNativeMix.PcmEnabled
+        LevelPanel.Visibility = _run == RunState.Native && hapticSource == NativeHapticSource.Game
             ? Visibility.Visible : Visibility.Collapsed;
         string waitText = _busy ? "Test sürüyor; bitince otomatik devam eder."
             : _lastErrorNoted != null ? "Bekleniyor: " + _lastErrorNoted +
                 (_nextAutoStartTick == long.MaxValue ? " Seçeneği kapatıp yeniden açarak dene." : " (birkaç saniyede bir yeniden denenir)")
             : "Başlatılıyor…";
 
-        if (!running && !_busy && (mode == HapticMode.Audio && !_settings.AudioOutputEnabled ||
-            mode == HapticMode.Native && !_settings.XboxNativeMix.PcmEnabled))
-            waitText = mode == HapticMode.Native && (_settings.XboxNativeMix.RumbleEnabled || _settings.XboxNativeMix.TriggersEnabled)
-                ? "Oyun geri bildirimi için sanal DualSense köprüsünü başlat."
-                : "Kaynak kapalı. Titreşim tablosundan yeniden açabilirsin.";
+        if (!running && !_busy && mode == HapticMode.Native && hapticSource == NativeHapticSource.Off &&
+            !_settings.XboxNativeMix.RumbleEnabled && !_settings.XboxNativeMix.TriggersEnabled)
+            waitText = "Hiçbir kaynak seçili değil: haptik kaynağı, tetik efektleri veya oyunun titreşiminden birini aç.";
 
         switch (mode)
         {
@@ -971,11 +1004,23 @@ public partial class MainWindow : Window
                 SetBadge(running ? GoodBrush : WarnBrush, running ? "Çalışıyor" : "Bekliyor");
                 break;
             default:
-                if (_bridge.IsVirtualDualSenseRunning && !_settings.XboxNativeMix.PcmEnabled)
+                if (_bridge.IsVirtualDualSenseRunning && hapticSource == NativeHapticSource.Audio)
+                {
+                    var (_, _, triggers) = _bridge.VirtualDualSenseCounters;
+                    bool capturing = _bridge.IsNativeAudioRunning;
+                    StatusTitle.Text = capturing ? "Oyunun DualSense titreşimi · avuçlar sesten" : "Sanal DualSense hazır · ses yakalanamadı";
+                    StatusDetail.Text = (capturing
+                        ? (_bridge.NativeAudioHasRecentSound ? "Ses → avuçlar, " : "Ses bekleniyor (şu an sessiz), ")
+                        : "Ses yakalama: " + (_bridge.NativeAudioFailure ?? "başlatılamadı") + ", ") +
+                        $"tetik raporu {triggers}" +
+                        (_bridge.VirtualDualSenseInputCheck.Length > 0 ? " • " + _bridge.VirtualDualSenseInputCheck : "");
+                    SetBadge(capturing ? GoodBrush : WarnBrush, "Köprü açık");
+                }
+                else if (_bridge.IsVirtualDualSenseRunning && hapticSource == NativeHapticSource.Off)
                 {
                     var (_, reports, triggers) = _bridge.VirtualDualSenseCounters;
                     StatusTitle.Text = "Sanal DualSense hazır";
-                    StatusDetail.Text = $"PCM kapalı · Geri bildirim raporu: {reports} · Tetik raporu: {triggers}";
+                    StatusDetail.Text = $"Avuç haptiği kapalı · geri bildirim raporu {reports} · tetik raporu {triggers}";
                     SetBadge(GoodBrush, "Köprü açık");
                 }
                 else if (_bridge.IsVirtualDualSenseRunning)
@@ -983,7 +1028,7 @@ public partial class MainWindow : Window
                     var (blocks, reports, triggers) = _bridge.VirtualDualSenseCounters;
                     bool xbox = _bridge.VirtualDualSenseMode == WolverineControllerMode.Xbox;
                     StatusTitle.Text = blocks > 0 ? "Oyunun DualSense titreşimi çalışıyor" : "Sanal DualSense hazır · oyun bekleniyor";
-                    StatusDetail.Text = (xbox ? "Xbox modu: haptik → gövde, L2/R2 → tetik motorları" : "PC modu: haptik → Sensa (avuç)") +
+                    StatusDetail.Text = (xbox ? (XboxSensa.Enabled ? "Xbox modu: haptik → avuçlar, L2/R2 → tetik motorları" : "Xbox modu: haptik → gövde, L2/R2 → tetik motorları") : "PC modu: haptik → Sensa (avuç)") +
                         $" • haptik blok {blocks}, tetik raporu {triggers}" +
                         (_bridge.VirtualDualSenseInputCheck.Length > 0 ? " • " + _bridge.VirtualDualSenseInputCheck : "");
                     SetBadge(GoodBrush, "Köprü açık");
@@ -1006,9 +1051,12 @@ public partial class MainWindow : Window
                     StatusDetail.Text = _nativeWaitNote != null && _lastErrorNoted == null && !_busy ? _nativeWaitNote : waitText;
                     SetBadge(WarnBrush, "Bekliyor");
                 }
-                ModeNote.Text = _settings.XboxNativeMix.PcmEnabled
-                    ? "USB DualSense takılıysa onun sesi, değilse sanal DualSense köprüsü kullanılır. HD haptik 33 ms karelerle Sensa'ya (PC modu) ya da gövde motorlarına (Xbox modu) çevrilir."
-                    : "";
+                ModeNote.Text = hapticSource switch
+                {
+                    NativeHapticSource.Game => "USB DualSense takılıysa onun haptik kanalı, değilse sanal DualSense köprüsü kullanılır.",
+                    NativeHapticSource.Audio => "Synapse'te 'Audio to Haptics' açıksa kapat; yoksa iki sistem aynı anda titretir.",
+                    _ => ""
+                };
                 break;
         }
 
@@ -1940,16 +1988,6 @@ public partial class MainWindow : Window
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Output level", ex); }
     }
 
-    private void NativeGain_Checked(object sender, RoutedEventArgs e)
-    {
-        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
-        int gain = int.Parse(tag);
-        _settings.NativeGainPercent = gain;
-        _bridge.SourceGainPercent = gain;
-        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Native gain", ex); }
-        DiagnosticsService.Info("Native v2 source gain " + gain + "%.");
-    }
-
     private void AudioSync_Checked(object sender, RoutedEventArgs e)
     {
         if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
@@ -2035,16 +2073,6 @@ public partial class MainWindow : Window
             SensaOutputMethod.Multiband => "Çok bantlı açık: kısa vuruşlar zayıf hissedilebilir.",
             _ => "Standart (önerilen)."
         };
-    }
-
-    private void AudioSensitivity_Checked(object sender, RoutedEventArgs e)
-    {
-        if (!_initialized || sender is not RadioButton { Tag: string tag }) return;
-        int sens = int.Parse(tag);
-        _settings.AudioSensitivityPercent = sens;
-        _bridge.AudioSensitivityPercent = sens;
-        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Audio sensitivity", ex); }
-        DiagnosticsService.Info("Audio-to-haptics sensitivity " + sens + "%.");
     }
 
     private void UpdateAudioSyncStatus()

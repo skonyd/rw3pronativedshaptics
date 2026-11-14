@@ -69,8 +69,8 @@ explorer.exe TestResults\install-when-closed.cmd    # waits for RW3 to close, co
 | 2026-11-11 | Console audio → Sensa: the controller does not turn headset audio into haptics; Sensa HD state 00/08/00/88 decoded. Only software route on a console: Xbox Remote Play on the PC + RW3 | E-20261111-08..10 |
 | 2026-11-11..13 | **Firmware analysis (read-only)**: images are checksummed, not signed; bootloader 1532:110E, erase range; NXP LPC54605 byte map (87 % code coverage), vectors, RAM layout, 104-command Razer catalog emulated, Sensa drive (SCT PWM 40 kHz), I2S audio path | docs/firmware/, tools/firmware/, research/CUSTOM_FIRMWARE_PLAN.md |
 | 2026-11-14 | Calibration: 4th answer **"Orta / yerini ayıramadım"** (Y) on every locate trial; replay moved to View (⧉); summary counts middle answers per actuator. Reason: the user felt ~3 trials "from the middle" with no answer for it | `CalibrationPlan.cs`, `MainWindow.xaml(.cs)` |
-
 | 2026-11-14 | Audio mode **"Standart (DSX gibi)"**, default on: audio as it is + soft noise gate; auto level / hum suppression only when it is off. Reason: "vibrated all the time" in a game | `AudioLevelShaper.cs`, STATUS |
+| 2026-11-14 | **Main page redesign.** Audio mode: level slider (10–300 %, palms and body motors). Native mode: palm haptic source **Game HD / Oyun sesinden / Kapalı** + level slider; "Oyun sesinden" keeps DualSense triggers and rumble while the palms follow PC sound. Native now starts with any source (before: only with HD PCM on). Removed: feedback preset combo, duplicate impulse checkbox, "Sesten gövde titreşimi" checkbox, Settings gain/sensitivity presets | `MainWindow.xaml(.cs)`, `NativeBridgeService.cs`, `HapticModePolicy.cs`, STATUS |
 
 ## 4. Current phase
 
@@ -84,7 +84,8 @@ Next steps, in order:
    and the per-actuator `orta ×N` counts: a mix of two actuators answered "Orta" often means the two sides blend,
    not that the user guessed wrong.
 2. Feel audio mode "Standart (DSX gibi)" in a game. If quiet scenes still vibrate, raise
-   `AudioLevelShaper.GateThreshold`; if soft effects are lost, lower it.
+   `AudioLevelShaper.GateThreshold`; if soft effects are lost, lower it. Same for native mode with the haptic
+   source "Oyun sesinden" in a game that has DualSense triggers but no HD haptics.
 3. Feel the Xbox-mode bridge with a real DualSense game (trigger effects + palms) — STATUS "Open / not verified".
 4. Repeat the transient-record mic A/B with the fixed encoder (OPEN_QUESTIONS Q4).
 5. Raw pitch field of 249/149 on the trigger motors (OPEN_QUESTIONS Q2, mic held close).

@@ -31,6 +31,8 @@ public sealed class XboxAudioSink : IAudioHapticSink
 
     public int OutputLevelPercent { get; set; } = 100;
     public float Gain { get; set; } = 2.5f;
+    /// <summary>App-wide audio vibration level (UI slider, percent), read per block so it applies live.</summary>
+    public static volatile int LevelPercent = 100;
     public long NonFiniteSamples { get; private set; }
     public string Description => "Xbox gövde motorları (tetiklere komut gönderilmez)";
     public bool HasGamepad => FindSlot() >= 0;
@@ -63,7 +65,7 @@ public sealed class XboxAudioSink : IAudioHapticSink
         _inBlock = 0;
 
         double level = HapticOutputLevel.Apply(1.0, OutputLevelPercent);
-        double g = float.IsFinite(Gain) ? Math.Max(0, Gain) : 0;
+        double g = (float.IsFinite(Gain) ? Math.Max(0, Gain) : 0) * Math.Clamp(LevelPercent, 0, 400) / 100.0;
         var v = new GamepadVibration
         {
             LeftMotor = Clamp(_env.Left * g) * level,

@@ -1723,7 +1723,7 @@ SpectralContracts.Run(Check);
 // Mode orchestration decisions (HapticModePolicy, used by HapticOrchestrator).
 {
     bool May(HapticMode m, RunState run = RunState.Off, bool starting = false, bool busy = false, bool exiting = false,
-             long now = 1000, long next = 0, bool audio = true, bool pcm = true) =>
+             long now = 1000, long next = 0, bool audio = true, bool pcm = true) =>   // pcm = "any native source wanted"
         HapticModePolicy.MayAutoStart(m, run, starting, busy, exiting, now, next, audio, pcm);
     bool start = May(HapticMode.Audio) && May(HapticMode.Native);
     bool blocked = !May(HapticMode.Normal) && !May(HapticMode.Audio, run: RunState.Audio) && !May(HapticMode.Native, starting: true)
@@ -1741,8 +1741,18 @@ SpectralContracts.Run(Check);
         && HapticModePolicy.PlanNativeSource(false, true, false, false) == NativeSourcePlan.WaitForClick
         && HapticModePolicy.WaitNote(NativeSourcePlan.WaitForClick)!.Contains("UAC'siz")
         && HapticModePolicy.WaitNote(NativeSourcePlan.VirtualHere) == null;
-    Check(start && blocked && retry && plan,
-        "Mode policy: auto-start gates, per-mode switches, retry timing (virtual-Xbox never by itself), native source plan");
+    // Haptic source: the USB DualSense endpoint only serves game HD haptics; sound / triggers-only need the virtual
+    // DualSense. Old settings files: PCM on → game, off → off.
+    bool usb = HapticModePolicy.UseUsbDualSense(true, NativeHapticSource.Game)
+        && !HapticModePolicy.UseUsbDualSense(true, NativeHapticSource.Audio) && !HapticModePolicy.UseUsbDualSense(true, NativeHapticSource.Off)
+        && !HapticModePolicy.UseUsbDualSense(false, NativeHapticSource.Game);
+    bool legacy = HapticModePolicy.ResolveSource(null, true) == NativeHapticSource.Game
+        && HapticModePolicy.ResolveSource(null, false) == NativeHapticSource.Off
+        && HapticModePolicy.ResolveSource(NativeHapticSource.Audio, true) == NativeHapticSource.Audio;
+    bool settingsDefault = System.Text.Json.JsonSerializer.Deserialize<UserSettings>("{}")!.NativeHapticSource == null
+        && new UserSettings().AudioStandard;
+    Check(start && blocked && retry && plan && usb && legacy && settingsDefault,
+        "Mode policy: auto-start gates, per-mode switches, retry timing (virtual-Xbox never by itself), native source plan, haptic source (USB only for game HD, legacy files)");
 }
 
 // L2 feedback (0x21) feels like steady resistance: one click on entering, no ratchet while pressing, tension held.

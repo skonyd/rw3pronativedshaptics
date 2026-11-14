@@ -29,14 +29,24 @@ public static class HapticModePolicy
     /// <summary>"Do not retry until the user changes something."</summary>
     public const long Never = long.MaxValue;
 
-    /// <summary>May the selected mode be (re)started now?</summary>
+    /// <summary>May the selected mode be (re)started now? Native starts when any game feedback is wanted (haptics from
+    /// the game or from sound, trigger effects or rumble): before 2026-11-14 it needed the HD PCM source, so the
+    /// common "triggers, no HD haptics" setup never started the bridge by itself.</summary>
     public static bool MayAutoStart(HapticMode mode, RunState run, bool starting, bool busy, bool exiting,
-        long now, long nextAutoStart, bool audioOutputEnabled, bool nativePcmEnabled) =>
+        long now, long nextAutoStart, bool audioOutputEnabled, bool nativeAnySource) =>
         !busy && !starting && !exiting && run == RunState.Off
         && mode != HapticMode.Normal
         && now >= nextAutoStart
         && (mode != HapticMode.Audio || audioOutputEnabled)
-        && (mode != HapticMode.Native || nativePcmEnabled);
+        && (mode != HapticMode.Native || nativeAnySource);
+
+    /// <summary>Native mode uses a USB DualSense's 4-channel endpoint only for the game's HD haptics; every other
+    /// source (sound, triggers, rumble) needs the virtual DualSense.</summary>
+    public static bool UseUsbDualSense(bool usbPresent, NativeHapticSource source) => usbPresent && source == NativeHapticSource.Game;
+
+    /// <summary>Settings written before the haptic source existed: HD PCM on = game, off = off.</summary>
+    public static NativeHapticSource ResolveSource(NativeHapticSource? saved, bool legacyPcmEnabled) =>
+        saved ?? (legacyPcmEnabled ? NativeHapticSource.Game : NativeHapticSource.Off);
 
     /// <summary>When to try again after a failed start. The virtual-Xbox audio bridge changes drivers and
     /// hides the pad, so it is never retried by itself; plain capture failures retry after <see cref="RetryMs"/>.</summary>
