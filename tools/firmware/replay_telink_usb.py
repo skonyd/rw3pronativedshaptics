@@ -235,6 +235,25 @@ def inspect_encoder_marker(cpu):
     return {"setup_source_reference": hex(reference), "string_address": hex(address)}
 
 
+def replay_ring_reset(cpu, stack):
+    """Verify stock PCM history clearing with a dirty ring and resampler."""
+    initialize_resampler(cpu, stack)
+    size = RING_SIZE * 4 + 16
+    cursors = bytes(cpu.mem_read(RING_STATE + 8, 8))
+    cpu.mem_write(RING_WORDS - 4, b"\xA5" * (size + 8))
+    cpu.mem_write(RING_STATE + 20, b"\xA5" * 4)
+    cpu.reg_write(UC_RISCV_REG_RA, 0x700)
+    run_until(cpu, 0x4B54, 0x700, vendor_budget=16_384)
+    require(cpu.mem_read(RING_WORDS, size) == bytes(size)
+            and cpu.mem_read(RING_WORDS - 4, 4) == b"\xA5" * 4
+            and cpu.mem_read(RING_WORDS + size, 4) == b"\xA5" * 4,
+            "Stock reset did not clear the PCM ring and the four retained-sample words")
+    require(cpu.mem_read(RING_STATE + 20, 4) == bytes(4), "Stock reset did not clear the timing state word")
+    require(cpu.mem_read(RING_STATE + 8, 8) == cursors, "Stock buffer reset unexpectedly moved the cursors")
+    return {"routine": "0x4b54", "ring_and_retained_sample_bytes_cleared": size,
+            "write_and_read_cursors_preserved": True}
+
+
 def replay_ring_consumer(cpu, first_word, expected_advance, pcm, stack):
     """Dispatch the stock ring consumer with one modeled caller request."""
     saved = cpu.context_save()
@@ -396,7 +415,8 @@ def replay_endpoint(cpu, slots):
             "ring_start": hex(RING_WORDS), "ring_words": RING_SIZE, "slots": len(slots),
             "exact_pcm_bytes": index * 4, "ring_wraps": wraps, "pcm_sha256": digest.hexdigest(),
             "downstream_input_split": split, "consumer_scenarios": consumers,
-            "resampler_fixtures": resampler, "lc3_plus_setup": inspect_encoder_marker(cpu)}
+            "resampler_fixtures": resampler, "lc3_plus_setup": inspect_encoder_marker(cpu),
+            "ring_reset": replay_ring_reset(cpu, stack)}
 
 
 def main():

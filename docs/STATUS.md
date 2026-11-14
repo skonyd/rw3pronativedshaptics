@@ -16,6 +16,8 @@ acknowledge each slot and publish its cursor to the stock event ring.
 The stock reader runs through the stock-initialized stereo resampler
 and returns processed PCM for contiguous, wrapped and underfilled
 ring states. Separate step and rate-offset tests check the kernel.
+The stock buffer reset clears all ring and retained-sample bytes
+in a dirty-memory fixture.
 The real scheduling and RF handoff still need to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S

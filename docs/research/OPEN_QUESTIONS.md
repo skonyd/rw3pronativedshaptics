@@ -20,7 +20,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   downstream stereo split. E-20261115-93 runs the event helper at
   0x5310 and the ring consumer from 0x5664 for seeded requests and
   clock values. E-20261115-94 executes the stock context initializer
-  and returns resampled PCM to the ring consumer's caller. Next identify
+  and returns resampled PCM to the ring consumer's caller. E-20261115-95
+  verifies stock PCM ring reset with dirty buffers. Next identify
   that caller and its scheduling source, follow the processed output
   to a verified RF packet and reproduce the controller-radio
   receive path to the NXP-facing interface.

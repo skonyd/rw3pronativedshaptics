@@ -126,9 +126,11 @@ With only 48 published frames and zero elapsed fixture time, stock
 moves its read cursor to −414 and reads 48 frames, ending at −366. The
 read began at ring word 610. An initialized-to-zero segment produced
 silence. A segment filled with `A5` produced the expected pattern after
-rounding. This checks what the routine reads under these initial
-conditions. The product's real startup scheduling and memory state
-require independent evidence.
+rounding. In a separate dirty-memory fixture, the stock `0x4B54`
+reset returns after clearing 4,096 ring bytes, four retained-sample
+words and the timing word at `0x90A40`. The cursor words and adjacent
+guards keep their previous values. Startup call order and physical
+consumer scheduling still need independent evidence.
 
 ### Stock stereo resampler and caller buffer
 
