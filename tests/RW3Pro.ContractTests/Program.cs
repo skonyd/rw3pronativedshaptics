@@ -1760,6 +1760,13 @@ SpectralContracts.Run(Check);
     int p0 = Bits(band2 + 6, 7), p3 = Bits(band2 + 6 + 39, 7);
     bool perPoint = nb == 2 && p0 == SensaFrameEncoder.Quantize7(SensaFrameEncoder.PitchOf(c[0].MelodyHz))
         && p3 == SensaFrameEncoder.Quantize7(SensaFrameEncoder.PitchOf(c[3].MelodyHz)) && p3 > p0;
+    // Noise (explosion, rain, crowd) has no clear pitch: the melody band stays silent instead of buzzing a random note.
+    var rng = new Random(7);
+    var (noise, _) = Run(t => (0.3 * (rng.NextDouble() * 2 - 1), 0), 0.3);
+    var (toneOverNoise, _) = Run(t => (0.2 * Sin(330, t) + 0.02 * (rng.NextDouble() * 2 - 1), 0), 0.3);
+    bool tonal = noise.Length == 4 && noise.All(p => p.MelodyAmp == 0) && toneOverNoise.Length == 4 && toneOverNoise[3].MelodyAmp > 0.1
+        && new UserSettings().OutputMethod == (int)SensaOutputMethod.Melody;
+    Check(tonal, $"Melody tonality gate: white noise melody {(noise.Length > 0 ? noise.Max(p => p.MelodyAmp) : -1):0.000}, 330 Hz over light noise {(toneOverNoise.Length > 0 ? toneOverNoise[3].MelodyAmp : -1):0.000}; Melody is the default method");
     Check(basic && fundamental && change && silent && fold && perPoint,
         $"Melody output: bass {(a.Length > 0 ? a[3].BassHz : 0):0.0} Hz, melody {(a.Length > 0 ? a[3].MelodyHz : 0):0.0} Hz, 880→{(b.Length > 0 ? b[3].MelodyHz : 0):0.0} Hz, voice-like fundamental {(v.Length > 0 ? v[3].MelodyHz : 0):0.0} Hz, note change {(c.Length > 0 ? c[0].MelodyHz : 0):0}→{(c.Length > 0 ? c[3].MelodyHz : 0):0} Hz, silence {silent}, per-point pitch codes {p0}→{p3}");
 }

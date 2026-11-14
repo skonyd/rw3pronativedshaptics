@@ -28,6 +28,11 @@ public sealed class MelodyAnalyzer
     public const double FoldLowHz = 150, FoldHighHz = 400;
     /// <summary>Sinusoid amplitude below which a tone counts as absent (≈ -50 dBFS).</summary>
     public const double Floor = 0.003;
+    /// <summary>Peak-to-mean magnitude in 110–1000 Hz: noise sits near 2–4, a clear note far above. Below
+    /// <see cref="TonalityNoise"/> the melody band is silent, from <see cref="TonalityNote"/> it plays fully.</summary>
+    public const double TonalityNoise = 4, TonalityNote = 10;
+    /// <summary>The melody is usually quieter than the bass in a mix, but it is what the ear listens for.</summary>
+    public const double MelodyEmphasis = 1.5;
     /// <summary>The 4 points of a 33 ms frame are 11 ms apart: 66 samples at 6 kHz.</summary>
     public const int PointHopSamples = 66;
 
@@ -125,6 +130,13 @@ public sealed class MelodyAnalyzer
         if (best > 0)
         {
             (melHz, melAmp) = Refine(best, bin, sum);
+            // Pitched or noise? A note stands far above the band's mean level; an explosion, rain or a crowd does not.
+            // Noise would otherwise become a random buzzing "note" on the palms.
+            double mean = 0;
+            for (int k = lo; k <= hi; k++) mean += _mag[k];
+            mean /= hi - lo + 1;
+            double tonality = mean > 0 ? _mag[best] / mean : 0;
+            melAmp *= Math.Clamp((tonality - TonalityNoise) / (TonalityNote - TonalityNoise), 0, 1);
             // the bass itself (or its octave) must not double as the melody
             if (bassAmp > 0 && Math.Abs(12 * Math.Log2(melHz / bassHz)) % 12 < .5 && melAmp < bassAmp * 1.2) melAmp = 0;
         }
@@ -188,6 +200,14 @@ public sealed class MelodyAnalyzer
         }
     }
 
+    /// <summary>Strongest point of any band (0..1).</summary>
+    public static double Peak(ReadOnlySpan<SensaBand> bands)
+    {
+        double m = 0;
+        foreach (var b in bands) m = Math.Max(m, Math.Max(Math.Max(b.A0, b.A1), Math.Max(b.A2, b.A3)));
+        return m;
+    }
+
     /// <summary>Two Sensa bands for one hand from 4 analysis points: bass (band 1) and melody (band 2), each with a
     /// pitch per point. Strengths go through the same limiter and level as the standard path; their sum stays ≤ 1.
     /// A silent point keeps the band's previous pitch so the tone does not jump to 30 Hz between notes.</summary>
@@ -197,7 +217,7 @@ public sealed class MelodyAnalyzer
         bool any = false;
         for (int k = 0; k < 4; k++)
         {
-            double b = HapticLimiter.Apply((float)p[k].BassAmp, level), m = HapticLimiter.Apply((float)p[k].MelodyAmp, level);
+            double b = HapticLimiter.Apply((float)p[k].BassAmp, level), m = HapticLimiter.Apply((float)(p[k].MelodyAmp * MelodyEmphasis), level);
             double sum = b + m;
             if (sum > 1) { b /= sum; m /= sum; }
             ba[k] = b; ma[k] = m;

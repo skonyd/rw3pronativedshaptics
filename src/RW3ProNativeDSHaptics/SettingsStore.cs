@@ -29,8 +29,9 @@ public sealed class UserSettings
     // Opt-in: richer .haps output; still lossy, phase/short-transient acceptance unproven.
     /// <summary>Legacy (pre-2026-11-08 builds): true meant Multiband. Read once into <see cref="OutputMethod"/>.</summary>
     public bool ExperimentalMultiband { get; set; }
-    /// <summary>Wolverine output method: 0 Standard, 1 Multiband (experimental), 2 Hybrid (experimental).</summary>
-    public int OutputMethod { get; set; }
+    /// <summary>Wolverine output method: 0 Standard, 1 Multiband (experimental), 2 Hybrid (experimental), 3 Melody (default
+    /// since 2026-11-14: bass + melody, loud unpitched hits fall back to Standard per hand).</summary>
+    public int OutputMethod { get; set; } = 3;
     /// <summary>Path to the controller: 0 Synapse (HAR + Razer runtime), 1 Direct USB (own encoder, no Synapse).</summary>
     /// <summary>0 = Synapse, 1 = Direct USB (default: the app needs no Razer software).</summary>
     public int Transport { get; set; } = 1;

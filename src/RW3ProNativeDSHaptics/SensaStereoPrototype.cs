@@ -116,6 +116,10 @@ public sealed class SensaStereoPrototype : IDisposable
     public long HybridMultiFrames { get; private set; }
     public long HybridStandardFrames { get; private set; }
     public long MultibandFrames { get; private set; }
+    /// <summary>Melody output: hand-frames that fell back to the standard band (loud unpitched hits).</summary>
+    public long MelodyFallbackFrames { get; private set; }
+    /// <summary>Melody hand falls back to the standard band when its strongest tone is below this share of the envelope.</summary>
+    public const double MelodyFallbackRatio = 0.5;
     public long MultibandHeadroomReductions { get; private set; }
 
     private int _sourceGainPercent = 140;
@@ -390,9 +394,14 @@ public sealed class SensaStereoPrototype : IDisposable
                     // Melody: bands from the raw audio; a melody alone (no bass) is still sound to play.
                     mln = MelodyAnalyzer.Bands(mL, level, lBands, ref lBassHz, ref lMelHz);
                     mrn = MelodyAnalyzer.Bands(mR, level, rBands, ref rBassHz, ref rMelHz);
+                    // A loud unpitched hit (explosion, gunshot, impact) has little bass/melody tone but a strong
+                    // envelope: that hand plays the standard band for this frame, so impacts stay punchy.
+                    if (mln > 0 && leftOn && MelodyAnalyzer.Peak(lBands.AsSpan(0, mln)) < MelodyFallbackRatio * Math.Max(Math.Max(la[0], la[1]), Math.Max(la[2], la[3]))) mln = -1;
+                    if (mrn > 0 && rightOn && MelodyAnalyzer.Peak(rBands.AsSpan(0, mrn)) < MelodyFallbackRatio * Math.Max(Math.Max(ra[0], ra[1]), Math.Max(ra[2], ra[3]))) mrn = -1;
                     leftOn |= mln > 0; rightOn |= mrn > 0;
+                    if (mln < 0) MelodyFallbackFrames++;
+                    if (mrn < 0) MelodyFallbackFrames++;
                 }
-                bool useMelody = mln > 0 || mrn > 0;
                 var (trigL, trigR) = gipMode ? XboxSensa.Triggers() : (0, 0);
                 bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
@@ -404,8 +413,8 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         HapticSpectrum ls = default, rs = default;
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
-                        int ln = useMelody ? mln : leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
-                        int rn = useMelody ? mrn : rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
+                        int ln = mln > 0 ? mln : leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
+                        int rn = mrn > 0 ? mrn : rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
                         int length = SensaXboxFrameEncoder.Encode(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn),
                             records && leftOn ? DirectSensaMapping.Hit(fl, level) : null, records && rightOn ? DirectSensaMapping.Hit(fr, level) : null,
                             trigL, trigR, xframe);
@@ -425,8 +434,8 @@ public sealed class SensaStereoPrototype : IDisposable
                     {
                         HapticSpectrum ls = default, rs = default;
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
-                        int ln = useMelody ? mln : DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
-                        int rn = useMelody ? mrn : DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
+                        int ln = mln > 0 ? mln : DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands);
+                        int rn = mrn > 0 ? mrn : DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands);
                         int length = SensaFrameEncoder.EncodeBands(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn), frame,
                             records ? DirectSensaMapping.Hit(fl, level) : null, records ? DirectSensaMapping.Hit(fr, level) : null);
                         ok = tx.Send(frame.AsSpan(0, length));

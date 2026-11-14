@@ -338,9 +338,9 @@
               <CheckBox x:Name="AudioStandard" Content="Standart (DSX gibi): ses olduğu gibi, sessizlikte durur" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
               <TextBlock Text="Önerilen. Kısık ses zayıf, yüksek ses güçlü titreşir; çok sessiz kısımlarda titreşim tamamen kesilir." Style="{StaticResource Hint}"/>
-              <CheckBox x:Name="AudioMelody" Content="Melodi modu (müzik): bas ve melodi avuçlarda tanınır biçimde çalar" Foreground="#EEF3FF" Margin="0,8,0,0"
+              <CheckBox x:Name="AudioMelody" Content="Melodi modu (önerilen): bas ve melodi avuçlarda tanınır biçimde çalar" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="AudioMelody_Changed" Unchecked="AudioMelody_Changed"/>
-              <TextBlock Text="Bir el iki ton çalar: bas kendi frekansında, melodi (vokal, solo) bir iki oktav aşağıda. Kolu kulağına dayayınca ezgi duyulur; sözler duyulmaz. Oyunlarda vuruşlar için Standart daha keskindir." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Bir el iki ton çalar: bas kendi frekansında, melodi (vokal, solo) bir iki oktav aşağıda; kolu kulağına dayayınca ezgi duyulur, sözler duyulmaz. Patlama, silah gibi perdesiz güçlü vuruşlarda o el kendiliğinden Standart'a geçer. Kapalıyken Standart: tek ton, en hızlı tepki." Style="{StaticResource Hint}"/>
 
               <!-- the game's own Xbox feedback, merged through a virtual Xbox pad -->
               <TextBlock Text="Oyunun kendi titreşimini de ekle (Xbox modu)" FontWeight="SemiBold" Margin="0,12,0,2"/>

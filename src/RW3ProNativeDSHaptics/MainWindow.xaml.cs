@@ -457,6 +457,7 @@ public partial class MainWindow : Window
             // Audio as it is (DSX-like), the sound's own level, every sound: works with every game.
             AudioStandard.IsChecked = true;
             AudioLevelSlider.Value = 100;
+            AudioMelody.IsChecked = true;   // bass + melody; loud hits still punch (per-hand fallback)
             ModeAudio.IsChecked = true;
         }
         else if (choice == "Native")
@@ -2239,8 +2240,8 @@ public partial class MainWindow : Window
         {
             SensaOutputMethod.Hybrid => "Hibrit açık" + (multi + standard > 0 ? $" • son çalışmada karelerin %{100.0 * multi / (multi + standard):F0}'i çok bantlı" : "") + ".",
             SensaOutputMethod.Multiband => "Çok bantlı açık: kısa vuruşlar zayıf hissedilebilir.",
-            SensaOutputMethod.Melody => "Melodi açık: her elde bas + oktav katlanmış melodi, nokta başına frekans. Müzik için; frekans filtresi 'Tam haptik bant' olmalı.",
-            _ => "Standart (önerilen)."
+            SensaOutputMethod.Melody => "Melodi (önerilen): her elde bas + oktav katlanmış melodi, nokta başına frekans. Perdesiz güçlü vuruşlarda o el Standart'a geçer. Frekans filtresi bu sırada tam bant kullanılır.",
+            _ => "Standart: tek ton, en keskin vuruşlar. Önerilen: Melodi."
         };
     }
 
