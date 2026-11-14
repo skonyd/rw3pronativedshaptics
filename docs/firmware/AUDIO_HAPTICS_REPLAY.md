@@ -248,6 +248,18 @@ the peak match-count deviation was 540 at 100% and 270 at 50%. The inputs
 are controlled profiles. The controller's actual profile loading and
 physical timing remain open.
 
+### Stock profile refresh
+
+The stock refresh wrapper `0x1EEFC` calls `0x31DC8` to convert
+the selected in-RAM profile, then calls `0x10088` to rebuild the
+frequency tables. Profile slots use a `0x13C` stride from
+`0x20001BF5`, with the zero-based selection at offset 5. Replaying
+slot 0 → 1 → 0 restored the test coefficient as 0.25 → 0.75 → 0.25.
+Four distinct sloped calibration fixtures also matched all 2,004
+expected table entries after each refresh, including stock integer
+percentage truncation between knots. Persistent storage reads and the
+device's own calibration inputs are outside this replay.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

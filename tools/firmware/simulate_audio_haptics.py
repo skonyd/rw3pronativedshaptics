@@ -572,6 +572,39 @@ def initialize_sensa_gain_tables(replay, gain_percent):
                "Stock gain initializer produced an unexpected table")
 
 
+def check_stock_profile_calibration(image, dsp):
+    """Run the stock profile conversion and frequency-table refresh wrapper."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
+    cpu.mem_map(0xE000E000, 4096)
+    cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
+    profile_base = 0x20001BF5
+    # Two distinct little-endian coefficients in the same field of two profiles.
+    for index, percent in enumerate((25, 75)):
+        cpu.mem_write(profile_base + index * 0x13C + 0x89, struct.pack("<H", percent))
+    for channel in range(4):
+        base = 0x200093FB + 0x2C * channel
+        cpu.mem_write(base + 4, struct.pack("<11H", *range(0, 501, 50)))
+        cpu.mem_write(base + 0x1A, struct.pack("<11H", *(20 + 10 * channel + 2 * i for i in range(11))))
+
+    gains = []
+    for index, percent in enumerate((25, 75, 25)):
+        cpu.mem_write(profile_base + 5, bytes([index % 2]))
+        replay.call(0x1EEFC, RETURN, instruction_limit=500000)
+        gain, = struct.unpack("<f", cpu.mem_read(0x20000014, 4))
+        verify(abs(gain - percent / 100) < 1e-6, "Stock profile conversion used the wrong slot")
+        gains.append(gain)
+        for channel in range(4):
+            values = struct.unpack("<501f", cpu.mem_read(0x20002404 + channel * 0x7D4, 501 * 4))
+            # Positive linear knots produce integer percentages in stock code.
+            for hz, value in enumerate(values):
+                expected = (20 + 10 * channel + hz // 25) / 100
+                verify(abs(value - expected) < 1e-6, f"Gain interpolation mismatch at channel {channel}, {hz} Hz")
+    return {"name": "stock_profile_calibration", "selected_gains": gains,
+            "table_entries_checked_per_refresh": 4 * 501}
+
+
 def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
@@ -699,6 +732,7 @@ def main():
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
     report.append(check_sensa_pwm(image, dsp))
+    report.append(check_stock_profile_calibration(image, dsp))
     full_gain = check_sensa_pwm(image, dsp, continuous=True)
     half_gain = check_sensa_pwm(image, dsp, continuous=True, gain_percent=50)
     for full, half in zip(full_gain["cases"], half_gain["cases"]):

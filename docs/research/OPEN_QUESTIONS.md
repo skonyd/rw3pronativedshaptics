@@ -24,7 +24,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   writes are covered for seeded duty and synthesized palm transients
   (E-20261114-13). E-20261114-14 covers continuous palm bands with fixture
   gain tables. E-20261114-15 covers the stock initializer with controlled
-  profile knots. Trace device profile loading and trigger output, then capture
+  profile knots. E-20261114-16 covers RAM profile conversion and interpolation.
+  Trace persistent storage loading and trigger output, then capture
   actual PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

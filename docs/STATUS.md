@@ -32,6 +32,8 @@ for both palms, with opposite-channel isolation in the fixture.
 Original DSP band levels reach stock SCT duty output. The stock initializer
 builds the gain tables from controlled calibration inputs. An explicit
 empty frame restores idle.
+The stock refresh wrapper now also passes RAM profile switching and
+frequency-dependent gain interpolation checks.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
