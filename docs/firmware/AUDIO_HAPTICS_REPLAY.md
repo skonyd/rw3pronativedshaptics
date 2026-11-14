@@ -102,6 +102,10 @@ NXP callback `0x28C80` accepts a 198-byte event, skips six bytes at
 Execution stopped at its accounting call `0x2384C`. For a non-silent PCM
 block from each capture, the real machine code preserved every payload byte
 at offset 0 and at offset 6080 where the copy wrapped to the start of the ring.
+The replay also invokes the stock TX routine on the same RAM after the stock
+receive branch. At offsets 0 and 5952, the TX routine selects the slot just
+written and advances its read pointer correctly, including ring wrap. The
+USB event and already-primed stream state are supplied by the fixture.
 This corroborates the wired USB-to-I2S buffer route. The dongle capture ends
 at the host-to-dongle USB link. Its over-the-air framing and where the
 controller receives or decodes the audio remain open. No planned button

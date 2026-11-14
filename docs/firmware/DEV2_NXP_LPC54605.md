@@ -143,8 +143,8 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 
 **Consequence for the custom firmware:**
 - The I2S TX callback 0x22FF8 transfers 192-byte PCM blocks from NXP RAM to the
-  audio interface. It is a candidate observation point. The USB producer and
-  consumer were verified with separate fixture states. The full scheduling
+  audio interface. It is a candidate observation point. Both routines also
+  ran sequentially on the same ring with a primed stream fixture. The full scheduling
   path needs to be exercised before choosing an integration point.
 - NXP-only audio-to-Sensa is a wired-path hypothesis. The wireless path through
   the dongle and radio SoC remains open.

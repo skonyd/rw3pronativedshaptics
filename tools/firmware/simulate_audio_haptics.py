@@ -98,6 +98,24 @@ class Replay:
         written, = struct.unpack("<I", cpu.mem_read(0x20008F9C, 4))
         verify(written == (offset + 192) % 6144, "Stock USB receive did not advance its ring")
 
+    def check_usb_to_i2s(self, slot, offset):
+        self.check_usb_receive(slot, offset)
+        cpu = self.cpu
+        # Configure the already-started stream. Preserve the producer's ring
+        # bytes and indices while the real TX routine reads the same slot.
+        cpu.mem_write(0x20000A59, b"\x01")
+        cpu.mem_write(0x20000A92, b"\x00")
+        cpu.mem_write(0x20008F92, b"\x01")
+        cpu.mem_write(0x20008F98, struct.pack("<I", offset))
+        cpu.mem_write(0x20008FC4, struct.pack("<II", 0, 1))
+        self.call(TX, DMA_SUBMIT, 0, 0)
+        address = cpu.reg_read(UC_ARM_REG_R2)
+        verify(address == USB_RING + offset and cpu.reg_read(UC_ARM_REG_R3) == 192,
+               "TX did not select the slot written by USB")
+        verify(bytes(cpu.mem_read(address, 192)) == slot[6:], "USB-to-I2S PCM mismatch")
+        verify(bytes(cpu.mem_read(0x20008F98, 4)) == struct.pack("<I", (offset + 192) % 6144),
+               "I2S read pointer did not advance")
+
 
 def tone(tick, channel_frequencies, amplitude=0.85):
     return struct.pack("<96h", *(
@@ -186,8 +204,9 @@ def replay_capture(image, dsp, path):
         previous_sequence = sequence
         if not usb_ring_checked and any(abs(sample) > 100 for sample in struct.unpack("<96h", pcm)):
             header = bytes((0x60, 0x20, sequence, 0xC0, 0x81, 0))
-            for offset in (0, 6144 - 64):
-                replay.check_usb_receive(header + pcm, offset)
+            replay.check_usb_receive(header + pcm, 6144 - 64)
+            for offset in (0, 6144 - 192):
+                replay.check_usb_to_i2s(header + pcm, offset)
             usb_ring_checked = True
         levels, _ = replay.tick(pcm, True, True, index % 3)
         trace.append({"sequence": sequence, "urb_timestamp_us": record["urb_timestamp_us"],
