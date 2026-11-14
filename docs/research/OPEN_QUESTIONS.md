@@ -17,9 +17,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   matches the dongle Xbox descriptor to the captured host endpoints.
   E-20261115-92 verifies the stock dongle endpoint dispatcher and
   1024-word PCM ring with every captured slot and exercises the
-  downstream stereo split. Next replay the event helper at 0x5310
-  and the timed ring consumer from 0x5664; follow its processed
-  output to a verified RF packet and reproduce the controller-radio
+  downstream stereo split. E-20261115-93 runs the event helper at
+  0x5310 and the ring consumer from 0x5664 for seeded requests and
+  clock values. Next run the stock context initializer and resampler
+  beyond 0x18B28, reproduce producer-to-consumer scheduling, follow the
+  processed output to a verified RF packet and reproduce the controller-radio
   receive path to the NXP-facing interface.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of

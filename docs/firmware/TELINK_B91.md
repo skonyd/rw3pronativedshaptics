@@ -102,15 +102,34 @@ The model provides length and stream reads at `0x80100816` and
 This is an observed code-access pattern in the replay. The public B91
 SDK labels the latter address as an endpoint control register, so this
 model does not establish the product's physical register semantics.
-The replay stops before the event helper call at `0x5310`. The host
-dispatches each slot and the replay does not model interrupt timing,
-stream negotiation or consumer pacing.
+The handler returns normally after the event helper call at `0x5310`
+and writes 1 to `0x8010082E`. Each of the 6,272 slots publishes an event
+of type 8 to the 512-entry ring at `0x88154`. The event carries the low
+16 bits of the PCM write counter, which first rolls over at slot 1,366.
+Event timestamps match 1 ms steps from a modeled 24 MHz clock. The
+host dispatches each slot and provides the clock and endpoint registers.
 [Telink B91 USB registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/usb_reg.h)
+[Andes DSP instruction encodings](https://github.com/hpmicro-rs/andes-riscv/blob/main/src/dsp.rs)
 
 The downstream code at `0x57EC` reads the same ring, and call site
 `0x5858` passes samples to `0x18AB8`. A separate fixture runs the input
 loop of that routine directly on one asymmetric captured ring block.
 It checks the exact 48 left and right samples in separate buffers using
-a seeded context and stops before the next processing stage at
-`0x18B28`. The producer-to-consumer scheduling, sample processing,
-codec choice, RF send/receive and NXP-facing handoff remain open.
+a seeded context. The replay also enters the stock consumer at `0x5664`
+with a fixture request for 47 frames and verifies its 48-frame internal
+read. Two asymmetric capture blocks cover contiguous and wrapped reads.
+In these fixtures stock preserves nonnegative samples and rounds each
+negative sample one integer toward zero. The real call at `0x5858`
+then splits those adjusted samples into separate buffers.
+
+With only 48 published frames and zero elapsed fixture time, stock
+moves its read cursor to −414 and reads 48 frames, ending at −366. The
+read began at ring word 610. An initialized-to-zero segment produced
+silence. A segment filled with `A5` produced the expected pattern after
+rounding. This checks what the routine reads under these initial
+conditions. The product's real startup scheduling and memory state
+require independent evidence.
+
+The integrated check stops at `0x18B28`. Stock stream negotiation,
+producer-to-consumer pacing, resampling, codec choice, RF send/receive
+and the NXP-facing handoff remain open.
