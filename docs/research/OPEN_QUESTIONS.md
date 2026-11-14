@@ -19,11 +19,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   - Sensa class 0x16 answers in Xbox mode and serves the 4-body-part descriptor (E-20261110-13..16).
 - **Answered 2026-11-11:** yes. One Xbox-mode Sensa frame drives the palms (216/116) and the trigger motors (249/149)
   (E-20261111-03/04).
-- **Next step:** build it into the app as an Xbox-mode output:
-  - DualSense haptic PCM → palms.
-  - Trigger effects → 249/149.
-  - Keep the GIP send path at ≥ 11 ms per frame.
-  - Silence on stop.
+- **Built into the app 2026-11-11** (977b181, 1125bd5): haptic PCM → palms, trigger effects → 249/149, ≥ 11 ms
+  per frame, silence on stop. **Remaining:** feel it in a real DualSense game.
 - **Details:** [XBOX_MODE_HAPTICS_ROUTE.md](XBOX_MODE_HAPTICS_ROUTE.md)
 
 ## Q2. Bit layout of the 4-body-part Sensa frame (closed 2026-11-11)

@@ -1,5 +1,8 @@
 # AI Handoff — rw3pronativedshaptics
 
+**New tool or new session? Start with [docs/HANDOFF.md](docs/HANDOFF.md):** what was done, where, current phase,
+next steps, build/test/install commands for this machine.
+
 Current state lives in `docs/STATUS.md` (single source of truth): read it first and update it in the same commit when behaviour changes. Dated reports are history.
 
 **Hardware facts as of 2026-11-11 (supersede older statements below):**
