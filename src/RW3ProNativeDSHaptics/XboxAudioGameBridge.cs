@@ -44,6 +44,12 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
     public Func<string>? EngineProbe { get; init; }
     private double _maxGameBody, _maxGameTrig;
+    // Input path diagnostics (strict): physical read changes → virtual pad on XInput → GameInput reading (as a GDK game).
+    private long _physChanges;
+    private XInputPad _lastPad;
+    private VirtualPadInputProbe? _inputProbe;
+    private int _virtualXSlot = -2;
+    private uint _virtualXPacket0;
     private long _xinputWrites;
     private ushort _bodyL, _bodyR;
     private long _bodyTick;
@@ -298,6 +304,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             var state = new HMGamepadState { Axes = axes };
 #endif
             long nextLog = Environment.TickCount64 + 10_000, lostSince = 0;
+            int probeTick = 0;
             while (_running)
             {
                 if (!Strict && _audio?.IsCapturing != true)
@@ -339,14 +346,19 @@ public sealed class XboxAudioGameBridge : IDisposable
                 if (_running) _output.Submit(frame, now);
                 if (Strict)
                 {
+                    if (!pad.Equals(_lastPad)) { _physChanges++; _lastPad = pad; }
+                    if ((++probeTick & 7) == 0)   // ~every 64 ms: read the virtual pad back through GameInput
+                        try { (_inputProbe ??= new VirtualPadInputProbe()).Poll(); } catch { }
                     _maxGameBody = Math.Max(_maxGameBody, Math.Max(_game.BodyLeft, _game.BodyRight));
                     _maxGameTrig = Math.Max(_maxGameTrig, Math.Max(_game.TriggerLeft, _game.TriggerRight));
                     if (now >= nextLog)
                     {
                         nextLog = now + 10_000;
                         string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
-                        DiagnosticsService.Info($"Virtual Xbox pad (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
-                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; {engine}");
+                        DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
+                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
+                            $"INPUT physical changes {_physChanges} → virtual XInput {VirtualXInputNote()} → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
+                            (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
                     }
                 }
@@ -357,6 +369,20 @@ public sealed class XboxAudioGameBridge : IDisposable
     }
 
     private int _lastGoodSlot = -1;
+
+    /// <summary>Our virtual pad's XInput slot and how far its packet number moved since the first look (a moving packet
+    /// = the state we submit reaches XInput). HIDMaestro's Series BT / 360 pads are on XInput; the PS4 pad is not.</summary>
+    private string VirtualXInputNote()
+    {
+        if (_virtualXSlot == -2)
+        {
+            _virtualXSlot = -1;
+            for (int i = 0; i < 4; i++)
+                if (i != _xinputSlot && IsVirtualPad(i) && XInput.GetState((uint)i, out var st) == 0) { _virtualXSlot = i; _virtualXPacket0 = st.dwPacketNumber; break; }
+        }
+        if (_virtualXSlot < 0) return "yok";
+        return XInput.GetState((uint)_virtualXSlot, out var s) == 0 ? $"slot {_virtualXSlot} packets +{s.dwPacketNumber - _virtualXPacket0}" : $"slot {_virtualXSlot} gone";
+    }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct CapsEx { public byte Type, SubType; public ushort Flags, Buttons; public byte LT, RT; public short LX, LY, RX, RY; public ushort WL, WR, Vid, Pid, Version, Unk1; public uint Unk2; }
@@ -404,6 +430,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     public void Dispose()
     {
         _running = false;
+        try { _inputProbe?.Dispose(); } catch { }
         _watchdog?.Dispose();
         _watchdog = null;
         try
