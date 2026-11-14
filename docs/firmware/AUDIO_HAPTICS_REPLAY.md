@@ -209,6 +209,21 @@ The RX branch tests the modulo write index against 0xC00 when re-arming playback
 The fixture verified the first recovered PCM in both cases. A hardware timing
 trace is still needed before using either delay as a device-wide guarantee.
 
+### Stock Sensa transient to PWM
+
+The replay runs stock RAM decompression, submits a synthetic Xbox Sensa
+transient through dispatcher `0x2B538`, then alternates stock render tick
+`0x2D210` with the stock PWM tick at `0x2B6F0`. Render enable flags,
+timer scheduling and SCT event assignments come from the fixture. Duty
+values come from stock synthesis.
+
+Across 16 ticks, strength 35 and pitch code 24 increased the peak absolute
+deviation from idle by 225 match counts on the corresponding modeled
+channel for each palm (216 and 116). The opposite channel matched its idle
+trace on every tick. This establishes the transient-to-register path.
+Continuous bands, trigger outputs, hardware timer cadence and PWM pin
+waveforms still require validation.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

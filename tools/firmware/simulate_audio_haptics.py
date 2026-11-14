@@ -557,6 +557,48 @@ def check_dma_arrival_variation(image, dsp):
     return {"name": "stock_dma_arrival_variation", "cases": report}
 
 
+def check_sensa_transient_pwm(image, dsp):
+    """Follow stock transient synthesis into the stock PWM register writer."""
+    results = {}
+    for side in (None, 0, 1):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
+        for page in (0xE000E000, 0x40028000, 0x40085000):
+            cpu.mem_map(page, 4096)
+        for address, value in ((0xE000ED88, 0xF00000), (0x40085000, 1), (0x40085100, 4500)):
+            cpu.mem_write(address, struct.pack("<I", value))
+        for channel in range(4):
+            event = channel * 2
+            cpu.mem_write(0x20002270 + 4 * channel, struct.pack("<I", event))
+            cpu.mem_write(0x4008530C + 8 * event, struct.pack("<I", channel + 1))
+        bodies = [([], []) for _ in range(4)]
+        if side is not None:
+            bodies[side] = ([], [(35, 24, 0)])
+        cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
+        cpu.mem_write(0x20000B2C, b"\x01")
+        replay.call(0x2B538, RETURN)
+        verify(cpu.mem_read(0x20000B2C, 1) == b"\x00", "Stock dispatcher did not consume the Sensa frame")
+        for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
+            cpu.mem_write(address, bytes([value]))
+        trace = []
+        for _ in range(16):
+            replay.call(0x2D210, RETURN)
+            replay.call(0x2B6F0, RETURN)
+            trace.append(struct.unpack("<2I", cpu.mem_read(0x40085104, 8)))
+        results[side] = trace
+    idle = results[None]
+    report = []
+    for side in (0, 1):
+        trace = results[side]
+        verify(all(values[1 - side] == baseline[1 - side] for values, baseline in zip(trace, idle)),
+               "Sensa transient changed the opposite modeled PWM channel")
+        delta = max(abs(values[side] - baseline[side]) for values, baseline in zip(trace, idle))
+        verify(delta > 0, "Sensa transient did not reach the modeled PWM registers")
+        report.append({"body_part": (216, 116)[side], "peak_match_count_delta": delta})
+    return {"name": "stock_sensa_transient_pwm", "cases": report}
+
+
 def replay_capture(image, dsp, path):
     # The USB capture does not prove the negotiated format or firmware ingress.
     # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
@@ -619,6 +661,7 @@ def main():
     report.append(check_stock_dma_descriptor(image, dsp))
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
+    report.append(check_sensa_transient_pwm(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

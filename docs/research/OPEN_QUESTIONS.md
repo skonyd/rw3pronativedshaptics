@@ -21,8 +21,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   I2S completion callback through the next DMA submission using injected
   descriptor counts and IRQ events. Compare with an
   independent timing trace, including recovery at different ring positions. SCT register
-  writes are now covered for seeded duty. Trace the synthesis inputs and
-  capture actual PWM. Build an end-to-end acceptance trace before selecting a firmware
+  writes are covered for seeded duty and synthesized palm transients
+  (E-20261114-13). Trace continuous bands and trigger output, then capture
+  actual PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.
   Verify a spare-unit restore before any hardware candidate. Bootloader

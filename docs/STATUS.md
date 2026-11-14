@@ -27,6 +27,8 @@ Continuous replay follows stock DMA links across 128 USB blocks and checks
 byte order, ring wrap and underrun silence at the modeled FIFO.
 Four-block USB bursts and midstream pauses now exercise queue buffering
 and ordered recovery under a deterministic event schedule.
+Stock Sensa transient synthesis also reaches the modeled SCT duty registers
+for both palms, with opposite-channel isolation in the fixture.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
