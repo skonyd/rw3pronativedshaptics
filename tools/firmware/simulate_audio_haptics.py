@@ -388,6 +388,63 @@ def check_stock_i2s_completion(image, dsp):
     return {"name": "stock_i2s_completion", "cases": report, "rearmed_with": ["silence", "usb_pcm"]}
 
 
+def check_stock_dma_descriptor(image, dsp):
+    """Execute the initial descriptor produced by the stock I2S setup."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    syscon, dma, tx, rx, nvic = 0x40000000, 0x40082000, 0x40097000, 0x40098000, 0xE000E000
+    for page in (syscon, dma, tx, rx, nvic):
+        cpu.mem_map(page, 4096)
+
+    def reset_register_alias(machine, access, address, size, value, data):
+        target = syscon + 0x100 + (address & 0xF)
+        old, = struct.unpack("<I", machine.mem_read(target, 4))
+        new = old | value if address < syscon + 0x140 else old & ~value
+        machine.mem_write(target, struct.pack("<I", new))
+
+    cpu.hook_add(UC_HOOK_MEM_WRITE, reset_register_alias, begin=syscon + 0x120, end=syscon + 0x14B)
+    cpu.mem_write(dma + 8, struct.pack("<I", 0x2000B000))
+    replay.call(0x13D6C, RETURN)
+
+    channel = 13
+    table, = struct.unpack("<I", cpu.mem_read(dma + 8, 4))
+    descriptor = table + channel * 16
+    flags, source_end, destination_end, link = struct.unpack("<4I", cpu.mem_read(descriptor, 16))
+    channel_config, = struct.unpack("<I", cpu.mem_read(dma + 0x408 + channel * 16, 4))
+    verify(flags == channel_config & ~4 and flags & 1 and flags & 2 and flags & 0x30 == 0x20,
+           "Unsupported initial DMA transfer or interrupt flags")
+    width = 1 << ((flags >> 8) & 3)
+    transfers = ((flags >> 16) & 0x3FF) + 1
+    verify(width == 4 and transfers == 48 and flags >> 12 & 0xF == 1,
+           "Unexpected I2S transfer width, count or increment")
+    verify(destination_end == tx + 0xE20 and link and link % 16 == 0,
+           "Unexpected DMA FIFO destination or link")
+    source_start = source_end - (transfers - 1) * width
+    verify(source_start == ZERO, "Initial descriptor did not select the startup zero block")
+
+    # Load a distinctive fixture in the already-addressed buffer to expose
+    # incorrect strides or a reversed transfer. The firmware descriptor is untouched.
+    payload = tone(2, ((80,), (190,)))
+    cpu.mem_write(source_start, payload)
+    fifo = b"".join(bytes(cpu.mem_read(source_start + index * width, width))
+                    for index in range(transfers))
+    verify(fifo == payload, "DMA FIFO payload mismatch")
+    cpu.mem_write(source_start, bytes(len(payload)))
+
+    # SETINTB (bit 5) raises the modeled channel's INTB after the transfer.
+    for offset, value in ((0x48, 1 << channel), (0x60, 1 << channel)):
+        cpu.mem_write(dma + offset, struct.pack("<I", value))
+    # Initialization already translated the submit routine. Rebuild blocks
+    # so Unicorn honors the new stop address inside the callback chain.
+    cpu.ctl_flush_tb()
+    replay.call(0xC478, DMA_SUBMIT)
+    verify(cpu.reg_read(UC_ARM_REG_R2) == ZERO and cpu.reg_read(UC_ARM_REG_R3) == 192,
+           "Startup DMA completion did not re-arm silence")
+    return {"name": "stock_generated_dma_descriptor", "channel": channel,
+            "descriptor": hex(descriptor), "flags": hex(flags), "linked_descriptor": hex(link),
+            "fifo_bytes": len(fifo), "completion": "INTB", "rearmed_with": "silence"}
+
+
 def replay_capture(image, dsp, path):
     # The USB capture does not prove the negotiated format or firmware ingress.
     # Use only an externally verified 48 kHz stereo PCM16 stream with 192 B slots.
@@ -443,6 +500,7 @@ def main():
     report.append(check_timer_pwm(image, dsp))
     report.append(check_dma_boundaries(image, dsp))
     report.append(check_stock_i2s_completion(image, dsp))
+    report.append(check_stock_dma_descriptor(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

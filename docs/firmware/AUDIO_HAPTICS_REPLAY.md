@@ -165,6 +165,18 @@ stream is primed. The test seeds the in-flight descriptor byte counts and
 sets the IRQ status registers. DMA descriptor execution, startup and real
 interrupt timing remain open.
 
+The generated-descriptor test starts earlier at stock I2S initialization
+`0x13D6C`. It models the SYSCON reset aliases and supplies the DMA descriptor
+table base. Stock code produces channel 13's head descriptor at
+`0x2000B0D0`, with flags `0x2F1223` and link `0x2000ABA0`. The model
+reads 48 incrementing 32-bit words from the descriptor's source and checks
+the fixed TX FIFO destination. A distinctive stereo fixture verifies byte
+order. The model derives INTB from the descriptor and runs the stock IRQ,
+I2S completion and application callbacks to the next silence submission.
+The test executes the head descriptor only. Linked reload, FIFO pacing,
+DMA arbitration and cold boot remain open.
+[NXP DMA descriptor fields](https://mcuxpresso.nxp.com/mcuxsdk/latest/api/devices/LPC54628/index.html).
+
 Recovery timing depends on queue position in this fixture. After draining
 128 blocks, the first new PCM was selected after another 16 blocks of prefill.
 After draining 30 blocks, the next received block resumed playback immediately.
