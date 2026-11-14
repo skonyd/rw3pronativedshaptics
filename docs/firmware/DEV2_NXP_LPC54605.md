@@ -120,8 +120,9 @@ See [RAZER_COMMANDS.md](RAZER_COMMANDS.md): 104 commands, dispatcher 0x30524.
    0x200044C4+0x29 == 1, then clears the timer interrupt.
    - 0x1F5CC switches on a mode byte at 0x200090E6: 0/2 normal, 3, 0xFE, 0xFF.
    - Stock setup gives CTIMER2 a modeled 250 µs interval (96 MHz synchronous bus).
-   - CTIMER3 (0x2B718) runs 0x2D534 and 0x2D210 every 8 ms in the modeled stock
-     configuration (12 MHz FRO on the asynchronous bus). See the
+   - CTIMER3 (0x2B718) runs 0x2D534 and 0x2D210 every 1 ms in the operational
+     model. Later board routine 0x130FC switches the asynchronous bus from
+     the initial 12 MHz FRO selection to the 96 MHz main clock. See the
      [timer schedule replay](AUDIO_HAPTICS_REPLAY.md#stock-timer-schedule).
 
 ### Headset audio (console ↔ controller) passes through the NXP
@@ -162,7 +163,8 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
   - 10/83 writes a 32 KB block from RAM 0x2000B4C8 to sector [0x200000FC] in 4 KB steps (0x2C604).
   - This is where firmware for the radio SoC is staged (`UpdateType.FLASH` through the controller).
 - **Settings and profiles** live in the on-chip **EEPROM** (`fsl_eeprom`, 0x40108000 window), not in flash.
-- **Free flash:** 0x37800–0x3FFFF (~34 KB, between the application and the staging area), available for patch code.
+- **Space outside the stock image:** 0x37800–0x3FFFF (~34 KB, before the staging area).
+  Its erase and bootloader behavior remain open, so no candidate allocation uses it.
   - The official updater erases [first HEX record, last HEX record end].
   - Whether the bootloader accepts an image beyond 0x37800 is unknown.
 

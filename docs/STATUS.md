@@ -48,8 +48,13 @@ The stock palm oscillator's lookup and four pitch codes now pass
 sample-domain checks. Its formula uses a 4 kHz constant.
 The stock clock and SCT initializers now generate the PWM channel/event
 mapping and the 1200-count match for a 40 kHz carrier in replay.
-Stock CTIMER2/3 setup and IRQ handlers exercise modeled 250 µs and 8 ms
-intervals, derived from separate 96 MHz and 12 MHz clock sources.
+The later stock board initializer switches CTIMER3 to the 96 MHz main
+clock, giving 250 µs consumption and 1 ms refill intervals in replay.
+The palm queue starts at 16 samples per side. A stalled refill retains
+the last PWM duty until fresh samples arrive. An ARM trampoline at the
+simulated I²S TX enqueue boundary copies PCM for a separately scheduled ARM worker.
+The stock/candidate comparisons preserve I²S bytes, a preceding game
+effect, palm isolation and return to idle after disable or source underrun.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

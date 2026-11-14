@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 from fractions import Fraction
 from pathlib import Path
 import struct
@@ -10,8 +11,8 @@ import wave
 
 from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_MCLASS, UC_MODE_THUMB
 from unicorn.arm_const import (
-    UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
-    UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_SP,
+    UC_ARM_REG_APSR, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
+    UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_SP,
 )
 
 from emulate_decoder import DECODER, OUT, decode, xbox_frame
@@ -24,6 +25,9 @@ USB_RX, USB_RX_ACCOUNTING = 0x28C80, 0x2384C
 USB_BUFFER, USB_EVENT, USB_CONTEXT = 0x2000B3C0, 0x20022000, 0x20022100
 USB_RING = 0x200057AC
 CTIMER2, CTIMER3 = 0x40028000, 0x40048000
+TX_TAIL, TAP, TAP_BUFFER = 0x2315C, DSP + 0x800, 0x20024000
+WORKER = DSP + 0x900
+TAP_ENABLE, TAP_READY, TAP_SOURCE = (TAP_BUFFER + offset for offset in (192, 196, 200))
 
 
 def verify(condition, message):
@@ -279,15 +283,15 @@ def check_stock_timer_schedule(image, dsp):
     """Schedule MR0 events from the configured clocks and run stock IRQ handlers."""
     replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
     cpu = replay.cpu
-    replay.call(0x32A64, RETURN, 1)
-    replay.call(0x329E4, RETURN, 1)
 
     def read_word(address):
         return read_sensa_pwm(cpu, (address,))[0]
 
-    verify(read_word(0x40040020) & 3 == 1, "Expected FRO 12 MHz on asynchronous APB")
+    bootstrap_selector = initialize_stock_sensa_timers(replay)
+    verify(bootstrap_selector == 1 and read_word(0x40040020) & 3 == 0,
+           "Expected asynchronous APB to switch from FRO 12 MHz to main clock")
     replay.call(0xA9F4, RETURN, 0)
-    clocks = (cpu.reg_read(UC_ARM_REG_R0), 12_000_000)
+    clocks = (cpu.reg_read(UC_ARM_REG_R0),) * 2
     verify(clocks[0] == 96_000_000, "Unexpected stock system clock")
     period_match = read_word(match_registers[0] - 4)
     carrier = clocks[0] // (2 * period_match)
@@ -304,7 +308,7 @@ def check_stock_timer_schedule(image, dsp):
         prescale = read_word(timer + 0x0C) + 1
         counts = read_word(timer + 0x18) + 1
         periods.append(Fraction(prescale * counts * 1_000_000, clock))
-    verify(periods == [250, 8000], "Unexpected stock CTIMER periods")
+    verify(periods == [250, 1000], "Unexpected stock CTIMER periods")
 
     def acknowledge(machine, access, address, size, value, data):
         # Unicorn MMIO writes are ordinary memory writes. Apply IR's W1C
@@ -331,7 +335,7 @@ def check_stock_timer_schedule(image, dsp):
     cpu.mem_write(0x200044ED, b"\x01")
     cpu.mem_write(0x20002284, struct.pack("<H", 20))
     countdown = 0x200090AA
-    cpu.mem_write(countdown, struct.pack("<H", 3))
+    cpu.mem_write(countdown, struct.pack("<H", 24))
     schedule = sorted((period * tick, priorities[index], index) for index, period in enumerate(periods)
                       for tick in range(1, int(24_000 / period) + 1))
     irq_counts = [0, 0]
@@ -347,13 +351,89 @@ def check_stock_timer_schedule(image, dsp):
         if timestamp == periods[0]:
             duty_at_first_fast_tick = read_word(match_registers[0])
         remaining, = struct.unpack("<H", cpu.mem_read(countdown, 2))
-        verify(remaining == 3 - irq_counts[1], "Stock slow timer countdown disagrees with dispatch")
-    verify(irq_counts == [96, 3] and duty_at_first_fast_tick == 240, "Unexpected stock timing results")
+        verify(remaining == 24 - irq_counts[1], "Stock slow timer countdown disagrees with dispatch")
+    verify(irq_counts == [96, 24] and duty_at_first_fast_tick == 240, "Unexpected stock timing results")
     return {"name": "stock_clock_timer_schedule", "timer_clocks_hz": list(clocks),
             "periods_us": [int(period) for period in periods], "irq_counts_in_24_ms": irq_counts,
             "irq_priorities": priorities,
             "pwm_carrier_hz": carrier, "pwm_period_match": period_match,
             "first_fast_tick_duty_match": duty_at_first_fast_tick}
+
+
+def initialize_stock_sensa_timers(replay):
+    """Run the timer setup in board initialization order, including the clock switch."""
+    cpu = replay.cpu
+    for page in (0x40001000, 0x40009000, 0x40049000):
+        cpu.mem_map(page, 4096)
+    replay.call(0x32A64, RETURN, 1)
+    replay.call(0x329E4, RETURN, 1)
+    selector = cpu.mem_read(0x40040020, 1)[0] & 3
+    replay.call(0x130FC, RETURN)
+    return selector
+
+
+def stock_timer_irq(replay, timer, handler):
+    replay.cpu.mem_write(timer, struct.pack("<I", 1))
+    replay.call(handler, RETURN)
+
+
+def check_stock_sensa_buffer(image, dsp):
+    """Compare stock sample production and consumption at the operational ratio."""
+    traces = {}
+    for side in (None, 0, 1):
+        replay, registers = initialize_stock_sensa_pwm(image, dsp)
+        initialize_stock_sensa_timers(replay)
+        cpu = replay.cpu
+        bodies = [([], []) for _ in range(4)]
+        if side is not None:
+            bodies[side] = ([], [(35, 24, 0)])
+        cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
+        cpu.mem_write(0x20000B2C, b"\x01")
+        replay.call(0x2B538, RETURN)
+        for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
+            cpu.mem_write(address, bytes([value]))
+
+        def depths():
+            return tuple(cpu.mem_read(0x2000162C, 2))
+
+        duty_trace = []
+        for tick in range(1, 113):
+            before = depths()
+            stock_timer_irq(replay, CTIMER2, 0xB438)
+            after = depths()
+            expected = before if tick <= 16 else tuple(max(0, depth - 1) for depth in before)
+            verify(after == expected, f"Unexpected consumption at tick {tick}")
+            duty_trace.append(read_sensa_pwm(cpu, registers))
+            # Skip 8 refill opportunities. This drains all 16 slots,
+            # exercises empty-buffer hold and then lets stock refill resume.
+            if tick % 4 == 0 and not 40 < tick <= 72:
+                stock_timer_irq(replay, CTIMER3, 0xB49C)
+                verify(depths() == tuple(depth + 4 for depth in after), f"Unexpected refill at tick {tick}")
+            if tick in (16, 40):
+                verify(depths() == (16, 16), f"Expected steady buffer at tick {tick}")
+            if tick in (56, 72):
+                verify(depths() == (0, 0), "Suppressed refill did not drain the buffer")
+            if tick in (76, 88, 112):
+                verify(depths() == (4, 4), "Stock recovery did not stay at the lower refill depth")
+        verify(len(set(duty_trace[55:72])) == 1, "Stock PWM did not retain its last duty on underrun")
+        traces[side] = duty_trace
+
+    deltas = []
+    for side in (0, 1):
+        trace = traces[side]
+        idle = traces[None]
+        verify(all(values[index] == baseline[index] for values, baseline in zip(trace, idle)
+                   for index in range(4) if index != side), "Sensa buffer leaked to another output")
+        verify(trace[:17] == idle[:17] and any(values[side] != baseline[side]
+                                               for values, baseline in zip(trace[17:], idle[17:])),
+               "Unexpected stock transient onset")
+        verify(any(values[side] != trace[71][side] for values in trace[72:88]),
+               "PWM output did not resume after the missed refills")
+        deltas.append(max(abs(values[side] - baseline[side]) for values, baseline in zip(trace, idle)))
+    return {"name": "stock_sensa_sample_buffer", "startup_depth_per_palm": 16,
+            "samples_per_refill": 4, "first_consumption_us": 4250, "missed_refills": 8,
+            "post_underrun_depth_after_refill": 4,
+            "empty_buffer_retained_last_duty": True, "peak_match_count_deltas": deltas}
 
 
 def check_dma_boundaries(image, dsp):
@@ -485,15 +565,20 @@ def model_syscon_reset(cpu):
     cpu.hook_add(UC_HOOK_MEM_WRITE, reset_register_alias, begin=syscon + 0x120, end=syscon + 0x14B)
 
 
-def initialize_stock_dma(image, dsp):
-    replay = Replay(image, dsp)
+def configure_stock_dma(replay):
     cpu = replay.cpu
-    dma, tx, rx, nvic = 0x40082000, 0x40097000, 0x40098000, 0xE000E000
-    for page in (dma, tx, rx, nvic):
+    dma, tx, rx = 0x40082000, 0x40097000, 0x40098000
+    for page in (dma, tx, rx):
         cpu.mem_map(page, 4096)
-    model_syscon_reset(cpu)
     cpu.mem_write(dma + 8, struct.pack("<I", 0x2000B000))
     replay.call(0x13D6C, RETURN)
+
+
+def initialize_stock_dma(image, dsp):
+    replay = Replay(image, dsp)
+    replay.cpu.mem_map(0xE000E000, 4096)
+    model_syscon_reset(replay.cpu)
+    configure_stock_dma(replay)
     return replay
 
 
@@ -573,9 +658,10 @@ def check_stock_dma_descriptor(image, dsp):
             "candidate_enabled_strengths": enabled_strengths}
 
 
-def check_continuous_dma(image, dsp, blocks, arrival_ticks=None):
+def check_continuous_dma(image, dsp, blocks, arrival_ticks=None, replay=None, on_block=None, tail_ticks=25):
     """Run the stock USB producer and generated DMA descriptor ring together."""
-    replay = initialize_stock_dma(image, dsp)
+    if replay is None:
+        replay = initialize_stock_dma(image, dsp)
     cpu = replay.cpu
     dma, channel_bit = 0x40082000, 1 << 13
     table, = struct.unpack("<I", cpu.mem_read(dma + 8, 4))
@@ -591,7 +677,7 @@ def check_continuous_dma(image, dsp, blocks, arrival_ticks=None):
     silence_gaps = []
     last_pcm_tick = None
     tail_silence = False
-    for tick in range(arrivals[-1] + 25):
+    for tick in range(arrivals[-1] + tail_ticks):
         while received < len(blocks) and arrivals[received] == tick:
             header = bytes((0x60, 0x20, received % 255 + 1, 0xC0, 0x81, 0))
             replay.receive_usb(header + blocks[received])
@@ -624,6 +710,8 @@ def check_continuous_dma(image, dsp, blocks, arrival_ticks=None):
             cpu.mem_write(dma + offset, struct.pack("<I", channel_bit if offset in (0x48, irq_status) else 0))
         cpu.ctl_flush_tb()
         replay.call(0xC478, RETURN)
+        if on_block is not None:
+            on_block(tick, source, fifo)
 
     verify(played == len(blocks) and tail_silence, "DMA queue did not finish and return to silence")
     verify(len(addresses) == 3, "Unexpected descriptor reuse")
@@ -645,6 +733,205 @@ def check_dma_arrival_variation(image, dsp):
         verify(gaps == ([pause] if pause >= 24 else []), f"Unexpected FIFO gap for pause {pause}: {gaps}")
         report.append({"usb_pause_ticks": pause, **{key: value for key, value in result.items() if key != "name"}})
     return {"name": "stock_dma_arrival_variation", "cases": report}
+
+
+def install_simulated_tx_tap(replay):
+    cpu = replay.cpu
+    # This stock Thumb-2 instruction is B.W 0x12F9C. Redirect it only
+    # in Unicorn. The trampoline resumes the original target and LR.
+    verify(bytes(cpu.mem_read(TX_TAIL, 4)) == bytes.fromhex("eff71ebf"),
+           "Unexpected stock I2S tail branch")
+    displacement = TAP - (TX_TAIL + 4)
+    verify(0 <= displacement < 1 << 22 and displacement % 2 == 0, "Unsupported Thumb branch displacement")
+    cpu.mem_write(TX_TAIL, struct.pack("<HH", 0xF000 | displacement >> 12,
+                                      0xB800 | (displacement >> 1 & 0x7FF)))
+    cpu.ctl_flush_tb()
+
+
+def check_tx_tap_contract(image, dsp):
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    install_simulated_tx_tap(replay)
+    source = 0x20023000
+    payload = bytes(range(192))
+    cpu.mem_write(source, payload)
+    sentinel = b"\xA5" * 192
+    registers = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
+                 UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_APSR)
+    for enabled, ready, size in ((False, 0, 192), (True, 0, 191), (True, 1, 192), (True, 0, 192)):
+        accepted = enabled and not ready and size == 192
+        cpu.mem_write(TAP_BUFFER, sentinel + struct.pack("<3I", enabled, ready, 0))
+        values = (0x40097000, 0x20001234, source, size, 0x12345678, 0x20027000, RETURN | 1, 0x98000000)
+        for register, value in zip(registers, values):
+            cpu.reg_write(register, value)
+        cpu.emu_start(TX_TAIL | 1, DMA_SUBMIT, count=1000)
+        verify(cpu.reg_read(UC_ARM_REG_PC) == DMA_SUBMIT, "Trampoline did not resume stock enqueue")
+        verify(tuple(cpu.reg_read(register) for register in registers) == values,
+               "Trampoline changed stock register arguments, stack, return or flags")
+        expected = (payload if accepted else sentinel) + struct.pack("<3I", enabled, ready or accepted,
+                                                                    source if accepted else 0)
+        verify(bytes(cpu.mem_read(TAP_BUFFER, len(expected))) == expected, "Incorrect TX mailbox behavior")
+        verify(bytes(cpu.mem_read(source, 192)) == payload, "Trampoline modified its source")
+    return {"name": "tx_tap_arm_contract", "cases": 4, "stock_enqueue_preserved": True}
+
+
+def check_worker_interleaving(image, dsp):
+    """Enter the producer during the worker's read and after mailbox release."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    install_simulated_tx_tap(replay)
+    first_source, next_source = 0x20023000, 0x20023400
+    first = tone(0, ((83,), ()))
+    following = tone(0, ((), (190,)))
+    cpu.mem_write(first_source, first)
+    cpu.mem_write(next_source, following)
+    cpu.mem_write(TAP_BUFFER, first + struct.pack("<3I", 1, 1, first_source))
+    cpu.reg_write(UC_ARM_REG_SP, 0x20027000)
+    cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
+    cpu.emu_start(WORKER | 1, DSP, count=20000)
+    verify(cpu.reg_read(UC_ARM_REG_PC) == DSP, "Worker did not reach its active DSP call")
+    worker = cpu.context_save()
+    # Run the producer with a separate stack, as if the worker were
+    # interrupted immediately before entering audio_haptics_step.
+    cpu.reg_write(UC_ARM_REG_SP, 0x20026000)
+    cpu.reg_write(UC_ARM_REG_R2, next_source)
+    cpu.reg_write(UC_ARM_REG_R3, len(following))
+    cpu.emu_start(TX_TAIL | 1, DMA_SUBMIT, count=1000)
+    verify(bytes(cpu.mem_read(TAP_BUFFER, 192)) == first, "Producer overwrote the in-flight worker block")
+    cpu.context_restore(worker)
+    cpu.ctl_flush_tb()
+    cpu.emu_start(DSP | 1, RETURN, count=20000)
+    pc = cpu.reg_read(UC_ARM_REG_PC)
+    verify(pc == RETURN, f"Interrupted worker did not return (PC=0x{pc:X})")
+    left_before = bytes(cpu.mem_read(LEVELS, 4))
+    verify(any(left_before[:2]) and not any(left_before[2:]), "Worker processed the wrong interrupted block")
+    verify(cpu.mem_read(TAP_READY, 4) == bytes(4), "Interrupted worker did not release the mailbox")
+    cpu.reg_write(UC_ARM_REG_R2, next_source)
+    cpu.reg_write(UC_ARM_REG_R3, len(following))
+    cpu.emu_start(TX_TAIL | 1, DMA_SUBMIT, count=1000)
+    verify(bytes(cpu.mem_read(TAP_BUFFER, 192)) == following, "Producer did not recover after release")
+    replay.call(WORKER, RETURN)
+    verify(any(cpu.mem_read(LEVELS + 2, 2)), "Worker missed the next block")
+    replay.call(WORKER, RETURN)
+    verify(not any(cpu.mem_read(LEVELS, 4)), "No fresh block did not reset worker output")
+    return {"name": "tx_worker_mailbox_interleaving", "busy_block_preserved": True,
+            "following_block_processed": True, "missing_block_cleared": True}
+
+
+def check_pcm_to_scheduled_pwm(image, dsp, blocks, active_side=None, disable_tick=104):
+    """Exercise the TX submission tap and co-schedule DMA and palm rendering."""
+    traces = {}
+    for enabled in (False, True):
+        replay, registers = initialize_stock_sensa_pwm(image, dsp)
+        initialize_stock_sensa_timers(replay)
+        configure_stock_dma(replay)
+        initialize_sensa_gain_tables(replay, 100)
+        cpu = replay.cpu
+        if enabled:
+            install_simulated_tx_tap(replay)
+        for address, value in ((0x2000077C, 1), (0x20004520, 2), (0x200044ED, 1)):
+            cpu.mem_write(address, bytes([value]))
+        submitted = False
+        pwm = []
+        peak_instructions = 0
+        submitted_ticks = []
+        captured_blocks = 0
+
+        def submit_frame(bodies):
+            cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
+            cpu.mem_write(0x20000B2C, b"\x01")
+            replay.call(0x2B538, RETURN)
+            verify(cpu.mem_read(0x20000B2C, 1) == b"\x00", "Stock Sensa dispatcher stayed pending")
+
+        def consume_tap(tick):
+            nonlocal submitted, peak_instructions, captured_blocks
+            ready, source = struct.unpack("<2I", cpu.mem_read(TAP_READY, 8))
+            # The controller starts disabled. Enable the tap after the stock
+            # priming window. The disable and source-loss tests leave
+            # different amounts of PCM playing when the switch is turned off.
+            verify(bool(ready) == (48 <= tick < disable_tick), "TX tap did not follow its runtime switch")
+            pcm = bytes(cpu.mem_read(TAP_BUFFER, 192))
+            active = bool(ready) and source != ZERO
+            if active:
+                # DMA plays the first PCM at tick 18; stock TX starts
+                # submitting PCM two descriptor iterations earlier.
+                index = tick - 16
+                verify(source == USB_RING + (index * 192) % 6144 and pcm == blocks[index],
+                       f"TX tap copied unexpected PCM at tick {tick}")
+                verify(bytes(cpu.mem_read(source, len(pcm))) == pcm, "Tap changed its source")
+                captured_blocks += 1
+            elif ready:
+                verify(pcm == bytes(192), "Underrun did not publish silent PCM")
+            replay.steps = 0
+            replay.call(WORKER, RETURN)
+            verify(cpu.mem_read(TAP_READY, 4) == bytes(4), "Worker did not release the TX mailbox")
+            peak_instructions = max(peak_instructions, replay.steps)
+            levels = bytes(cpu.mem_read(LEVELS, 4))
+            verify(not any(levels) or active, "Inactive DSP retained output")
+            if tick % 12 == 0 and (submitted or any(levels)):
+                bodies = [([(a, a, pitch) for a, pitch in zip(levels[i:i + 2], (17, 55)) if a], [])
+                          for i in (0, 2)] + [([], []), ([], [])]
+                submit_frame(bodies)
+                submitted = any(levels)
+                submitted_ticks.append(tick)
+
+        def process_block(tick, played_source, played_pcm):
+            # The game owns Sensa during this window. Audio frame submissions
+            # are excluded by the fixture and checked against the stock run.
+            if tick == 12:
+                submit_frame([([], [(35, 24, 0)]), ([], []), ([], []), ([], [])])
+            if tick == 36:
+                submit_frame([([], []) for _ in range(4)])
+            if enabled:
+                consume_tap(tick)
+                if tick in (47, disable_tick - 1):
+                    cpu.mem_write(TAP_ENABLE, struct.pack("<I", tick == 47))
+            for _ in range(4):
+                stock_timer_irq(replay, CTIMER2, 0xB438)
+                pwm.append(read_sensa_pwm(cpu, registers))
+            stock_timer_irq(replay, CTIMER3, 0xB49C)
+            verify(bytes(cpu.mem_read(played_source, len(played_pcm))) == played_pcm,
+                   "DSP changed the DMA playback buffer")
+
+        dma = check_continuous_dma(image, dsp, blocks, replay=replay, on_block=process_block, tail_ticks=64)
+        expected_blocks = min(disable_tick, len(blocks) + 16) - 48 if enabled else 0
+        verify(captured_blocks == expected_blocks and cpu.mem_read(TAP_READY, 4) == bytes(4),
+               "Incomplete stock TX tap trace")
+        traces[enabled] = pwm, dma, submitted_ticks
+    stock, stock_dma, stock_submissions = traces[False]
+    mixed, mixed_dma, candidate_submissions = traces[True]
+    verify(stock_dma == mixed_dma, "Candidate changed stock DMA delivery")
+    verify(not stock_submissions and candidate_submissions and min(candidate_submissions) >= 48,
+           "Candidate wrote a frame during the stock-only interval")
+    verify(stock[:4 * 48] == mixed[:4 * 48] and any(row[0] != stock[0][0] for row in stock[48:144]),
+           "Game frame changed during the stock-only interval or never reached PWM")
+    verify(stock[-48:] == mixed[-48:], "Candidate duty did not settle after disable/underrun")
+    if disable_tick > len(blocks) + 16:
+        stopped_at = len(blocks) + 16
+        verify(stopped_at <= candidate_submissions[-1] < disable_tick,
+               "Source loss did not clear the candidate while still enabled")
+    peaks = [max(abs(duty[channel] - reference[channel]) for duty, reference in zip(mixed, stock))
+             for channel in range(4)]
+    expected = (0, 1) if active_side is None else (active_side,)
+    verify(tuple(channel for channel, peak in enumerate(peaks) if peak) == expected,
+           f"Unexpected active PWM channels: {peaks}")
+    return {"dma_blocks": stock_dma["blocks_played"], "tx_tap_blocks": captured_blocks,
+            "pcm_bytes": stock_dma["pcm_bytes"],
+            "max_worker_instructions": peak_instructions, "peak_delta_per_output": peaks,
+            "stock_game_window_preserved": True, "candidate_submit_ticks": candidate_submissions,
+            "returned_to_stock_pwm": True}
+
+
+def check_scheduled_dsp(image, dsp):
+    cases = []
+    for side in (0, 1, None):
+        frequencies = ((), (190,)) if side == 1 else ((83,), () if side == 0 else (190,))
+        blocks = [tone(tick, frequencies) for tick in range(128)]
+        cases.append({"input": ("left", "right")[side] if side is not None else "stereo",
+                      **check_pcm_to_scheduled_pwm(image, dsp, blocks, side)})
+    cases.append({"input": "stereo_source_loss",
+                  **check_pcm_to_scheduled_pwm(image, dsp, blocks, disable_tick=168)})
+    return {"name": "candidate_scheduled_pcm_to_pwm", "cases": cases}
 
 
 def initialize_sensa_gain_tables(replay, gain_percent):
@@ -1070,6 +1357,22 @@ def check_stock_sensa_pitch(image, dsp):
     return {"name": "stock_sensa_pitch", "sine_table_max_error": error, "cases": results}
 
 
+def inspect_image_placement(image, dsp):
+    """Inventory fill runs and scatter limits without assigning image space."""
+    app_base = 0x8000
+    scatter = struct.unpack_from("<8I", image, 0x36EA4 - app_base)
+    stack, = struct.unpack_from("<I", image)
+    verify(scatter == (0x37200, 0x20000000, 0xA00, 0x8EBC, 0x37800, 0x20000A00, 0x13328, 0x33F08),
+           "Unexpected stock scatter table")
+    runs = list(re.finditer(b"\x00+|\xFF+", image))
+    longest = max(runs, key=lambda match: match.end() - match.start())
+    offsets = (app_base + longest.start(), app_base + longest.end())
+    return {"name": "stock_image_placement_inventory", "app_range": [hex(app_base), hex(app_base + len(image))],
+            "scatter_ram_end_exclusive": hex(scatter[5] + scatter[6]), "initial_sp": hex(stack),
+            "longest_fill_run_range": [hex(offset) for offset in offsets],
+            "longest_fill_run_bytes": offsets[1] - offsets[0], "replay_text_bytes": len(dsp)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stock", type=Path)
@@ -1077,9 +1380,15 @@ def main():
     parser.add_argument("--fixture-wav", type=Path, help="Also save a six-second stereo capture stimulus")
     parser.add_argument("--verified-pcm-trace", type=Path,
                         help="Replay contiguous, independently verified 48 kHz stereo PCM16 slots")
+    parser.add_argument("--active-stereo-excerpt", type=int, metavar="START",
+                        help="Also run the scheduled PWM test using 128 active stereo slots from START")
     args = parser.parse_args()
+    if args.active_stereo_excerpt is not None and (
+            args.verified_pcm_trace is None or args.active_stereo_excerpt < 0):
+        parser.error("--active-stereo-excerpt needs --verified-pcm-trace and a nonnegative index")
     image, dsp = args.stock.read_bytes(), args.dsp.read_bytes()
     verify(hashlib.sha256(image).hexdigest() == STOCK_SHA256, "Expected unmodified Dev2FW 2.04.00")
+    verify(len(dsp) > WORKER - DSP, "Rebuild the simulator module with the TX tap and worker")
     cases = (
         ("left_80", ((80,), ()), True, True, 0.85),
         ("right_190", ((), (190,)), True, True, 0.85),
@@ -1094,11 +1403,15 @@ def main():
     report.append(check_toggle(image, dsp))
     report.append(check_timer_pwm(image, dsp))
     report.append(check_stock_timer_schedule(image, dsp))
+    report.append(check_stock_sensa_buffer(image, dsp))
     report.append(check_dma_boundaries(image, dsp))
     report.append(check_stock_i2s_completion(image, dsp))
     report.append(check_stock_dma_descriptor(image, dsp))
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
+    report.append(check_tx_tap_contract(image, dsp))
+    report.append(check_worker_interleaving(image, dsp))
+    report.append(check_scheduled_dsp(image, dsp))
     report.append(check_sensa_pwm(image, dsp))
     report.append(check_stock_profile_calibration(image, dsp))
     report.append(check_eeprom_calibration(image, dsp))
@@ -1113,8 +1426,17 @@ def main():
     report.append(full_gain)
     report.append(check_sensa_trigger_pwm(image, dsp))
     report.append(check_stock_sensa_pitch(image, dsp))
+    report.append(inspect_image_placement(image, dsp))
     if args.verified_pcm_trace:
-        report.append(replay_capture(image, dsp, args.verified_pcm_trace))
+        capture = replay_capture(image, dsp, args.verified_pcm_trace)
+        report.append(capture)
+        if args.active_stereo_excerpt is not None:
+            start = args.active_stereo_excerpt
+            records = json.loads(args.verified_pcm_trace.read_text(encoding="utf-8"))
+            blocks = [bytes.fromhex(record["payload_hex"]) for record in records[start:start + 128]]
+            verify(len(blocks) == 128, "Active stereo excerpt extends beyond capture")
+            report.append({"name": "captured_scheduled_pcm_to_pwm", "excerpt_start_slot": start,
+                           **check_pcm_to_scheduled_pwm(image, dsp, blocks)})
     if args.fixture_wav:
         with wave.open(str(args.fixture_wav), "wb") as output:
             output.setparams((2, 2, 48000, 0, "NONE", "not compressed"))

@@ -36,11 +36,15 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   corrects the emulator completion hook and verifies save and reload.
   E-20261114-21 covers Xbox trigger SCT output and transient cutoff.
   E-20261114-26 uses stock SCT initialization in the PWM replays.
-  E-20261114-27 executes stock clock and CTIMER setups, then dispatches MR0
-  events at the modeled 250 µs and 8 ms intervals. Trace when palm samples
-  are replenished, model timer/DMA preemption and independently validate
-  hardware timing and pin-level PWM. Build an end-to-end acceptance trace before selecting a firmware
-  hook or transport command. The existing runtime switch is a simulator input.
+  E-20261114-28 follows the later clock switch to a 1 ms refill, exercises
+  the stock 16-slot startup and underrun duty hold, and supersedes the
+  intermediate 8 ms result from E-20261114-27.
+  E-20261114-29 tests an ARM trampoline at TX 0x2315C in the scheduled
+  stock/candidate trace, with a compiled worker and forced mailbox
+  interleaving. Next wire the worker into a stock scheduling context,
+  memory placement, live source arbitration and worst-case preemption.
+  Independently validate timing and pin-level PWM. The runtime switch
+  remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.
   Verify a spare-unit restore before any hardware candidate. Bootloader
   behavior remains unknown with only the update package.

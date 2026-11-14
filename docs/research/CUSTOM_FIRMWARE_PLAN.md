@@ -67,6 +67,29 @@ Findings go to [EXPERIMENTS.md](EXPERIMENTS.md) as usual. This page keeps the pl
 | 2026-11-11 | Plan written | — |
 | 2026-11-11 | Phase 0: updater decompiled (ILSpy, `WolverineV3ProCFU.exe`) | See the findings below. |
 | 2026-11-11 | G0: native updater disassembled; brick reports read | Bootloader 1532:110E, erase 0x8000–0x37800, no recovery without a booting app → hardware (SWD) recovery needed |
+| 2026-11-14 | Phase 2: candidate TX tap and ARM worker | Offline-only branch substitution at 0x2315C. Stock PCM and sequential game ownership coexist in replay. Disable and source underrun restore stock PWM. [Trace and evidence](../firmware/AUDIO_HAPTICS_REPLAY.md#arm-tx-tap-and-scheduled-dsp) |
+
+### Remaining work before an image candidate
+
+The replay builds original Cortex-M4 code and changes one branch in emulator
+memory. Its test addresses have no verified allocation on the controller.
+The application spans 0x8000–0x37800. Its largest uniform span is
+734 zero bytes between the vector content and reset code, compared with
+2,450 bytes of linked replay text including simulator gaps. Fill bytes may
+be reserved. The stock scatter table ends its RAM allocations at 0x20013D28
+and the initial stack pointer is 0x20027FF8. Their distance alone does not
+prove safe space under stack, DMA and runtime usage.
+Choose and verify placement against the stock scatter load, interrupt stacks,
+ROM and updater behavior. Then test a real stock-context worker invocation,
+runtime toggle and concurrent ownership with stock rumble/Sensa commands.
+Stress missing completions and simultaneous timer/DMA events, and validate
+timing and output on a stock trace. Keep the wired NXP path as the first
+integration boundary. The dongle capture currently supplies host-side PCM for
+replay while its radio path remains open.
+
+G2 remains open until a bounded application image is assembled and verified.
+The package-level checksum evidence leaves resident bootloader acceptance and
+recovery after application failure open.
 
 ## Phase 0 findings so far (static)
 

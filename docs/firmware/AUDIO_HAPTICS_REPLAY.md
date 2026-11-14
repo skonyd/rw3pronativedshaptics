@@ -360,29 +360,90 @@ and stop checks pass for all four outputs. The older 4500-count and
 
 ### Stock timer schedule
 
-Stock setup `0x329E4` configures CTIMER2 with MR0 23,999. Its synchronous
-bus runs at 96 MHz. Stock setup `0x32A64` configures CTIMER3 with MR0
-95,999. The asynchronous APB selector at `0x40040020` is written to 1,
-which selects the 12 MHz FRO. Both timers set the prescale register to
-zero and enable interrupt and counter reset on MR0. The resulting
-modeled intervals are 250 µs and 8 ms. The asynchronous clock must be
-accounted for when interpreting the 95,999 count.
+Stock setup `0x329E4` configures CTIMER2 with MR0 23,999 on the 96 MHz
+synchronous bus. Stock setup `0x32A64` configures CTIMER3 with MR0
+95,999 and selects the 12 MHz FRO for asynchronous APB. Later in the
+same board startup, `0x2DCB0` calls `0x130FC`, which switches that bus
+to the main clock by writing 0 to `0x40040020`. The 8 ms result in
+E-20261114-27 used the intermediate clock selection. Both timers set
+a zero prescale register and enable interrupt and counter reset on
+MR0. With the later initializer included, the modeled intervals are
+250 µs and 1 ms.
 [NXP UM10912, sections 4.5.50 and 4.5.107](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/lpc/58795/1/lpc546_series.pdf)
 
 The replay derives match times from these registers, presents an MR0
 flag and enters stock handlers `0xB438` and `0xB49C`. In 24 simulated
-milliseconds it records 96 and 3 callbacks. Each handler clears its
+milliseconds it records 96 and 24 callbacks. Each handler clears its
 flag using the modeled write-one-to-clear behavior. The first fast tick
 updates a seeded 20% palm duty to 240 counts. The slow callback decrements
 its seeded countdown on each dispatch.
 
 Coincident matches are dispatched fast-timer first using the priority
 bytes (0x40 and 0x80) written by stock setup.
-Physical pin edges, exception entry latency, preemption, oscillator
-lock time and timer interactions with DMA remain unverified. The
-oscillator's 4 kHz sample-domain calculation and the CTIMER2 duty
-callback interval leave a separate question about when the stock
-synthesis path refills its sample slots during continuous playback.
+Physical pin edges, exception entry latency, preemption and oscillator
+lock time remain unverified.
+
+### Stock palm PWM buffer
+
+CTIMER3 reaches `0x2D210` in normal render mode. It prepares four
+samples per palm through `0x2E18C`, converts them to duty and fills
+the buffer rooted at `0x20002284` (right palm at +0x60).
+CTIMER2 reaches `0x1F5CC` and consumes one slot per palm every
+250 µs once the render flag is set. Queue depths live at
+`0x2000162C` and `0x2000162D`. The first four refills build a
+16-slot startup buffer and the first modeled consumption is at
+4.25 ms.
+
+The no-effect, isolated left and isolated right traces exercise
+missed refill events. Eight suppressed refills drain the queue.
+While empty, the duty remains at the last value written. When
+refills resume, the stock code consumes samples again and cycles
+between zero and four slots without repeating startup prefill.
+Running out of motor samples alone can leave a stale duty register.
+
+### ARM TX tap and scheduled DSP
+
+The stock I²S TX callback places the selected pointer and size in
+`r2/r3` before its tail branch at `0x2315C` to the stock enqueue
+function `0x12F9C`. In Unicorn the simulator replaces that branch
+with a jump to independently built Thumb code at `0x100800`.
+The code copies 192 bytes into a one-block mailbox and publishes
+its ready flag. When off, busy, or given an unexpected block
+length, it leaves the mailbox alone. Register arguments, stack,
+return address, flags and PCM bytes are checked at the stock
+enqueue boundary. A separate compiled ARM worker runs the DSP
+outside the ISR and releases the mailbox after reading it. A
+context save/restart test enters the producer while the worker
+holds a block and verifies that the next producer call can
+publish after release. The linker and mailbox addresses belong
+to the simulator.
+
+The scheduled comparison runs unmodified stock against stock
+with the emulated tap on the same input. It uses stock USB receive,
+linked I²S descriptors, DMA0 IRQ, both timer handlers, the
+Sensa dispatcher and the PWM writer. The host harness toggles
+the tap and calls the worker outside the DMA interrupt. In each
+case all 128 original I²S blocks are preserved in order. The
+tap copies 56 audio blocks during the normal enabled window
+and 96 before the underrun in the separate source-loss test. The preceding
+authored Sensa frame yields the same PWM trace in both runs.
+Candidate frames are at least 12 ms apart and clear their output
+on the next refresh after disabling. The left/right/stereo cases
+drive only the expected palms. Source loss while still enabled
+also clears the candidate. The final 12 ms of PWM matches
+stock. The instruction count is an emulator count.
+
+This establishes a candidate observation site and an executable
+pre-flash replay. The harness still owns source arbitration,
+runtime switching, event scheduling and worker invocation.
+The comparison covers sequential ownership. Full NVIC preemption
+and the actual radio link remain open. Use
+`--verified-pcm-trace <path> --active-stereo-excerpt 3000`
+for the 128-slot active stereo comparison from either lab capture.
+Both full-capture runs passed 31 report checks. Their scheduled excerpts
+used 128 blocks per transport, with peak deviations of 96/84 SCT counts
+on the wired sample and 120/84 on the dongle sample, with zero trigger
+deviation. The full USB traces contain 6,552 and 6,272 slots respectively.
 
 ### Hardware and integration
 

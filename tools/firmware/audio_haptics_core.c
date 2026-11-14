@@ -47,3 +47,21 @@ void audio_haptics_step(audio_haptics_state *state, const int16_t *pcm,
         }
     }
 }
+
+/* Replay-only worker. Called outside the DMA handler. Keep ready set
+ * while reading a block so a producer interrupt cannot replace it.
+ */
+void audio_haptics_replay_worker(void)
+{
+    audio_haptics_state *const state = (audio_haptics_state *)0x20021000;
+    uint8_t *const output = (uint8_t *)0x20021100;
+    const int16_t *const pcm = (const int16_t *)0x20024000;
+    volatile uint32_t *const mailbox = (volatile uint32_t *)0x200240C0;
+    uint32_t ready = mailbox[1];
+    __asm__ volatile ("dmb" ::: "memory");
+    uint32_t active = ready && mailbox[0] && mailbox[2] != 0x200056EC;
+    audio_haptics_step(state, pcm, active, output);
+    __asm__ volatile ("dmb" ::: "memory");
+    if (ready)
+        mailbox[1] = 0;
+}
