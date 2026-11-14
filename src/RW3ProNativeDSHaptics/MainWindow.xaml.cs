@@ -1146,7 +1146,7 @@ public partial class MainWindow : Window
     private static string FeatureSub(OutputFeature f) => f switch
     {
         OutputFeature.PalmAudio => "Oyunun/bilgisayarın sesi avuçlarda (Sensa, melodi)",
-        OutputFeature.PalmGame => "DualSense HD haptiği gönderen oyunlar",
+        OutputFeature.PalmGame => "Avuçlarda; DualSense HD haptiği gönderen oyunlar",
         OutputFeature.GameRumble => "Oyunun normal titreşimi, gövde motorlarında",
         OutputFeature.GameTriggers => "Tetik içi motorlar (kol Xbox modundayken)",
         _ => ""
@@ -1171,6 +1171,7 @@ public partial class MainWindow : Window
         if (support != FeatureSupport.Yes || !current) cell.Foreground = on ? System.Windows.Media.Brushes.White : MutedBrush;
         if (on) cell.Foreground = System.Windows.Media.Brushes.White;
         if (support == FeatureSupport.ByGame) cell.FontSize = 11;
+        if (on) cell.FontSize = 17;
         AutomationProperties.SetName(cell, $"{OutputMatrix.Label(f)} · {OutputMatrix.Label(o)}");
         cell.Click += (_, _) => ClickFeature(f, current ? null : o);
         return cell;

@@ -172,7 +172,7 @@ public static class OutputMatrix
     public static string Label(OutputFeature feature) => feature switch
     {
         OutputFeature.PalmAudio => "Sesten avuç titreşimi",
-        OutputFeature.PalmGame => "Oyunun HD haptiği (avuç)",
+        OutputFeature.PalmGame => "Oyunun HD haptiği",
         OutputFeature.GameRumble => "Oyunun rumble titreşimi",
         OutputFeature.GameTriggers => "Oyunun tetik titreşimi",
         _ => feature.ToString()
