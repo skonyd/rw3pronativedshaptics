@@ -556,7 +556,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 }
                 float wl, wr; lock (_peakGate) { wl = _logL; wr = _logR; _logL = _logR = 0; }
                 string? healed = null;
-                try { if (_outputMode == WolverineControllerMode.Pc) healed = EngineWatchdog?.Invoke(); } catch (Exception ex) { healed = "engine watchdog failed: " + ex.Message; }
+                // Xbox mode needs the engine too when XboxSensa drives the palms over GIP. Until 2026-11-15 the restart ran
+                // only in PC mode: RW3 opened before the pad appeared left the palms silent for the whole session.
+                try { if (_outputMode == WolverineControllerMode.Pc || (_outputMode == WolverineControllerMode.Xbox && XboxSensa.Enabled)) healed = EngineWatchdog?.Invoke(); } catch (Exception ex) { healed = "engine watchdog failed: " + ex.Message; }
                 string engine = "";
                 try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                 DiagnosticsService.Info($"Virtual DualSense: haptic blocks {HapticBlocks} (peak L {wl:F2} R {wr:F2}), output reports {OutputReports}, trigger reports {TriggerReports} " +

@@ -196,6 +196,9 @@ public sealed class HapticOrchestrator
         bool installed = (await Task.Run(VirtualControllerSetup.Query)).Ready;
         bool taskReady = installed && !VirtualDualSenseBridge.IsElevated &&
                          await Task.Run(() => ElevatedLaunchTask.Query()) == ElevatedLaunchTask.TaskState.Ready;
+        // The checks above take a while: the user may have picked another mode meanwhile (2026-11-15: Audio picked during
+        // this wait, then the virtual DualSense started anyway and flipped the label back to Native).
+        if (Busy() || Starting || Exiting() || Run != RunState.Off || SelectedMode() != HapticMode.Native) return;
         var plan = HapticModePolicy.PlanNativeSource(false, installed, VirtualDualSenseBridge.IsElevated, taskReady);
         string? note = HapticModePolicy.WaitNote(plan);
         if (plan == NativeSourcePlan.VirtualHere) { await StartVirtualBridge(); return; }
