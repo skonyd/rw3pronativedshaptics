@@ -334,6 +334,33 @@ leave trigger channels untouched, and use identical input plus a muted
 speaker reference. Whether Wolverine can reproduce recognizable
 speech or music depends on the driver and actuators' physical response.
 
+### Stock SCT initialization
+
+The PWM replay now runs stock board routine `0x1F48C` after stock RAM
+decompression. The model supplies SYSCON reset alias semantics and leaves
+the clock selectors at the fixture's zero state. The firmware requests
+40 kHz, configures its center-aligned mode, and builds the following
+event and match layout.
+
+| SCT output | Period event | Duty event | Duty match address | Startup match |
+| --- | --- | --- | --- | --- |
+| 3 | 0 | 1 | 0x40085104 | 15 |
+| 5 | 2 | 3 | 0x4008510C | 15 |
+| 6 | 4 | 5 | 0x40085114 | 0 |
+| 7 | 6 | 7 | 0x4008511C | 0 |
+
+The generated period match is 150 under this clock fixture. The duty test
+now observes 30, 150 and 0 counts for 20%, 100% and 0%, respectively.
+Unchanged and disabled requests still produce no duty write. Palm
+transients deviate from idle by up to eight counts. Original DSP bands
+deviate by 18 and nine at 100% and 50% calibration gain. The trigger duty
+test yields 30, 60 and 94 counts at strengths 20, 40 and 63. Isolation
+and stop checks still pass for all four outputs. Earlier raw counts in
+this report used a seeded 4500-count period and are historical.
+
+The modeled register setup and write trace leave the operational clock
+tree, physical pin waveform, and interrupt cadence open.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

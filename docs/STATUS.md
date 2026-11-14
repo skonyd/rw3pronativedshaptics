@@ -46,6 +46,8 @@ in replay. The tested pitch codes leave duty unchanged at fixed strength,
 and the stock transient cutoff clears the modeled output.
 The stock palm oscillator's lookup and four pitch codes now pass
 sample-domain checks. Its formula uses a 4 kHz constant.
+The stock SCT initializer now generates the PWM channel/event mapping
+and period match used in the palm and trigger replays.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

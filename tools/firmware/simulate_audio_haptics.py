@@ -246,17 +246,16 @@ def check_stream_queue(image, dsp, records):
 
 def check_timer_pwm(image, dsp):
     """Run the stock CTIMER2 callback and capture SCT register writes."""
-    replay = Replay(image, dsp)
+    replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
     cpu = replay.cpu
-    timer, sct = 0x40028000, 0x40085000
-    cpu.mem_map(timer, 4096)
-    cpu.mem_map(sct, 4096)
+    timer = 0x40028000
+    match = match_registers[0]
+    reload = match + 0x100
+    period, = struct.unpack("<I", cpu.mem_read(match - 4, 4))
     cpu.mem_write(0x200044BE, b"\x01")
-    for address, value in ((sct, 1), (sct + 0x100, 4500), (sct + 0x30C, 1)):
-        cpu.mem_write(address, struct.pack("<I", value))
     writes = []
     cpu.hook_add(UC_HOOK_MEM_WRITE, lambda _, access, address, size, value, data:
-                 writes.append((address, value)), begin=timer, end=sct + 4095)
+                 writes.append((address, value)), begin=timer, end=0x40085FFF)
     observed = []
     for enabled, duty, changed in ((False, 20, False), (True, 20, True), (True, 20, False),
                                    (True, 100, True), (True, 0, True)):
@@ -264,12 +263,14 @@ def check_timer_pwm(image, dsp):
         cpu.mem_write(0x200044ED, bytes([enabled]))
         cpu.mem_write(0x20002284, struct.pack("<H", duty))
         replay.call(0x2B6F0, RETURN)
-        expected = [(sct + 0x104, duty * 45), (sct + 0x204, duty * 45)] if changed else []
-        verify([(addr, value) for addr, value in writes if addr in (sct + 0x104, sct + 0x204)] == expected,
+        counts = duty * period // 100
+        expected = [(match, counts), (reload, counts)] if changed else []
+        verify([(addr, value) for addr, value in writes if addr in (match, reload)] == expected,
                "Unexpected SCT MATCH/MATCHREL writes")
         verify(writes[-1] == (timer, 1), "CTIMER2 did not acknowledge match")
         observed.append({"enabled": enabled, "duty_percent": duty, "match_counts": [v for _, v in expected]})
-    return {"name": "stock_timer_pwm_registers", "cases": observed}
+    return {"name": "stock_timer_pwm_registers", "period_match": period,
+            "duty_match_registers": [hex(address) for address in match_registers], "cases": observed}
 
 
 def check_dma_boundaries(image, dsp):
@@ -388,12 +389,9 @@ def check_stock_i2s_completion(image, dsp):
     return {"name": "stock_i2s_completion", "cases": report, "rearmed_with": ["silence", "usb_pcm"]}
 
 
-def initialize_stock_dma(image, dsp):
-    replay = Replay(image, dsp)
-    cpu = replay.cpu
-    syscon, dma, tx, rx, nvic = 0x40000000, 0x40082000, 0x40097000, 0x40098000, 0xE000E000
-    for page in (syscon, dma, tx, rx, nvic):
-        cpu.mem_map(page, 4096)
+def model_syscon_reset(cpu):
+    syscon = 0x40000000
+    cpu.mem_map(syscon, 4096)
 
     def reset_register_alias(machine, access, address, size, value, data):
         target = syscon + 0x100 + (address & 0xF)
@@ -402,6 +400,15 @@ def initialize_stock_dma(image, dsp):
         machine.mem_write(target, struct.pack("<I", new))
 
     cpu.hook_add(UC_HOOK_MEM_WRITE, reset_register_alias, begin=syscon + 0x120, end=syscon + 0x14B)
+
+
+def initialize_stock_dma(image, dsp):
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    dma, tx, rx, nvic = 0x40082000, 0x40097000, 0x40098000, 0xE000E000
+    for page in (dma, tx, rx, nvic):
+        cpu.mem_map(page, 4096)
+    model_syscon_reset(cpu)
     cpu.mem_write(dma + 8, struct.pack("<I", 0x2000B000))
     replay.call(0x13D6C, RETURN)
     return replay
@@ -757,21 +764,43 @@ def check_deferred_profile_write(image, dsp):
             "old_and_full_images_accepted": True}
 
 
+def initialize_stock_sensa_pwm(image, dsp):
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
+    for page in (0xE000E000, 0x4000D000, 0x40028000, 0x40085000):
+        cpu.mem_map(page, 4096)
+    cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
+    model_syscon_reset(cpu)
+    replay.call(0x1F48C, RETURN)
+    events = struct.unpack("<4I", cpu.mem_read(0x20002270, 16))
+    verify(events == (0, 2, 4, 6), "Unexpected stock SCT event mapping")
+    match_registers = []
+    for output, event in zip((3, 5, 6, 7), events):
+        event_mask, control = struct.unpack("<2I", cpu.mem_read(0x40085300 + event * 8, 8))
+        verify(event_mask == 1 and control & 0xF == event, "Unexpected SCT period event")
+        _, control = struct.unpack("<2I", cpu.mem_read(0x40085308 + event * 8, 8))
+        verify(control & 0xF == event + 1, "Unexpected SCT duty event")
+        set_mask, clear_mask = struct.unpack("<2I", cpu.mem_read(0x40085500 + output * 8, 8))
+        verify(set_mask == 0 and clear_mask == 1 << (event + 1),
+               f"Unexpected SCT routing for output {output}")
+        period, = struct.unpack("<I", cpu.mem_read(0x40085100 + 4 * event, 4))
+        verify(period == 150, "Unexpected SCT period in reset-clock fixture")
+        match_registers.append(0x40085100 + 4 * (event + 1))
+    verify(read_sensa_pwm(cpu, match_registers) == (15, 15, 0, 0), "Unexpected stock startup duty")
+    return replay, match_registers
+
+
+def read_sensa_pwm(cpu, match_registers):
+    return tuple(struct.unpack("<I", cpu.mem_read(register, 4))[0] for register in match_registers)
+
+
 def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
     for side in (None, 0, 1):
-        replay = Replay(image, dsp)
+        replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
         cpu = replay.cpu
-        replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
-        for page in (0xE000E000, 0x40028000, 0x40085000):
-            cpu.mem_map(page, 4096)
-        for address, value in ((0xE000ED88, 0xF00000), (0x40085000, 1), (0x40085100, 4500)):
-            cpu.mem_write(address, struct.pack("<I", value))
-        for channel in range(4):
-            event = channel * 2
-            cpu.mem_write(0x20002270 + 4 * channel, struct.pack("<I", event))
-            cpu.mem_write(0x4008530C + 8 * event, struct.pack("<I", channel + 1))
         bodies = [([], []) for _ in range(4)]
         if side is not None:
             if continuous:
@@ -805,7 +834,7 @@ def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
                 replay.call(0x2B538, RETURN)
             replay.call(0x2D210, RETURN)
             replay.call(0x2B6F0, RETURN)
-            trace.append(struct.unpack("<2I", cpu.mem_read(0x40085104, 8)))
+            trace.append(read_sensa_pwm(cpu, match_registers))
         results[side] = trace
     idle = results[None]
     report = []
@@ -813,6 +842,8 @@ def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
         trace = results[side]
         verify(all(values[1 - side] == baseline[1 - side] for values, baseline in zip(trace, idle)),
                "Sensa synthesis changed the opposite modeled PWM channel")
+        verify(all(values[2:] == baseline[2:] for values, baseline in zip(trace, idle)),
+               "Palm synthesis changed a trigger PWM channel")
         delta = max(abs(values[side] - baseline[side]) for values, baseline in zip(trace, idle))
         verify(delta > 0, "Sensa synthesis did not reach the modeled PWM registers")
         if continuous:
@@ -861,17 +892,11 @@ def check_sensa_trigger_pwm(image, dsp):
     for side, kind, strength in ((0, "band", 40), (1, "band", 40), (0, "transient", 40),
                                  (1, "transient", 40), (0, "band", 20), (1, "band", 63)):
         for pitch in (0, 60, 127):
-            replay = Replay(image, dsp)
+            replay, match_registers = initialize_stock_sensa_pwm(image, dsp)
             cpu = replay.cpu
-            replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
-            for page in (0xE000E000, 0x4000D000, 0x40028000, 0x40085000):
-                cpu.mem_map(page, 4096)
-            registers = [(0xE000ED88, 0xF00000), (0x40085000, 1), (0x40085100, 4500)]
-            for channel in range(4):
-                registers += [(0x20002270 + 4 * channel, channel * 2),
-                              (0x4008530C + 16 * channel, channel + 1)]
-            for address, value in registers:
-                cpu.mem_write(address, struct.pack("<I", value))
+            idle = read_sensa_pwm(cpu, match_registers)
+            period_match, = struct.unpack("<I", cpu.mem_read(match_registers[side + 2] - 4, 4))
+            verify(period_match == 150, "Unexpected stock trigger period match")
             cpu.mem_write(0x200044ED, b"\x01")
 
             bodies = [([], []) for _ in range(4)]
@@ -884,14 +909,15 @@ def check_sensa_trigger_pwm(image, dsp):
             def trigger_tick():
                 replay.call(0x1B640, RETURN)
                 replay.call(0x2B6F0, RETURN)
-                return struct.unpack("<4I", cpu.mem_read(0x40085104, 16))
+                return read_sensa_pwm(cpu, match_registers)
 
             if kind == "band":
                 for _ in range(481):
                     replay.call(0x1485C, RETURN)
             else:
                 verify(trigger_tick()[side + 2] > 0, "Trigger transient did not start")
-            expected = tuple(strength * 45 if index == side + 2 else 0 for index in range(4))
+            expected = tuple(strength * period_match // 100 if index == side + 2 else value
+                             for index, value in enumerate(idle))
             observed = trigger_tick()
             verify(observed == expected, f"Trigger {side}/{kind}/{pitch}: expected {expected}, got {observed}")
             if kind == "transient":
@@ -899,7 +925,7 @@ def check_sensa_trigger_pwm(image, dsp):
                     replay.call(0x1485C, RETURN)
                 verify(trigger_tick() == expected, "Trigger transient ended before the stock cutoff")
                 replay.call(0x1485C, RETURN)
-                verify(trigger_tick() == (0, 0, 0, 0), "Expired trigger transient left PWM active")
+                verify(trigger_tick() == idle, "Expired trigger transient left PWM active")
             trace.append({"body_part": (249, 149)[side], "kind": kind, "pitch_code": pitch,
                           "strength": strength, "match_count": expected[side + 2]})
     return {"name": "stock_sensa_trigger_pwm", "cases": trace}
