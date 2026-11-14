@@ -72,6 +72,9 @@ explorer.exe TestResults\install-when-closed.cmd    # waits for RW3 to close, co
 | 2026-11-14 | Audio mode **"Standart (DSX gibi)"**, default on: audio as it is + soft noise gate; auto level / hum suppression only when it is off. Reason: "vibrated all the time" in a game | `AudioLevelShaper.cs`, STATUS |
 | 2026-11-14 | **Main page redesign.** Audio mode: level slider (10–300 %, palms and body motors). Native mode: palm haptic source **Game HD / Oyun sesinden / Kapalı** + level slider; "Oyun sesinden" keeps DualSense triggers and rumble while the palms follow PC sound. Native now starts with any source (before: only with HD PCM on). Removed: feedback preset combo, duplicate impulse checkbox, "Sesten gövde titreşimi" checkbox, Settings gain/sensitivity presets | `MainWindow.xaml(.cs)`, `NativeBridgeService.cs`, `HapticModePolicy.cs`, STATUS |
 
+| 2026-11-15 | Xbox-mode palms for GDK games: strict virtual Xbox pad (GameInputSvc never allowed, pad read via XInput, triggers via Sensa frame). Banishers ignored the Series BT (HID) pad's input (E-20261115-02) → Xbox 360 profile. Fixed on the way: Xbox-mode engine watchdog, mode race, replug ending the bridge, CPU guard stopping it, no retry | E-20261115-01/02, `XboxAudioGameBridge.cs` |
+| 2026-11-15 | **Modes replaced by "Oyuna görünen kol" selector + feature matrix** (Kolun kendisi / Xbox 360 / Xbox Series / PS4 / DualSense) | `GameOutput.cs`, STATUS "What the app does" |
+
 ## 4. Current phase
 
 **Phase: tuning by feel, Xbox mode first.** The haptic routes are complete in software; what remains is felt

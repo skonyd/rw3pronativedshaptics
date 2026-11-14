@@ -74,7 +74,11 @@ remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
 ## What the app does
 
-| Mode (main window) | Source | Wolverine in PC mode (1532:0A4C) | Wolverine in Xbox mode (1532:0A3F) |
+- **Main page since 2026-11-15: "Oyuna görünen kol" selector + feature matrix** (replaces the three mode cards; `GameOutput.cs`, `OutputMatrix`, contract-tested). Outputs: **Kolun kendisi** (no virtual pad), **Xbox 360** (HIDMaestro `xbox-360-wired`, XUSB), **Xbox Series** (`xbox-series-xs-bt`), **PS4** (`dualshock-4-v2`), **DualSense** (the virtual DualSense bridge). Rows: Sesten avuç titreşimi (every output), Oyunun HD haptiği (DualSense only; excludes the sound row), Oyunun rumble titreşimi, Oyunun tetik titreşimi (Series, DualSense; "oyun" on Kolun kendisi = the game drives the pad itself). A row the output lacks switches to the closest output that has it (triggers: Series from the Xbox side, DualSense from PS4; HD haptics: DualSense). `OutputMatrix.Plan` maps the choice onto the internal pipelines below: Kolun kendisi = Normal (no rows) or audio; Xbox 360 / Series / PS4 = audio mode with the strict virtual pad (`XboxAudioGameBridge`: pad read through XInput, game rumble → body over XInput, Series triggers → Sensa frame, sound → palms through the Sensa engine, GameInputSvc never allowed; PC mode too); DualSense = native. Old settings migrate once (`FromLegacy`). Tray and the ☰ combo cycle outputs. Elevation goes through the UAC-free task. Not yet tested in a game: Xbox 360 / PS4 outputs (input, rumble decoding: the Xbox 360 profile's rumble format is only logged and guessed).
+- Internal pipelines (the former modes):
+
+
+| Pipeline (internal, was the mode) | Source | Wolverine in PC mode (1532:0A4C) | Wolverine in Xbox mode (1532:0A3F) |
 | --- | --- | --- | --- |
 | Normal | game's own Xbox rumble | game → body motors | game → body + trigger motors |
 | Sesten titreşim | PC audio (WASAPI loopback) | Sensa palms, stereo | Sensa palms over GIP, stereo (setting "Xbox modunda Sensa", default on; off: body motors, left motor ← left channel) |
