@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace RW3ProNativeDSHaptics;
@@ -54,6 +55,29 @@ public sealed class HapticOrchestrator
     /// <summary>A virtual Xbox 360 / Series / PS4 pad is selected: the game sees it, not the Wolverine.</summary>
     public bool UseXboxGameBridge => Plan().VirtualProfile != null;
     private bool _virtualPalms;
+
+    // Games that had the real pad open before a virtual pad appeared (PadHolders): they keep it until restarted.
+    private volatile List<(int Pid, string Name)> _padHolders = new();
+    /// <summary>"Restart X" while a game opened before the virtual pad still runs; null otherwise.</summary>
+    public string? PadHolderNote
+    {
+        get
+        {
+            var list = _padHolders;
+            return list.Count == 0 ? null
+                : string.Join(", ", list.ConvertAll(h => h.Name)) + " sanal koldan önce açıldı ve hâlâ gerçek kolu kullanıyor " +
+                  "(girdi, rumble ve tetik RW3'ü atlar, Xbox modunda avuçlar susar). Oyunu kapatıp yeniden aç.";
+        }
+    }
+
+    /// <summary>Looks (in the background) for games started before <paramref name="since"/> that hold a pad.</summary>
+    public void CheckPadHolders(DateTime since) => Task.Run(() =>
+    {
+        var found = PadHolders.Find(since);
+        _padHolders = found;
+        if (found.Count > 0) DiagnosticsService.Info("Virtual pad: opened before it and still holding the real pad: " +
+            string.Join(", ", found.ConvertAll(h => $"{h.Name} (pid {h.Pid})")) + ".");
+    });
 
     public HapticOrchestrator(NativeBridgeService bridge, XInputHaptics rumble, UserSettings settings)
     {
@@ -161,6 +185,7 @@ public sealed class HapticOrchestrator
                 IncludeGameRumble = IncludeXboxGameRumble(),
                 IncludeGameTriggers = IncludeXboxGameTriggers()
             };
+            var padCreated = DateTime.Now;
             await Task.Run(() => combined.Start(profile));
             if (Superseded(mode) || !_settings.AudioOutputEnabled || !UseXboxGameBridge || profile != EffectiveProfile)
             {
@@ -169,6 +194,7 @@ public sealed class HapticOrchestrator
             }
             CombinedXbox = combined;
             _virtualPalms = palms;
+            CheckPadHolders(padCreated);
             if (palms)
             {
                 // Strict: the sound goes to the palms (Sensa engine over GIP); the virtual pad bridge only does input,
@@ -247,6 +273,7 @@ public sealed class HapticOrchestrator
         XboxAudio = null;
         XboxCompanion?.Dispose();
         XboxCompanion = null;
+        _padHolders = new();
         try { CombinedXbox?.Dispose(); }
         catch (Exception ex) { DiagnosticsService.Error("Xbox köprüsü geri alma", ex); }
         CombinedXbox = null;
@@ -270,6 +297,7 @@ public sealed class HapticOrchestrator
     {
         if (tickCount % 8 == 0)
         {
+            if (_padHolders.Count > 0) _padHolders = _padHolders.FindAll(h => PadHolders.Alive(h.Pid));
             performance.Sample();
             if (Run == RunState.Audio && performance.SustainedHighSamples >= 3 && CombinedXbox != null)
             {

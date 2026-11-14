@@ -71,3 +71,48 @@ public static class ControllerFocusGuard
     private static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder name, ref int size);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr h);
 }
+
+/// <summary>
+/// Games that already had a pad open when RW3 created a virtual pad. HidHide hides the Wolverine only from new opens,
+/// so such a game keeps the real pad: its input, rumble and triggers bypass RW3, and in Xbox mode it holds the
+/// controller focus (palms silent while it is in front). 2026-11-15: Banishers started before the Series pad kept
+/// the real pad for the whole session and the user took it for the virtual pad working.
+/// </summary>
+public static class PadHolders
+{
+    private static readonly string[] PadModules = { "gameinput.dll", "xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll", "xinputuap.dll" };
+    private static readonly HashSet<string> Ignore = new(StringComparer.OrdinalIgnoreCase)
+        { "explorer", "steam", "RW3ProNativeDSHaptics", "dwm", "ShellExperienceHost", "StartMenuExperienceHost", "SearchHost", "TextInputHost" };
+
+    /// <summary>Windowed processes started before <paramref name="before"/> that load a gamepad API (GameInput / XInput);
+    /// browsers and Electron apps (ControllerFocusGuard.KnownTakers) are left out.</summary>
+    public static List<(int Pid, string Name)> Find(DateTime before)
+    {
+        var found = new List<(int, string)>();
+        int self = Environment.ProcessId;
+        foreach (var p in System.Diagnostics.Process.GetProcesses())
+        {
+            try
+            {
+                if (p.Id == self || p.MainWindowHandle == IntPtr.Zero || Ignore.Contains(p.ProcessName) ||
+                    ControllerFocusGuard.KnownTakers.Contains(p.ProcessName) || p.StartTime >= before) continue;
+                foreach (System.Diagnostics.ProcessModule m in p.Modules)
+                    if (Array.Exists(PadModules, n => n.Equals(m.ModuleName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        string title = p.MainWindowTitle;
+                        found.Add((p.Id, string.IsNullOrWhiteSpace(title) ? p.ProcessName : title));
+                        break;
+                    }
+            }
+            catch { }   // protected or exited process
+            finally { p.Dispose(); }
+        }
+        return found;
+    }
+
+    public static bool Alive(int pid)
+    {
+        try { using var p = System.Diagnostics.Process.GetProcessById(pid); return !p.HasExited; }
+        catch { return false; }
+    }
+}

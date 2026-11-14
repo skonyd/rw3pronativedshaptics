@@ -36,6 +36,8 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// body motors go through XInput, the game's trigger values go to the trigger motors in the Sensa frame, and the sound
     /// goes to the palms through the Sensa engine (started by the orchestrator), not to the body motors.</summary>
     public bool Strict { get; init; }
+    /// <summary>Main page levels for the game's rumble (0..100 %) and trigger motors (0..200 %), applied live.</summary>
+    public static volatile int RumblePercent = 100, TriggerPercent = 100;
     /// <summary>Strict path: which pad the game sees (HIDMaestro profile, <see cref="OutputMatrix.Profile"/>).</summary>
     public string VirtualProfile { get; init; } = "xbox-360-wired";
     private int _xinputSlot = -1;
@@ -49,7 +51,8 @@ public sealed class XboxAudioGameBridge : IDisposable
     public XboxAudioGameBridge() => _output = new(frame =>
     {
         if (!Strict) { _physical.Set(frame.BodyLeft, frame.BodyRight, frame.TriggerLeft, frame.TriggerRight); return; }
-        ushort l = (ushort)(BodyMotorLimit.Big(frame.BodyLeft) * 65535), r = (ushort)(Math.Clamp(frame.BodyRight, 0, 1) * 65535);
+        double rumble = Math.Clamp(RumblePercent, 0, 100) / 100.0;
+        ushort l = (ushort)(BodyMotorLimit.Big(frame.BodyLeft * rumble) * 65535), r = (ushort)(Math.Clamp(frame.BodyRight * rumble, 0, 1) * 65535);
         long now = Environment.TickCount64;
         // Only on change (or every 100 ms as a keep-alive): the loop runs every 8 ms.
         if (_xinputSlot >= 0 && (l != _bodyL || r != _bodyR || (l | r) != 0 && now - _bodyTick >= 100))
@@ -57,7 +60,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             var v = new XInput.Vibration { wLeftMotorSpeed = l, wRightMotorSpeed = r };
             if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; _xinputWrites++; }
         }
-        XboxSensa.SetTriggers(frame.TriggerLeft, frame.TriggerRight);
+        XboxSensa.SetTriggers(XboxNativeMix.TriggerGain(frame.TriggerLeft, TriggerPercent), XboxNativeMix.TriggerGain(frame.TriggerRight, TriggerPercent));
     });
 
     public bool IsRunning => _running && (Strict || _audio?.IsCapturing == true);

@@ -53,8 +53,15 @@ public sealed record XboxNativeMix(int PcmPercent = 100, int RumblePercent = 100
         }
 
         return BridgeMotorFrame.Route(Mix(rumbleL, pcmL), Mix(rumbleR, pcmR), 0, 0,
-            TriggersEnabled ? Gain(triggerL, TriggerPercent) : 0,
-            TriggersEnabled ? Gain(triggerR, TriggerPercent) : 0, impulse);
+            TriggersEnabled ? TriggerGain(triggerL, TriggerPercent) : 0,
+            TriggersEnabled ? TriggerGain(triggerR, TriggerPercent) : 0, impulse);
+    }
+
+    /// <summary>Trigger-motor level 0..200 %: above 100 % weak trigger effects are lifted (full strength stays full).</summary>
+    public static double TriggerGain(double value, int percent)
+    {
+        if (!double.IsFinite(value)) return 0;
+        return Math.Min(1, Math.Clamp(value, 0, 1) * Math.Clamp(percent, 0, 200) / 100.0);
     }
 }
 

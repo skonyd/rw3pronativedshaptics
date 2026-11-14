@@ -66,6 +66,10 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
         && OutputMatrix.FromLegacy(HapticMode.Native, NativeHapticSource.Audio, false, true) == (DS, pa | tr)
         && System.Text.Json.JsonSerializer.Deserialize<UserSettings>("{}")!.Output == null,
         "Output selector: settings from before it map once from the old mode");
+    Check(Math.Abs(XboxNativeMix.TriggerGain(0.3, 200) - 0.6) < 1e-9 && XboxNativeMix.TriggerGain(0.8, 200) == 1
+        && XboxNativeMix.TriggerGain(0.5, 100) == 0.5 && XboxNativeMix.TriggerGain(0.5, 0) == 0 && XboxNativeMix.TriggerGain(double.NaN, 150) == 0
+        && new XboxNativeMix(TriggerPercent: 200).Route(0, 0, 0, 0, 0.25, 0.25, true).TriggerLeft == 0.5,
+        "Trigger-motor level up to 200 %: weak effects lifted, full strength stays full");
 }
 
 Check(NativeStereoFixture.ValidateSeparation(HapticTestChannel.Left), "Synthetic left PCM is left-only");

@@ -389,6 +389,22 @@
                 <TextBlock x:Name="MatrixLegend" Style="{StaticResource Hint}" FontSize="11.5" Margin="4,6,0,0" TextWrapping="Wrap"
                            Text="● açık · ○ kapalı · ✓ o kolda var · — yok · oyun: oyunun kendisi sürer. Başka bir kolun hücresine tıklayınca o kola geçilir."/>
                 <TextBlock x:Name="MatrixPadNote" Style="{StaticResource Hint}" FontSize="11.5" Margin="4,2,0,0" TextWrapping="Wrap"/>
+                <!-- levels of the game's feedback rows (shown when the row is on and RW3 drives it) -->
+                <Grid x:Name="RumbleLevelRow" Margin="4,10,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="Oyunun rumble seviyesi" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Slider x:Name="NativeRumbleLevel" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5" IsSnapToTickEnabled="True"
+                          VerticalAlignment="Center" ValueChanged="NativeRumbleLevel_Changed" AutomationProperties.Name="Oyunun rumble seviyesi"/>
+                  <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeRumbleLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+                <Grid x:Name="TriggerLevelRow" Margin="4,6,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="Tetik motoru seviyesi" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Slider x:Name="MatrixTriggerLevel" Grid.Column="1" Minimum="0" Maximum="200" SmallChange="5" LargeChange="25" TickFrequency="5" IsSnapToTickEnabled="True"
+                          VerticalAlignment="Center" ValueChanged="MatrixTriggerLevel_Changed" AutomationProperties.Name="Tetik motoru titreşim seviyesi"/>
+                  <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=MatrixTriggerLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+                <TextBlock x:Name="LevelRowsHint" Style="{StaticResource Hint}" FontSize="11.5" Margin="4,2,0,0" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
             <Border Height="14"/>
@@ -478,13 +494,6 @@
               <TextBlock Text="Opera, Chrome, Claude, Codex gibi uygulamalar öndeyken Windows avuçları (Sensa) engeller. Açık: o sırada rumble motorları çalar (daha kaba). Kapalı: titreşim o sırada durur, hissettiğin her şey Sensa olur. Oyunlarda etkisi yok." Style="{StaticResource Hint}"/>
               <CheckBox x:Name="RouteTriggers" Visibility="Collapsed" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
               <CheckBox x:Name="RouteRumble" Visibility="Collapsed" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
-              <Grid Margin="0,10,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                <TextBlock Text="Oyunun rumble seviyesi" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                <Slider x:Name="NativeRumbleLevel" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5" IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=RouteRumble}" ValueChanged="NativeRumbleLevel_Changed" AutomationProperties.Name="Oyunun rumble seviyesi"/>
-                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeRumbleLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
               <CheckBox x:Name="XboxStrictHide" Content="Deneysel · Xbox modu: kolu GameInput'tan da gizle (Game Pass / GDK oyunları)" Foreground="#FFB547" Margin="0,8,0,0"
                         Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
               <TextBlock Text="Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
@@ -691,7 +700,7 @@
             <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxRumbleLevel, StringFormat='Rumble · %{0:0}'}"/>
             <Slider x:Name="XboxRumbleLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="Rumble seviyesi"/>
             <TextBlock Style="{StaticResource Hint}" Text="{Binding Value, ElementName=XboxTriggerLevel, StringFormat='L2/R2 · %{0:0}'}"/>
-            <Slider x:Name="XboxTriggerLevel" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="L2/R2 seviyesi"/>
+            <Slider x:Name="XboxTriggerLevel" Minimum="0" Maximum="200" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="XboxMix_Changed" AutomationProperties.Name="L2/R2 seviyesi"/>
             <ComboBox x:Name="XboxBodyMixPriority" SelectedIndex="0" Margin="0,4,0,10" SelectionChanged="XboxMix_Changed" AutomationProperties.Name="Gövde titreşimi önceliği">
               <ComboBoxItem Content="Baskın sinyal"/>
               <ComboBoxItem Content="Normal rumble öncelikli"/>

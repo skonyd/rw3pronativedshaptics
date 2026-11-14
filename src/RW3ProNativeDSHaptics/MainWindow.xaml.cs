@@ -161,7 +161,8 @@ public partial class MainWindow : Window
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
         XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
         NativeRumbleLevel.Value = XboxRumbleLevel.Value;
-        XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
+        XboxTriggerLevel.Value = Math.Clamp(mix.TriggerPercent, 0, 200);
+        MatrixTriggerLevel.Value = XboxTriggerLevel.Value;
         XboxBodyMixPriority.SelectedIndex = Math.Clamp((int)mix.Priority, 0, 2);
         ApplyXboxMix();
         HhHideCheckbox.IsChecked = _settings.HidePadInGames;
@@ -575,6 +576,8 @@ public partial class MainWindow : Window
             (int)XboxTriggerLevel.Value, (XboxBodyPriority)XboxBodyMixPriority.SelectedIndex,
             source == NativeHapticSource.Game, RouteRumble.IsChecked == true, RouteTriggers.IsChecked == true);
         _bridge.XboxMix = _settings.XboxNativeMix;
+        XboxAudioGameBridge.RumblePercent = _settings.XboxNativeMix.RumblePercent;   // virtual Xbox / PS4 pads
+        XboxAudioGameBridge.TriggerPercent = _settings.XboxNativeMix.TriggerPercent;
     }
 
     private bool _updatingNativeLevel;
@@ -702,10 +705,17 @@ public partial class MainWindow : Window
         XboxRumbleLevel.Value = e.NewValue;   // XboxMix_Changed applies and saves it
     }
 
+    private void MatrixTriggerLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized || XboxTriggerLevel.Value == e.NewValue) return;
+        XboxTriggerLevel.Value = e.NewValue;   // XboxMix_Changed applies and saves it
+    }
+
     private void XboxMix_Changed(object sender, RoutedEventArgs e)
     {
         if (!_initialized) return;
         if (NativeRumbleLevel.Value != XboxRumbleLevel.Value) NativeRumbleLevel.Value = XboxRumbleLevel.Value;
+        if (MatrixTriggerLevel.Value != XboxTriggerLevel.Value) MatrixTriggerLevel.Value = XboxTriggerLevel.Value;
         ApplyXboxMix();
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox Native mix", ex); }
     }
@@ -887,8 +897,9 @@ public partial class MainWindow : Window
             StopAll();
             ModeNative.IsChecked = true; // trigger conversion must never run under the Audio/Normal label
             int slot = _settings.PreferredXInputSlot is >= 0 and <= 3 ? _settings.PreferredXInputSlot : -1;
+            var padCreated = DateTime.Now;
             bool ok = await _bridge.StartVirtualDualSenseAsync(slot);
-            if (ok) _run = RunState.Native;
+            if (ok) { _run = RunState.Native; _orch.CheckPadHolders(padCreated); }
         }
         catch (Exception ex) { NoteError("Virtual DualSense", ex); }
         finally { _busy = false; UpdateBridgeStatus(); }
@@ -1135,15 +1146,30 @@ public partial class MainWindow : Window
             row++;
         }
         OutputHint.Text = OutputMatrix.Describe(_output);
-        string? warning = OutputMatrix.Warning(_output, _padMode == WolverineControllerMode.Xbox);
-        OutputWarning.Text = "⚠  " + warning;
-        OutputWarningBox.Visibility = warning != null ? Visibility.Visible : Visibility.Collapsed;
+        ShowOutputWarning();
+        // Level sliders for the game's feedback rows that RW3 drives (not "by the game" on the Wolverine itself).
+        bool rumbleRow = _features.HasFlag(OutputFeature.GameRumble) && OutputMatrix.Support(_output, OutputFeature.GameRumble) == FeatureSupport.Yes;
+        bool triggerRow = _features.HasFlag(OutputFeature.GameTriggers) && OutputMatrix.Support(_output, OutputFeature.GameTriggers) == FeatureSupport.Yes;
+        RumbleLevelRow.Visibility = rumbleRow ? Visibility.Visible : Visibility.Collapsed;
+        TriggerLevelRow.Visibility = triggerRow ? Visibility.Visible : Visibility.Collapsed;
+        LevelRowsHint.Text = _output == GameOutput.Physical
+            ? "Kolun kendisinde rumble ve tetik gücünü oyun belirler; RW3 araya girmez. Seviye için sanal bir kol seç."
+            : triggerRow ? "Tetik %100'ün üstünde zayıf tetik titreşimleri güçlenir; en güçlüsü aynı kalır." + (_padMode == WolverineControllerMode.Pc ? " Kol PC modunda: tetik motoru yok." : "")
+            : "";
         MatrixPadNote.Text = _padMode switch
         {
             WolverineControllerMode.Xbox => "Kol Xbox modunda: tetik motorları ve avuçlar kullanılabilir.",
             WolverineControllerMode.Pc => "Kol PC modunda: avuçlar çalışır, tetik motorlarına ulaşılamaz (DualSense'te tetik efektleri gövdeye gider). Tetikler için kolu Xbox moduna al.",
             _ => ""
         };
+    }
+
+    /// <summary>The orange box: a game that still holds the real pad wins over the output's own caveat.</summary>
+    private void ShowOutputWarning()
+    {
+        string? warning = _orch.PadHolderNote ?? OutputMatrix.Warning(_output, _padMode == WolverineControllerMode.Xbox);
+        OutputWarning.Text = "⚠  " + warning;
+        OutputWarningBox.Visibility = warning != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static string FeatureSub(OutputFeature f) => f switch
@@ -1238,6 +1264,7 @@ public partial class MainWindow : Window
         AudioSourceRows.Visibility = _output != GameOutput.DualSense && palmSound ? Visibility.Visible : Visibility.Collapsed;
         NormalSourceRows.Visibility = _output == GameOutput.Physical && !palmSound ? Visibility.Visible : Visibility.Collapsed;
         foreach (var item in _outputMenus) item.Checked = item.Tag is GameOutput o && o == _output;
+        ShowOutputWarning();
         if (_palmMenu != null) _palmMenu.Checked = palmSound;
         RouteNativeHint.Text = !_bridge.IsVirtualDualSenseRunning
             ? "Köprü, mod seçiliyken kendiliğinden başlar (ilk seferde bir kez yönetici izni). Oyunu köprü çalışırken aç."
