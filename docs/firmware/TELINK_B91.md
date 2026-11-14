@@ -162,3 +162,39 @@ source marker at `0x86540` on an assertion path. This locates code
 associated with the encoder. The real consumer scheduler, stream
 negotiation, active codec, RF send/receive and NXP-facing handoff remain
 open.
+
+## Controller Telink I²S and DMA replay
+
+```powershell
+python -B tools/firmware/replay_telink_radio.py <Flash2FW.bin>
+```
+
+The stock controller routine at `0x20029E3C` initializes the PCM
+history, DMA registers and linked descriptors, port-C pin functions
+and I²S format. The replay stops just after the I²S enable write, at
+`0x2002A086`. It verifies both 512-word self-linked descriptors
+against the corresponding channel registers.
+[Telink B91 audio registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/audio_reg.h)
+[Telink B91 DMA registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/dma_reg.h)
+
+| Channel | Direction at I²S FIFO `0x80120000` | CPU-visible PCM ring | CPU-visible descriptor |
+| --- | --- | --- | --- |
+| 3 | Transmit to FIFO | `0x93878` | `0x9568C` |
+| 2 | Receive from FIFO | `0x87D24` | `0x95678` |
+
+The stock call at `0x12B44` sends the stereo stack buffer to writer
+`0xF808`. The fixture enters at `0x12B3C` with an output frame
+count and synthetic interleaved PCM. All **623 stereo frames**
+(2,492 bytes) reach the modeled FIFO input in order and byte for
+byte. The five blocks cover left only, right only, stereo, an
+in-block wrap with one descriptor reload, and silence. The two
+words neighboring the transmit ring keep their guard values.
+
+The host models DMA movement using the source register and the
+stock descriptor. It supplies the transfer pacing for each block.
+This establishes the stock caller-to-FIFO path with prepared PCM.
+Earlier portions of the call path include paired per-channel
+processing at `0x2002656C` and stereo processing at `0x20022374`.
+There is a separate LPC SPI initialization marker at `0x2002A8B0`.
+The active RF codec, physical I²S signal and controller-to-NXP
+link still need to be demonstrated independently.

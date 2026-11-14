@@ -18,7 +18,11 @@ and returns processed PCM for contiguous, wrapped and underfilled
 ring states. Separate step and rate-offset tests check the kernel.
 The stock buffer reset clears all ring and retained-sample bytes
 in a dirty-memory fixture.
-The real scheduling and RF handoff still need to be reproduced.
+The controller Telink's stock I²S setup generates transmit and receive
+DMA descriptors. Its stock PCM writer sends 623 synthetic stereo frames
+to the modeled transmit FIFO in order, including a descriptor wrap.
+The real scheduling, RF handoff, and controller-to-NXP link still need
+to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

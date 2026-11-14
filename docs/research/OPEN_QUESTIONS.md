@@ -23,8 +23,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   and returns resampled PCM to the ring consumer's caller. E-20261115-95
   verifies stock PCM ring reset with dirty buffers. Next identify
   that caller and its scheduling source, follow the processed output
-  to a verified RF packet and reproduce the controller-radio
-  receive path to the NXP-facing interface.
+  to a verified RF packet. E-20261115-96 executes the controller
+  Telink's stock I²S setup and PCM writer from 0x12B44. Next execute
+  its upstream stereo processing at 0x20022374 and trace the incoming
+  payload. Check the LPC SPI path separately from the I²S FIFO before
+  connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.

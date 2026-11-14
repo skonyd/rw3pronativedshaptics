@@ -107,6 +107,8 @@ def andes_next(cpu, pc):
         result = saturate(signed_word(left) + signed_word(right), 16)
     elif word & 0xFE00707F == 0x0C00107F:  # KHMBB
         result = saturate((signed_half(left) * signed_half(right)) >> 15, 16)
+    elif word & 0xFE00707F == 0x0E00107F:  # PKBB16
+        result = (left << 16) | (right & 0xFFFF)
     elif word & 0xFE00707F == 0x4800107F:  # KMADA
         accumulator = signed_word(cpu.reg_read(UC_RISCV_REG_X0 + dest))
         result = saturate(accumulator + signed_half(left) * signed_half(right)
@@ -133,6 +135,16 @@ def run_until(cpu, pc, end, vendor_budget):
             return
         pc = andes_next(cpu, pc)
     raise ValueError(f"Stock routine did not reach 0x{end:X}, stopped near 0x{pc:X}")
+
+
+def install_andes_hooks(cpu, code_ranges):
+    def stop_for_andes(machine, address, size, data):
+        if address == machine.stock_stop_address or (
+                size == 4 and machine.mem_read(address, 1)[0] & 0x7F in (0x0B, 0x2B, 0x5B, 0x7F)):
+            machine.emu_stop()
+
+    for start, end in code_ranges:
+        cpu.hook_add(UC_HOOK_CODE, stop_for_andes, begin=start, end=end)
 
 
 def initialize_resampler(cpu, stack):
@@ -329,18 +341,13 @@ def replay_endpoint(cpu, slots):
     ring_end = RING_WORDS + 4 * RING_SIZE
     adjacent = tuple(bytes(cpu.mem_read(address, 4)) for address in (RING_WORDS - 4, ring_end))
 
-    def stop_for_andes(machine, address, size, data):
-        if address == machine.stock_stop_address or (
-                size == 4 and machine.mem_read(address, 1)[0] & 0x7F in (0x0B, 0x2B, 0x5B, 0x7F)):
-            machine.emu_stop()
-
     def read_endpoint(machine, access, address, size, value, data):
         nonlocal position
         require(size == 1 and position < len(slot), "Stock code read past the USB slot")
         machine.mem_write(address, slot[position:position + 1])
         position += 1
 
-    cpu.hook_add(UC_HOOK_CODE, stop_for_andes, begin=0x800, end=0x29723)
+    install_andes_hooks(cpu, ((0x800, 0x29723),))
     cpu.hook_add(UC_HOOK_MEM_READ, read_endpoint, begin=ENDPOINT_STREAM, end=ENDPOINT_STREAM)
     stack = cpu.reg_read(UC_RISCV_REG_SP)
     returned = 0x700
