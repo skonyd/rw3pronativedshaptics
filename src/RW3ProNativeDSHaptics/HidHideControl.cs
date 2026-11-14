@@ -248,6 +248,19 @@ public static class HidHideControl
         return path + " izinli listeye eklendi";
     }
 
+    /// <summary>Takes back an <see cref="AllowApp"/> made by this app (only programs RW3 added itself).</summary>
+    public static string DisallowApp(string path)
+    {
+        var cli = FindCli() ?? throw new InvalidOperationException("HidHide kurulu değil");
+        if (!File.Exists(RestoreFile)) return "gizleme etkin değil";
+        var st = JsonSerializer.Deserialize<RestoreState>(File.ReadAllText(RestoreFile)) ?? new RestoreState(false, new(), new());
+        var added = st.AddedApps ?? new List<string>();
+        if (!added.Remove(added.Find(a => string.Equals(a, path, StringComparison.OrdinalIgnoreCase)) ?? "")) return path + " RW3 tarafından eklenmemiş";
+        Run(cli, "--app-unreg " + Quote(path));
+        File.WriteAllText(RestoreFile, JsonSerializer.Serialize(st with { AddedApps = added }));
+        return path + " izinli listeden çıkarıldı";
+    }
+
     private static string Quote(string s) => "\"" + s + "\"";
 
     private static string Run(string cli, string args)

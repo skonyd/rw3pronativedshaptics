@@ -35,6 +35,14 @@ public sealed class VirtualDualSenseBridge : IDisposable
     public static bool IsElevated => Environment.IsPrivilegedProcess;
     /// <summary>Hide the physical Xbox pad from games while running (HidHide), restore on stop.</summary>
     public bool HidePhysicalPad { get; set; }
+    /// <summary>Experimental (Ayarlar → Gelişmiş): in Xbox mode also hide the pad from GameInput. GDK / Game Pass games read
+    /// the pad through the GameInput service; when RW3 allows that service (to read and drive the pad), such a game still
+    /// sees the Xbox pad, ignores the virtual DualSense and takes the controller focus, so the palms go silent
+    /// (Banishers GDK, 2026-11-14). With this on, the bridge reads the pad through XInput, drives the body motors through
+    /// XInput and the trigger motors through the Sensa frame only, and never allows the GameInput service.</summary>
+    public static volatile bool StrictHide;
+    private bool _strictApplied;
+    private int _xboxXInputSlot = -1;
     public string HidHideNote { get; private set; } = "";
     /// <summary>HID path of the virtual DualSense (what games open); null until the readback found it.</summary>
     public string? VirtualHidPath => _readback?.DevicePath;
@@ -394,8 +402,30 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 ClearGameState();
                 nextAcquire = 0;
             }
-            if (_mode == WolverineControllerMode.Xbox)
+            if (_mode == WolverineControllerMode.Xbox && StrictHide)
             {
+                if (!_strictApplied)
+                {
+                    _strictApplied = true; _xbox?.Forget();
+                    try { DiagnosticsService.Info("Virtual DualSense: strict hide; " + HidHideControl.DisallowApp(HidHideControl.GameInputServicePath)); }
+                    catch (Exception ex) { DiagnosticsService.Error("HidHide disallow GameInput", ex); }
+                }
+                int candidate = _slot;
+                if (candidate < 0)
+                    for (int i = 0; i < 4; i++)
+                        if (XInput.GetState((uint)i, out _) == 0) { if (candidate >= 0) { candidate = -1; break; } candidate = i; }
+                if (candidate >= 0 && XInput.GetState((uint)candidate, out var xs) == 0)
+                {
+                    if (_xboxXInputSlot != candidate) DiagnosticsService.Info("Virtual DualSense: strict hide, Xbox-mode input/output through XInput slot " + candidate + ".");
+                    _xboxXInputSlot = candidate;
+                    var v = xs.Gamepad;
+                    pad = new(v.wButtons, v.bLeftTrigger, v.bRightTrigger, v.sThumbLX, v.sThumbLY, v.sThumbRX, v.sThumbRY);
+                    read = true;
+                }
+            }
+            else if (_mode == WolverineControllerMode.Xbox)
+            {
+                _strictApplied = false; _xboxXInputSlot = -1;
                 _xbox ??= new GameInputRumble();
                 if (!_xbox.HasDevice && now >= nextAcquire)
                 {
@@ -558,7 +588,14 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private int _pcOutputSlot = -1;
     private void WriteMotors(BridgeMotorFrame f)
     {
-        if (_outputMode == WolverineControllerMode.Xbox)
+        if (_outputMode == WolverineControllerMode.Xbox && StrictHide)
+        {
+            // GameInput cannot see the pad here: body motors through XInput; the trigger motors get the Sensa frame only.
+            if (_xboxXInputSlot < 0) return;
+            var v = new XInput.Vibration { wLeftMotorSpeed = (ushort)(BodyMotorLimit.Big(f.BodyLeft) * 65535), wRightMotorSpeed = (ushort)(Math.Clamp(f.BodyRight, 0, 1) * 65535) };
+            XInput.XInputSetState((uint)_xboxXInputSlot, ref v);
+        }
+        else if (_outputMode == WolverineControllerMode.Xbox)
             _xbox?.Set(f.BodyLeft, f.BodyRight, f.TriggerLeft, f.TriggerRight);
         else if (_pcOutputSlot >= 0)
         {

@@ -46,6 +46,8 @@ public sealed class UserSettings
     public AudioCaptureScope AudioScope { get; set; }
     /// <summary>Xbox mode: while a browser/Electron app in front blocks the palms, play the sound on the rumble motors.</summary>
     public bool XboxRumbleFallback { get; set; } = true;
+    /// <summary>Experimental: in Xbox mode also hide the pad from GameInput (GDK / Game Pass games), see VirtualDualSenseBridge.StrictHide.</summary>
+    public bool XboxStrictHide { get; set; }
     /// <summary>The first-start guide was answered or closed. False shows it on the next start.</summary>
     public bool GuideDone { get; set; }
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>

@@ -417,6 +417,9 @@
                         VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=RouteRumble}" ValueChanged="NativeRumbleLevel_Changed" AutomationProperties.Name="Oyunun rumble seviyesi"/>
                 <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeRumbleLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
               </Grid>
+              <CheckBox x:Name="XboxStrictHide" Content="Deneysel · Xbox modu: kolu GameInput'tan da gizle (Game Pass / GDK oyunları)" Foreground="#FFB547" Margin="0,8,0,0"
+                        Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
+              <TextBlock Text="Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
               <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" Margin="0,6,0,6"/>
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>

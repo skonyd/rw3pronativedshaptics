@@ -170,6 +170,8 @@ public partial class MainWindow : Window
         AudioMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         NativeMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         ControllerFocusGuard.FallbackEnabled = _settings.XboxRumbleFallback;
+        VirtualDualSenseBridge.StrictHide = _settings.XboxStrictHide;
+        XboxStrictHide.IsChecked = _settings.XboxStrictHide;
         AudioRumbleFallback.IsChecked = NativeRumbleFallback.IsChecked = _settings.XboxRumbleFallback;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
@@ -2170,6 +2172,15 @@ public partial class MainWindow : Window
         SettingsBasicPanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
         SettingsAdvancedPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
+    }
+
+    private void XboxStrictHide_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.XboxStrictHide = XboxStrictHide.IsChecked == true;
+        VirtualDualSenseBridge.StrictHide = _settings.XboxStrictHide;   // the bridge switches its input path on the next loop
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("GameInput gizleme", ex); }
+        DiagnosticsService.Info("Xbox mode strict hide (pad hidden from GameInput too): " + _settings.XboxStrictHide + ".");
     }
 
     /// <summary>One setting shown in both panels; applies live (read per 5 ms block).</summary>
