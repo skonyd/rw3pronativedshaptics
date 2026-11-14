@@ -402,7 +402,14 @@
               <TextBlock Text="Sesten titreşim modundaki Melodi ile aynı ayar. Değiştirince köprü kısa bir an yeniden başlar." Style="{StaticResource Hint}"/>
               <TextBlock Text="Oyunun diğer geri bildirimi" FontWeight="SemiBold" Margin="0,12,0,2"/>
               <CheckBox x:Name="RouteTriggers" Content="Tetik efektleri (L2/R2): Xbox modunda tetik motorlarında" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
-              <CheckBox x:Name="RouteRumble" Content="Oyunun normal titreşimi (rumble): gövde motorlarında" Foreground="#EEF3FF" Margin="0,4,0,0" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              <CheckBox x:Name="RouteRumble" Content="Oyunun normal titreşimi: rumble motorlarında (ayrı, avuçlara karışmaz)" Foreground="#EEF3FF" Margin="0,4,0,0" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
+              <Grid Margin="22,2,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                <TextBlock Text="Rumble seviyesi" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Slider x:Name="NativeRumbleLevel" Grid.Column="1" Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5" IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=RouteRumble}" ValueChanged="NativeRumbleLevel_Changed" AutomationProperties.Name="Oyunun rumble seviyesi"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=NativeRumbleLevel, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+              </Grid>
               <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" Margin="0,6,0,6"/>
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>

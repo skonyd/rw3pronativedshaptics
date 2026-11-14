@@ -159,6 +159,7 @@ public partial class MainWindow : Window
         DirectTransientRecords.IsChecked = _settings.DirectTransientRecords;
         XboxPcmLevel.Value = HapticOutputLevel.Limit(mix.PcmPercent);
         XboxRumbleLevel.Value = HapticOutputLevel.Limit(mix.RumblePercent);
+        NativeRumbleLevel.Value = XboxRumbleLevel.Value;
         XboxTriggerLevel.Value = HapticOutputLevel.Limit(mix.TriggerPercent);
         XboxBodyMixPriority.SelectedIndex = Math.Clamp((int)mix.Priority, 0, 2);
         ApplyXboxMix();
@@ -701,9 +702,17 @@ public partial class MainWindow : Window
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Haptik seviyesi", ex); }
     }
 
+    /// <summary>The DualSense panel's rumble slider is the same setting as Gelişmiş → motor mix → Rumble.</summary>
+    private void NativeRumbleLevel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized || XboxRumbleLevel.Value == e.NewValue) return;
+        XboxRumbleLevel.Value = e.NewValue;   // XboxMix_Changed applies and saves it
+    }
+
     private void XboxMix_Changed(object sender, RoutedEventArgs e)
     {
         if (!_initialized) return;
+        if (NativeRumbleLevel.Value != XboxRumbleLevel.Value) NativeRumbleLevel.Value = XboxRumbleLevel.Value;
         ApplyXboxMix();
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Xbox Native mix", ex); }
     }

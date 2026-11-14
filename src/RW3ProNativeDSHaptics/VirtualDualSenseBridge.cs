@@ -500,7 +500,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     }
                     else _palm.Reset();
                     _motors?.Submit(BridgeMotorFrame.Route(
-                        mix.RumbleEnabled ? rl / 255.0 : 0, mix.RumbleEnabled ? rr / 255.0 : 0,
+                        mix.RumbleEnabled ? rl / 255.0 * mix.RumblePercent / 100.0 : 0, mix.RumbleEnabled ? rr / 255.0 * mix.RumblePercent / 100.0 : 0,
                         0, 0, mix.TriggersEnabled && !palm ? lt : 0, mix.TriggersEnabled && !palm ? rt : 0, false),
                         Environment.TickCount64);
                 }
