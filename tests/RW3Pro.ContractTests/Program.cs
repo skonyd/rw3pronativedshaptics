@@ -1750,7 +1750,18 @@ SpectralContracts.Run(Check);
         && HapticModePolicy.ResolveSource(null, false) == NativeHapticSource.Off
         && HapticModePolicy.ResolveSource(NativeHapticSource.Audio, true) == NativeHapticSource.Audio;
     bool settingsDefault = System.Text.Json.JsonSerializer.Deserialize<UserSettings>("{}")!.NativeHapticSource == null
-        && new UserSettings().AudioStandard;
+        && new UserSettings().AudioStandard && new UserSettings().AudioScope == AudioCaptureScope.AllSystem;
+    // "Only the foreground app": RW3 itself and shell surfaces (Start, taskbar, alt-tab) keep the previous target, so
+    // adjusting the slider or opening Start mid-game does not cut the game's vibration; a real app switches it.
+    const int own = 100;
+    bool scope = ForegroundAudioTarget.Next(0, "eldenring", 4000, own) == 4000
+        && ForegroundAudioTarget.Next(4000, "RW3ProNativeDSHaptics", own, own) == 4000
+        && ForegroundAudioTarget.Next(4000, "explorer", 50, own) == 4000
+        && ForegroundAudioTarget.Next(4000, "StartMenuExperienceHost", 51, own) == 4000
+        && ForegroundAudioTarget.Next(4000, "opera", 5000, own) == 5000
+        && ForegroundAudioTarget.Next(4000, null, 0, own) == 4000
+        && ForegroundAudioTarget.Supported(26100) && !ForegroundAudioTarget.Supported(19041 - 1);
+    Check(scope, "Audio scope 'foreground app': follows real apps, keeps the game while RW3 / shell is in front, needs build 19041+");
     Check(start && blocked && retry && plan && usb && legacy && settingsDefault,
         "Mode policy: auto-start gates, per-mode switches, retry timing (virtual-Xbox never by itself), native source plan, haptic source (USB only for game HD, legacy files)");
 }

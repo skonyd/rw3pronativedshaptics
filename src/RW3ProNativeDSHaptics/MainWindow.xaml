@@ -279,6 +279,12 @@
                 <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=AudioLevelSlider, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
               </Grid>
               <TextBlock Text="%100 = sesin kendi seviyesi. Hemen uygulanır." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Hangi ses titreşsin?" FontWeight="SemiBold" Margin="0,10,0,2"/>
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="ScopeAll" GroupName="AudioScopeA" Tag="AllSystem" Content="Bilgisayarın tüm sesi" Foreground="#EEF3FF" Margin="0,0,18,0" Checked="AudioScope_Checked"/>
+                <RadioButton x:Name="ScopeApp" GroupName="AudioScopeA" Tag="ForegroundApp" Content="Yalnız öndeki uygulama (oyun)" Foreground="#EEF3FF" Checked="AudioScope_Checked"/>
+              </StackPanel>
+              <TextBlock Text="Öndeki uygulama: oynadığın oyunun sesi titreşir; arka plandaki YouTube, Discord, müzik titreşmez. Oyuna geçince kendiliğinden ona döner; bu pencere öndeyken son oyun dinlenmeye devam eder." Style="{StaticResource Hint}"/>
               <CheckBox x:Name="AudioStandard" Content="Standart (DSX gibi): ses olduğu gibi, sessizlikte durur" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="AudioShaping_Changed" Unchecked="AudioShaping_Changed"/>
               <TextBlock Text="Önerilen. Kısık ses zayıf, yüksek ses güçlü titreşir; çok sessiz kısımlarda titreşim tamamen kesilir." Style="{StaticResource Hint}"/>
@@ -326,6 +332,10 @@
                 </RadioButton>
               </UniformGrid>
               <TextBlock x:Name="NativeSourceHint" Style="{StaticResource Hint}" Margin="0,6,0,0"/>
+              <StackPanel x:Name="NativeScopeRow" Orientation="Horizontal" Margin="0,6,0,0">
+                <RadioButton x:Name="NativeScopeAll" GroupName="AudioScopeN" Tag="AllSystem" Content="Bilgisayarın tüm sesi" Foreground="#EEF3FF" Margin="0,0,18,0" Checked="AudioScope_Checked"/>
+                <RadioButton x:Name="NativeScopeApp" GroupName="AudioScopeN" Tag="ForegroundApp" Content="Yalnız öndeki uygulama (oyun)" Foreground="#EEF3FF" Checked="AudioScope_Checked"/>
+              </StackPanel>
               <Grid x:Name="NativeLevelRow" Margin="0,8,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
                 <TextBlock x:Name="NativeLevelLabel" Text="Haptik seviyesi" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>

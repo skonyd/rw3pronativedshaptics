@@ -133,6 +133,13 @@ public partial class MainWindow : Window
         _settings.AudioSensitivityPercent = Math.Clamp(_settings.AudioSensitivityPercent, 10, 300);
         _settings.NativeGainPercent = Math.Clamp(_settings.NativeGainPercent, 10, 300);
         AudioLevelSlider.Value = _settings.AudioSensitivityPercent;
+        if (!ForegroundAudioTarget.Supported(Environment.OSVersion.Version.Build))
+        {
+            _settings.AudioScope = AudioCaptureScope.AllSystem;
+            ScopeApp.IsEnabled = NativeScopeApp.IsEnabled = false;
+        }
+        AudioHapticsBridge.DefaultScope = _settings.AudioScope;
+        ShowAudioScope();
         (_settings.AudioProfile switch
         {
             AudioHapticProfile.Controlled => AudioProfileControlled,
@@ -532,6 +539,7 @@ public partial class MainWindow : Window
         try
         {
             NativeLevelRow.Visibility = source == NativeHapticSource.Off ? Visibility.Collapsed : Visibility.Visible;
+            NativeScopeRow.Visibility = source == NativeHapticSource.Audio ? Visibility.Visible : Visibility.Collapsed;
             NativeLevelLabel.Text = source == NativeHapticSource.Audio ? "Ses titreşim seviyesi" : "Haptik seviyesi";
             NativeLevelSlider.Value = source == NativeHapticSource.Audio ? _settings.AudioSensitivityPercent : _settings.NativeGainPercent;
         }
@@ -565,6 +573,45 @@ public partial class MainWindow : Window
             _ = EnsureModeRunningAsync();
         }
         else if (SelectedMode == HapticMode.Native && _run == RunState.Off) { _nextAutoStartTick = 0; _ = EnsureModeRunningAsync(); }
+        RefreshStatus();
+    }
+
+    private bool _showingScope;
+
+    private void ShowAudioScope()
+    {
+        _showingScope = true;
+        try
+        {
+            bool app = _settings.AudioScope == AudioCaptureScope.ForegroundApp;
+            (app ? ScopeApp : ScopeAll).IsChecked = true;
+            (app ? NativeScopeApp : NativeScopeAll).IsChecked = true;
+        }
+        finally { _showingScope = false; }
+    }
+
+    /// <summary>"Hangi ses titreşsin?": all system sound or only the foreground app. One setting, shown in the audio
+    /// panel and under the native "Oyun sesinden" source. A running capture restarts with the new scope.</summary>
+    private void AudioScope_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_showingScope || !_initialized || sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out AudioCaptureScope scope)) return;
+        if (_settings.AudioScope == scope) return;
+        _settings.AudioScope = scope;
+        AudioHapticsBridge.DefaultScope = scope;
+        ShowAudioScope();
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Ses kaynağı", ex); }
+        DiagnosticsService.Info("Audio haptics scope: " + scope + ".");
+        if (SelectedMode == HapticMode.Audio && _run == RunState.Audio && !_busy)
+        {
+            StopAll();
+            _nextAutoStartTick = 0;
+            _ = EnsureModeRunningAsync();
+        }
+        else if (SelectedMode == HapticMode.Native && _bridge.NativeAudioHaptics)
+        {
+            _bridge.NativeAudioHaptics = false;   // restart the sound capture with the new scope
+            _bridge.NativeAudioHaptics = true;
+        }
         RefreshStatus();
     }
 
@@ -1046,6 +1093,7 @@ public partial class MainWindow : Window
                     StatusDetail.Text = (capturing
                         ? (_bridge.NativeAudioHasRecentSound ? "Ses → avuçlar, " : "Ses bekleniyor (şu an sessiz), ")
                         : "Ses yakalama: " + (_bridge.NativeAudioFailure ?? "başlatılamadı") + ", ") +
+                        (capturing && _bridge.NativeAudioDevice != null ? $"dinlenen: {_bridge.NativeAudioDevice}, " : "") +
                         $"tetik raporu {triggers}" +
                         (_bridge.VirtualDualSenseInputCheck.Length > 0 ? " • " + _bridge.VirtualDualSenseInputCheck : "");
                     SetBadge(capturing ? GoodBrush : WarnBrush, "Köprü açık");

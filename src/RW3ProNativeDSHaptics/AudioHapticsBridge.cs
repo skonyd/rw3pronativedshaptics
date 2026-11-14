@@ -19,7 +19,7 @@ namespace RW3ProNativeDSHaptics;
 public sealed class AudioHapticsBridge : IDisposable
 {
     private readonly IAudioHapticSink _sink;
-    private WasapiCapture? _capture;
+    private IWaveIn? _capture;
     private float[] _stereo = new float[8192];
     private float[] _raw = new float[8192];
     private SincResampler? _resampler;
@@ -80,7 +80,15 @@ public sealed class AudioHapticsBridge : IDisposable
 
     public bool IsCapturing => Volatile.Read(ref _capturing) == 1;
     public string SinkDescription => _sink.Description;
-    public string? DeviceName { get; private set; }
+    /// <summary>What is being listened to: the playback device, or the foreground app in that mode.</summary>
+    public string? DeviceName => _capture is ForegroundAppCapture f
+        ? "öndeki uygulama: " + (f.TargetName ?? "bekleniyor (oyunu öne getir)") : _deviceName;
+    private string? _deviceName;
+
+    /// <summary>App-wide setting (Genel → "Hangi ses?"): all system sound or only the foreground app. Read at start.</summary>
+    public static volatile AudioCaptureScope DefaultScope = AudioCaptureScope.AllSystem;
+    /// <summary>Scope of this capture. On-screen sound tests (which name a device) always use the whole device.</summary>
+    public AudioCaptureScope Scope { get; private set; }
     public long Callbacks => System.Threading.Interlocked.Read(ref _callbacks);
     /// <summary>
     /// Loopback carries the endpoint's SOFTWARE volume (measured 2026-11-07: Steam Streaming Speakers
@@ -134,18 +142,20 @@ public sealed class AudioHapticsBridge : IDisposable
         var device = deviceId != null ? enumerator.GetDevice(deviceId)
                                       : enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
         _device = device;
-        WasapiCapture? capture = null;
+        IWaveIn? capture = null;
         try
         {
-            DeviceName = device.FriendlyName;
-            OutputIsBluetooth = IsBluetooth(device);
+            _deviceName = device.FriendlyName;
+            OutputIsBluetooth = IsBluetooth(device);   // the app plays through the default device: same delay
             _resampler = null;
             _shaper.Reset();
-            CompensatesVolume = !HasHardwareVolume(device);
+            Scope = deviceId == null ? DefaultScope : AudioCaptureScope.AllSystem;
+            // Process loopback takes the app's stream before the endpoint volume: nothing to compensate.
+            CompensatesVolume = Scope == AudioCaptureScope.AllSystem && !HasHardwareVolume(device);
             UpdateVolumeCompensation();
             if (CompensatesVolume) { try { device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification; } catch { } }
             EffectiveDelayMs = AudioSyncDelay.Resolve(DelayOverrideMs ?? SyncDelaySetting, OutputIsBluetooth);
-            capture = new ConfigurableWasapiLoopbackCapture(device, 10);
+            capture = Scope == AudioCaptureScope.ForegroundApp ? new ForegroundAppCapture() : new ConfigurableWasapiLoopbackCapture(device, 10);
             var format = capture.WaveFormat;
             bool floating = format.Encoding == WaveFormatEncoding.IeeeFloat ||
                 (format is WaveFormatExtensible ext && ext.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71"));
@@ -182,7 +192,8 @@ public sealed class AudioHapticsBridge : IDisposable
             Stop();
             throw;
         }
-        DiagnosticsService.Info("Audio haptics: loopback of '" + DeviceName + "'" + (OutputIsBluetooth ? " (Bluetooth)" : "") +
+        DiagnosticsService.Info("Audio haptics: " + (Scope == AudioCaptureScope.ForegroundApp ? "foreground app only (process loopback), output '" : "loopback of '") +
+                                _deviceName + "'" + (OutputIsBluetooth ? " (Bluetooth)" : "") +
                                 " → " + _sink.Description + ", sync delay " + EffectiveDelayMs + " ms, volume " +
                                 (CompensatesVolume ? "compensated x" + _volumeComp.ToString("F2") : "hardware (not in loopback)"));
     }
@@ -199,7 +210,7 @@ public sealed class AudioHapticsBridge : IDisposable
 
     private void ProcessData(object? sender, WaveInEventArgs e)
     {
-        var fmt = (sender as WasapiCapture)?.WaveFormat;
+        var fmt = (sender as IWaveIn)?.WaveFormat;
         if (fmt == null || e.BytesRecorded == 0) return;
         System.Threading.Interlocked.Increment(ref _callbacks);
         bool isFloat = fmt.Encoding == WaveFormatEncoding.IeeeFloat ||
@@ -278,7 +289,7 @@ public sealed class AudioHapticsBridge : IDisposable
 
     private void StopCore()
     {
-        WasapiCapture? capture;
+        IWaveIn? capture;
         MMDevice? device;
         lock (_callbackGate)
         {

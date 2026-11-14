@@ -347,6 +347,7 @@ public sealed class NativeBridgeService : IDisposable
     public bool IsNativeAudioRunning => _nativeAudio?.IsCapturing == true;
     public bool NativeAudioHasRecentSound => _nativeAudio?.HasRecentSound == true;
     public string? NativeAudioFailure => _nativeAudio?.Failure;
+    public string? NativeAudioDevice => _nativeAudio?.DeviceName;
 
     private void StartNativeAudio()
     {
