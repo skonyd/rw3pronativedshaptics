@@ -69,9 +69,8 @@ addresses and the 64-byte configuration size to its USB helper.
 Interface 1, alternate setting 1 lists isochronous audio
 OUT `0x06` and IN `0x87`. Both appear in the Windows dongle capture.
 That capture contains 6,272 ordered 192-byte downstream GIP audio
-blocks on `0x06`. This anchors the host-side transport to data from
-the stock dongle loader. The audio handler, codec selection, RF
-send/receive and the NXP-facing audio handoff still require a trace.
+blocks on `0x06`. The stock endpoint handler replay below extends
+the verified boundary to the dongle's PCM ring.
 No Xbox console session or USB enumeration runs in this replay.
 
 ```powershell
@@ -81,3 +80,37 @@ python -B tools/firmware/replay_telink_startup.py <Dev1FW.bin> <Flash2FW.bin> --
 The lab trace uses USB address 9. Pass `--usb-address` for a capture
 with a different assigned address. The tool writes its report to
 stdout and issues no USB or radio requests.
+
+## Dongle USB audio handler and PCM ring
+
+```powershell
+python -B tools/firmware/replay_telink_usb.py <Dev1FW.bin> <dongle.pcap>
+```
+
+The replay uses the original 198-byte slots from the Windows capture.
+It starts stock code at dispatcher `0x3C60`, with the endpoint-6
+pending state and audio mode seeded. The dispatcher takes `0x51B8`,
+which consumes the six header bytes and stores 48 interleaved PCM words
+in the ring at `0x91254`. The write counter is at `0x90A34`.
+The no-pending case leaves the ring and counter untouched. The handler
+clears the length register. The full trace matches **1,204,224 PCM bytes**
+across **6,272 slots and 294 ring wraps**, including the adjacent-word
+guards. A host-input hash and a ring-output hash also agree.
+
+The model provides length and stream reads at `0x80100816` and
+`0x80100826`, respectively, as used by these stock instructions.
+This is an observed code-access pattern in the replay. The public B91
+SDK labels the latter address as an endpoint control register, so this
+model does not establish the product's physical register semantics.
+The replay stops before the event helper call at `0x5310`. The host
+dispatches each slot and the replay does not model interrupt timing,
+stream negotiation or consumer pacing.
+[Telink B91 USB registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/usb_reg.h)
+
+The downstream code at `0x57EC` reads the same ring, and call site
+`0x5858` passes samples to `0x18AB8`. A separate fixture runs the input
+loop of that routine directly on one asymmetric captured ring block.
+It checks the exact 48 left and right samples in separate buffers using
+a seeded context and stops before the next processing stage at
+`0x18B28`. The producer-to-consumer scheduling, sample processing,
+codec choice, RF send/receive and NXP-facing handoff remain open.

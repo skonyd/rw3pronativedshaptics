@@ -15,8 +15,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   underrun with scheduled callbacks. Trace hardware interrupt delivery and
   timing. E-20261115-91 checks both B91 startup relocation layouts and
   matches the dongle Xbox descriptor to the captured host endpoints.
-  Trace the dongle endpoint handler to its RF buffer and map the
-  controller-radio receive path to the NXP-facing interface.
+  E-20261115-92 verifies the stock dongle endpoint dispatcher and
+  1024-word PCM ring with every captured slot and exercises the
+  downstream stereo split. Next replay the event helper at 0x5310
+  and the timed ring consumer from 0x5664; follow its processed
+  output to a verified RF packet and reproduce the controller-radio
+  receive path to the NXP-facing interface.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.

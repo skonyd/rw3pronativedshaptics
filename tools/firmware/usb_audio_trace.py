@@ -40,7 +40,7 @@ def gip_audio(slot):
     return None
 
 
-def inspect(path, address):
+def inspect(path, address, on_audio_slot=None):
     endpoints, slot_sizes, payload_sizes = Counter(), Counter(), Counter()
     blocks = []
     for time_us, packet in packets(path):
@@ -62,11 +62,14 @@ def inspect(path, address):
             if not 0 <= start <= end <= length:
                 raise ValueError("Invalid isochronous slot offsets")
             slot_sizes[end - start] += 1
-            parsed = gip_audio(packet[hlen + start:hlen + end])
+            slot = packet[hlen + start:hlen + end]
+            parsed = gip_audio(slot)
             if parsed:
                 sequence, data = parsed
                 payload_sizes[len(data)] += 1
                 blocks.append((time_us, sequence, data))
+                if on_audio_slot is not None:
+                    on_audio_slot(endpoint, slot, data)
     return {"device_address": address, "endpoints": dict(endpoints),
             "isochronous_out_slot_sizes": dict(slot_sizes),
             "gip_audio_payload_sizes": dict(payload_sizes),

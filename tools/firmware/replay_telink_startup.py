@@ -47,7 +47,7 @@ def execute_addigp(cpu, opcode):
                   (cpu.reg_read(UC_RISCV_REG_GP) + offset) & 0xFFFFFFFF)
 
 
-def replay_startup(image, role):
+def replay_startup(image, role, inspect_application=None):
     crc, jump_offset, app_entry, stack, regions = LAYOUTS[role]
     payload = image[PAYLOAD_OFFSET:]
     require(len(image) > PAYLOAD_OFFSET, f"{role}: missing payload")
@@ -125,6 +125,8 @@ def replay_startup(image, role):
                                "start": hex(start), "bytes": end - start} for offset, start, end in regions]}
     if role == "dongle":
         report["xbox_usb"] = xbox_descriptors(cpu)
+    if inspect_application is not None:
+        report["application"] = inspect_application(cpu)
     return report
 
 
