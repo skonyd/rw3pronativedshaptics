@@ -260,6 +260,15 @@ expected table entries after each refresh, including stock integer
 percentage truncation between knots. Persistent storage reads and the
 device's own calibration inputs are outside this replay.
 
+The EEPROM calibration test runs the stock startup branch at `0x2DE70`.
+It reads 221 bytes from EEPROM offset `0x3000`, checks the length,
+version and checksum, and selects either the stored block or the factory
+block at `0x354CE`. The valid test block supplied a first gain of 21%.
+Wrong checksum, length, version and erased data all produced the factory
+20% gain and marked the block for rewrite. The selected data was passed
+through the stock table initializer. EEPROM initialization is seeded in
+this test, and the deferred write and separate user profile loader remain open.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

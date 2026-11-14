@@ -605,6 +605,50 @@ def check_stock_profile_calibration(image, dsp):
             "table_entries_checked_per_refresh": 4 * 501}
 
 
+def check_eeprom_calibration(image, dsp):
+    """Execute the stock EEPROM read and calibration validation branch."""
+    address, size = 0x200093FB, 0xDD
+    factory = image[0x354CE - 0x8000:0x354CE - 0x8000 + size]
+    outcomes = []
+    for scenario in ("valid", "bad_checksum", "bad_length", "wrong_version", "erased"):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        cpu.mem_map(0x4010B000, 4096)
+        cpu.mem_write(0x200094DA, b"\x01")  # EEPROM controller already initialized
+        calibration = bytearray(factory)
+        calibration[0x1A] ^= 1  # distinguish valid EEPROM from the factory fallback
+        if scenario == "bad_length":
+            calibration[0] ^= 1
+        if scenario == "wrong_version":
+            calibration[3] ^= 1
+        cpu.mem_write(address, bytes(calibration))
+        replay.call(0x2B6B8, RETURN, address, size - 2)
+        struct.pack_into("<H", calibration, size - 2, cpu.reg_read(UC_ARM_REG_R0) & 0xFFFF)
+        if scenario == "bad_checksum":
+            calibration[0x1A] ^= 2
+        if scenario == "erased":
+            calibration[:] = b"\xFF" * size
+        cpu.mem_write(0x4010B000, bytes(calibration))
+
+        # Enter the isolated calibration branch of the boot loader routine.
+        # It reads via 0x31D4C and falls through at 0x2DECA after validation.
+        replay.call(0x2DE70, 0x2DECA)
+        accepted = scenario == "valid"
+        verify(bytes(cpu.mem_read(address, size)) == (bytes(calibration) if accepted else factory),
+               f"Unexpected stock calibration result: {scenario}")
+        dirty, = struct.unpack("<H", cpu.mem_read(0x200019B8, 2))
+        verify(bool(dirty & 0x200) == (not accepted), "Unexpected calibration rewrite flag")
+        cpu.mem_map(0xE000E000, 4096)
+        cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
+        replay.call(0x10088, RETURN, 0, instruction_limit=500000)
+        first_knot_gain, = struct.unpack_from("<H", calibration if accepted else factory, 0x1A)
+        first_gain, = struct.unpack("<f", cpu.mem_read(0x20002404, 4))
+        verify(abs(first_gain - first_knot_gain / 100) < 1e-6, "Selected calibration did not reach the gain table")
+        outcomes.append({"scenario": scenario, "accepted": accepted, "rewrite_pending": not accepted,
+                         "first_gain_percent": first_knot_gain})
+    return {"name": "stock_eeprom_calibration", "cases": outcomes}
+
+
 def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
@@ -733,6 +777,7 @@ def main():
     report.append(check_dma_arrival_variation(image, dsp))
     report.append(check_sensa_pwm(image, dsp))
     report.append(check_stock_profile_calibration(image, dsp))
+    report.append(check_eeprom_calibration(image, dsp))
     full_gain = check_sensa_pwm(image, dsp, continuous=True)
     half_gain = check_sensa_pwm(image, dsp, continuous=True, gain_percent=50)
     for full, half in zip(full_gain["cases"], half_gain["cases"]):

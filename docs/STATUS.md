@@ -34,6 +34,8 @@ builds the gain tables from controlled calibration inputs. An explicit
 empty frame restores idle.
 The stock refresh wrapper now also passes RAM profile switching and
 frequency-dependent gain interpolation checks.
+Stock EEPROM calibration loading accepts a valid block, restores factory
+data on four invalid inputs, and passes the selected data to the gain initializer.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
