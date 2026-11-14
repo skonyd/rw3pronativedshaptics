@@ -96,8 +96,10 @@ Next steps, in order:
 - The **analysis** (maps, catalog, emulation of the stock firmware's command handlers) is done and pushed.
 - An original Cortex-M4 TX tap and DSP worker run alongside the stock USB,
   DMA, timer, Sensa and PWM routines in the offline
-  [audio replay](firmware/AUDIO_HAPTICS_REPLAY.md). Continue with the stock
-  scheduling context, source ownership and image placement checks in the
+  [audio replay](firmware/AUDIO_HAPTICS_REPLAY.md). The reset-vector replay
+  also covers stock scatter load and startup peripheral timeouts.
+  Continue with external transaction responses, source ownership
+  and image placement checks in the
   [custom firmware plan](research/CUSTOM_FIRMWARE_PLAN.md).
   The [B91 map](firmware/TELINK_B91.md) has initial anchors for both images.
   No device image was modified or flashed. G0 still lacks a verified recovery path

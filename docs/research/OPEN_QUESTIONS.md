@@ -45,6 +45,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   call site 0x2F5FA with priority for a pending game frame. Next establish
   whole-loop cadence, safe memory placement, race-free frame publication
   and worst-case preemption.
+  E-20261114-33 covers the application reset vector and stock/candidate
+  startup comparison through five modeled MRT-driven peripheral timeouts.
+  Next reconstruct external transaction completion and delivered interrupts
+  beyond the second wait at 0x2A610.
   Independently validate timing and pin-level PWM. The runtime switch
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

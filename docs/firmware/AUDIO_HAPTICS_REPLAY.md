@@ -449,6 +449,40 @@ used 128 blocks per transport, with peak deviations of 96/84 SCT counts
 on the wired sample and 120/84 on the dongle sample, with zero trigger
 deviation. The full USB traces contain 6,552 and 6,272 slots respectively.
 
+### Application reset and startup boundary
+
+The replay now begins at the stock application's reset vector
+`0x8415`, with the stack sourced from its vector table and RAM
+filled with nonzero bytes. It executes `SystemInit`, the stock
+scatter loader and its initial-data/zero-fill routines to the
+start of `main` at `0x2EF68`. VTOR reaches `0x8000`, the FPU
+access bits are set, 2,560 bytes of initialized RAM match stock
+and 78,632 bytes of BSS are cleared.
+
+The candidate redirects the scatter-to-main pointer only in
+Unicorn. An ARM init routine clears its 240 bytes of private
+state outside stock BSS, then tail-branches into stock `main`.
+With two dirty RAM patterns, stock and candidate preserve the
+guard bytes between allocations. This tests the reset logic at
+replay addresses. The addresses remain unverified for hardware.
+
+A separate startup trace continues through clock setup and
+CTIMER2/3 configuration. At three waits in `0x2B428` and two
+in `0x2A610` it delivers 80 stock MRT0 handler calls through
+the application's vector for each timeout. This runs the stock
+counter decrement while the foreground context is suspended.
+It supplies no successful external-device response. This fixture
+matches 81,192 bytes of stock RAM, 982 peripheral write operations
+in order, and the lowest observed stack write at `0x20027EC4`.
+The application flash pages are execute/read-only during the run.
+
+The trace supplies PLL/power ready bits and an empty shared
+boot word. It uses selected mapped MMIO ranges with reset aliases
+and manually schedules the timer during the waits. It stops at
+the second `0x2A610` timeout. Resident bootloader execution,
+power-on hardware state, automatic exception delivery,
+external transaction responses and enumeration remain open.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

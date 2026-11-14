@@ -60,3 +60,30 @@ dispatch:
 dispatcher:
     .word 0x2b539
     .ltorg
+
+/* Called after the stock scatter loader. The private replay regions
+ * are outside stock BSS and can retain data across a warm reset.
+ */
+.section .text.audio_haptics_boot, "ax", %progbits
+.thumb_func
+.global audio_haptics_boot
+audio_haptics_boot:
+    push {r1-r3, lr}
+    movs r3, #0
+    ldr r1, =0x20024000
+    movs r2, #204
+    bl clear_words
+    ldr r1, =0x20021000
+    movs r2, #32
+    bl clear_words
+    ldr r1, =0x20021100
+    str r3, [r1]
+    pop.w {r1-r3, lr}
+    ldr r0, =0x2ef69
+    bx r0
+clear_words:
+    str r3, [r1], #4
+    subs r2, #4
+    bne clear_words
+    bx lr
+    .ltorg

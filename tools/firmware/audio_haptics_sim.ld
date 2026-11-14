@@ -10,6 +10,8 @@ SECTIONS
         KEEP(*(.text.audio_haptics_replay_worker))
         . = 0x00100A00;
         KEEP(*(.text.audio_haptics_foreground))
+        . = 0x00100B00;
+        KEEP(*(.text.audio_haptics_boot))
         *(.text .text.*)
     }
 }

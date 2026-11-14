@@ -58,6 +58,10 @@ effect, palm isolation and return to idle after disable or source underrun.
 The worker can run from stock foreground call site 0x2F5FA in Unicorn and
 defers when a game Sensa frame is already pending. Strict HEX validation
 pins the original writable image envelope at 0x8000–0x37800.
+The lab now starts at the application reset vector and runs the stock
+scatter loader on dirty RAM. The prototype clears its own state before
+stock main. The startup trace matches stock RAM and MMIO writes through
+timer initialization and five peripheral waits advanced by the stock MRT0 handler.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

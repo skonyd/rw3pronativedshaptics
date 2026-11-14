@@ -9,7 +9,10 @@ from pathlib import Path
 import struct
 import wave
 
-from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_MCLASS, UC_MODE_THUMB
+from unicorn import (
+    Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_MCLASS, UC_MODE_THUMB,
+    UC_PROT_EXEC, UC_PROT_READ,
+)
 from unicorn.arm_const import (
     UC_ARM_REG_APSR, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
     UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_SP,
@@ -28,6 +31,7 @@ CTIMER2, CTIMER3 = 0x40028000, 0x40048000
 TX_TAIL, TAP, TAP_BUFFER = 0x2315C, DSP + 0x800, 0x20024000
 WORKER = DSP + 0x900
 MAIN_DISPATCH_CALL, FOREGROUND = 0x2F5FA, DSP + 0xA00
+BOOT_HANDOFF, CANDIDATE_BOOT, STOCK_MAIN = 0x840C, DSP + 0xB00, 0x2EF68
 TAP_ENABLE, TAP_READY, TAP_SOURCE = (TAP_BUFFER + offset for offset in (192, 196, 200))
 
 
@@ -44,7 +48,7 @@ class Replay:
         cpu.mem_write(0x8000, image)
         cpu.mem_map(DSP, 4096)
         cpu.mem_write(DSP, dsp)
-        cpu.mem_map(0x20000000, 0x40000)
+        cpu.mem_map(0x20000000, 0x28000)
         self.steps = 0
         cpu.hook_add(UC_HOOK_CODE, self.count_step, begin=DSP, end=DSP + len(dsp) - 1)
 
@@ -566,6 +570,17 @@ def model_syscon_reset(cpu):
     cpu.hook_add(UC_HOOK_MEM_WRITE, reset_register_alias, begin=syscon + 0x120, end=syscon + 0x14B)
 
 
+def model_async_syscon_reset(cpu):
+    status = 0x40040000
+
+    def async_reset_alias(machine, access, address, size, value, data):
+        old, = struct.unpack("<I", machine.mem_read(status, 4))
+        new = old | value if address == status + 4 else old & ~value
+        machine.mem_write(status, struct.pack("<I", new))
+
+    cpu.hook_add(UC_HOOK_MEM_WRITE, async_reset_alias, begin=status + 4, end=status + 8)
+
+
 def configure_stock_dma(replay):
     cpu = replay.cpu
     dma, tx, rx = 0x40082000, 0x40097000, 0x40098000
@@ -750,6 +765,139 @@ def install_simulated_tx_tap(replay):
     # Stock B.W 0x12F9C. Redirect only in Unicorn; the trampoline resumes
     # the original target with the original arguments and LR.
     redirect_simulated_branch(replay.cpu, TX_TAIL, TAP, "eff71ebf")
+
+
+def check_application_reset(image, dsp):
+    """Start at the application vector with dirty RAM, including candidate state."""
+    ram, bss_end = 0x20000000, 0x20013D28
+    stack, entry = struct.unpack_from("<II", image)
+    verify((stack, entry) == (0x20027FF8, 0x8415), "Unexpected application reset vector")
+    regions = ((STATE, 32), (LEVELS, 4), (TAP_BUFFER, 204))
+    stock_initialized = None
+    for candidate in (False, True):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        cpu.mem_map(0xE000E000, 4096)
+        model_syscon_reset(cpu)
+        # Use both patterns on the same machine instance to test a second reset
+        # after RAM and MMIO have already been used by the application.
+        if candidate:
+            verify(bytes(cpu.mem_read(BOOT_HANDOFF, 4)) == struct.pack("<I", STOCK_MAIN | 1),
+                   "Unexpected original scatter-to-main pointer")
+            cpu.mem_write(BOOT_HANDOFF, struct.pack("<I", CANDIDATE_BOOT | 1))
+        cpu.mem_protect(0x8000, 0x30000, UC_PROT_READ | UC_PROT_EXEC)
+        for dirty in (b"\xA5", b"\x5A"):
+            cpu.mem_write(ram, dirty * 0x28000)
+            cpu.reg_write(UC_ARM_REG_SP, stack)
+            cpu.emu_start(entry, STOCK_MAIN, count=200000)
+            verify(cpu.reg_read(UC_ARM_REG_PC) == STOCK_MAIN, "Stock application entry was not reached")
+            verify(cpu.reg_read(UC_ARM_REG_SP) == stack, "Reset changed the starting application stack")
+            verify(read_sensa_pwm(cpu, (0xE000ED08, 0xE000ED88)) == (0x8000, 0xF00000),
+                   "Reset did not set VTOR and CPACR")
+            verify(bytes(cpu.mem_read(ram + 0xA00, bss_end - ram - 0xA00)) == bytes(bss_end - ram - 0xA00),
+                   "Stock zero-init left dirty BSS")
+            initialized = bytes(cpu.mem_read(ram, 0xA00))
+            if not candidate and dirty == b"\xA5":
+                stock_initialized = initialized
+            verify(initialized == stock_initialized and b"XGIP10" in initialized,
+                   "Reset did not preserve stock initialized data")
+            before = bss_end
+            for address, size in regions:
+                verify(bytes(cpu.mem_read(before, address - before)) == dirty * (address - before),
+                       "Reset clobbered RAM outside its allocation")
+                expected = bytes(size) if candidate else dirty * size
+                verify(bytes(cpu.mem_read(address, size)) == expected, "Candidate state was not reset as expected")
+                before = address + size
+            verify(bytes(cpu.mem_read(before, stack - before - 16)) == dirty * (stack - before - 16),
+                   "Reset clobbered the unused RAM before the stack")
+    return {"name": "application_reset_scatter", "entry": hex(entry), "main": hex(STOCK_MAIN),
+            "rw_bytes": 0xA00, "bss_bytes": bss_end - ram - 0xA00,
+            "candidate_cleared_bytes": sum(size for _, size in regions), "runs": 4}
+
+
+def check_board_startup_boundary(image, dsp):
+    """Advance stock timeout handlers while board startup waits for peripherals."""
+    ready_registers = (0x40020054, 0x40000584, 0x40000520)
+    guards = (STATE, LEVELS, TAP_ENABLE, TAP_READY)
+    wait_flags = {0x2B428: 0x20000F64, 0x2A610: 0x2000909C}
+    results = {}
+    for candidate in (False, True):
+        replay = Replay(image, dsp)
+        cpu = replay.cpu
+        model_syscon_reset(cpu)
+        for page in (0xE000E000, 0x40001000, 0x40003000, 0x40004000, 0x40005000, 0x4000B000,
+                     0x4000C000, 0x4000D000, 0x40014000, 0x40020000, CTIMER2, 0x40040000,
+                     CTIMER3, 0x40082000, 0x40089000, 0x4008C000, 0x4008E000, 0x40097000,
+                     0x40098000, 0x40099000, 0x400A0000):
+            cpu.mem_map(page, 4096)
+        model_async_syscon_reset(cpu)
+        if candidate:
+            cpu.mem_write(BOOT_HANDOFF, struct.pack("<I", CANDIDATE_BOOT | 1))
+            install_simulated_tx_tap(replay)
+            redirect_simulated_branch(cpu, MAIN_DISPATCH_CALL, FOREGROUND, "fbf79dff", link=True)
+        cpu.mem_protect(0x8000, 0x30000, UC_PROT_READ | UC_PROT_EXEC)
+        cpu.mem_write(0x20000000, b"\xA5" * 0x28000)
+        # Bootloader-to-application shared word, deliberately unset in this
+        # board fixture. The actual resident bootloader is unavailable.
+        cpu.mem_write(0x20027FF8, bytes(8))
+        for address, value in zip(ready_registers, (0x220, 1, 1)):
+            cpu.mem_write(address, struct.pack("<I", value))
+        stack, entry = struct.unpack_from("<II", image)
+        cpu.reg_write(UC_ARM_REG_SP, stack)
+        writes = []
+        lowest_stack_write = stack
+
+        def track_stack(machine, access, address, size, value, data):
+            nonlocal lowest_stack_write
+            lowest_stack_write = min(address, lowest_stack_write)
+
+        cpu.hook_add(UC_HOOK_MEM_WRITE, track_stack, begin=TAP_BUFFER + 204, end=stack - 1)
+        cpu.hook_add(UC_HOOK_MEM_WRITE, lambda _, access, address, size, value, data:
+                     writes.append((address, size, value)), begin=0x40000000, end=0x400FFFFF)
+
+        def stop_at_wait(machine, address, size, data):
+            if machine.mem_read(wait_flags[address], 1)[0]:
+                machine.emu_stop()
+
+        for wait in wait_flags:
+            cpu.hook_add(UC_HOOK_CODE, stop_at_wait, begin=wait, end=wait)
+        irq_vector = read_sensa_pwm(cpu, (0x8000 + (16 + 9) * 4,))[0]
+        verify(irq_vector & 1, "MRT0 vector is not a Thumb entry")
+        interrupts = []
+        for expected_wait in (0x2B428, 0x2B428, 0x2B428, 0x2A610, 0x2A610):
+            cpu.emu_start(entry, 0x2DCC0, count=20_000_000)
+            wait = cpu.reg_read(UC_ARM_REG_PC)
+            verify(wait == expected_wait, f"Unexpected board startup checkpoint 0x{wait:X}")
+            entry = wait | 1
+            flag = wait_flags[wait]
+            verify(cpu.mem_read(flag, 1)[0] == 10, "Unexpected stock timeout counter")
+            foreground = cpu.context_save()
+            # Reserve the basic exception frame and align the stack. This
+            # enters the vector stub but does not emulate NVIC exception entry.
+            interrupt_sp = (cpu.reg_read(UC_ARM_REG_SP) - 32) & ~7
+            ticks = 0
+            while cpu.mem_read(flag, 1)[0] and ticks < 80:
+                cpu.reg_write(UC_ARM_REG_SP, interrupt_sp)
+                cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
+                cpu.emu_start(irq_vector, RETURN, count=20000)
+                verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, "MRT0 handler did not return")
+                ticks += 1
+            verify(ticks == 80 and not cpu.mem_read(flag, 1)[0], "Stock MRT0 did not expire the transfer")
+            cpu.context_restore(foreground)
+            cpu.ctl_flush_tb()
+            interrupts.append(ticks)
+        timer_setup = read_sensa_pwm(cpu, (CTIMER2 + 4, CTIMER2 + 0x18, CTIMER3 + 4, CTIMER3 + 0x18))
+        verify(timer_setup == (1, 23999, 1, 95999), "Unexpected board startup timer setup")
+        expected_guard = 0 if candidate else 0xA5A5A5A5
+        verify(read_sensa_pwm(cpu, guards) == (expected_guard,) * len(guards),
+               "Stock board startup modified candidate guard words")
+        results[candidate] = (bytes(cpu.mem_read(0x20000000, 0x13D28)), cpu.reg_read(UC_ARM_REG_SP),
+                              writes, lowest_stack_write)
+    verify(results[False] == results[True], "Candidate changed stock board startup RAM, stack or MMIO writes")
+    return {"name": "stock_board_startup_boundary", "stopped_at": hex(wait),
+            "stock_ram_compared_bytes": 0x13D28, "timer_mr0": [23999, 95999],
+            "stock_mmio_writes_matched": len(writes), "lowest_observed_stack_write": hex(lowest_stack_write),
+            "timeouts_advanced_by_stock_mrt_irq": interrupts}
 
 
 def check_foreground_worker(image, dsp):
@@ -1180,14 +1328,7 @@ def initialize_stock_sensa_pwm(image, dsp):
         cpu.mem_map(page, 4096)
     cpu.mem_write(0xE000ED88, struct.pack("<I", 0xF00000))
     model_syscon_reset(cpu)
-
-    def async_reset_alias(machine, access, address, size, value, data):
-        status = 0x40040000
-        old, = struct.unpack("<I", machine.mem_read(status, 4))
-        new = old | value if address == status + 4 else old & ~value
-        machine.mem_write(status, struct.pack("<I", new))
-
-    cpu.hook_add(UC_HOOK_MEM_WRITE, async_reset_alias, begin=0x40040004, end=0x40040008)
+    model_async_syscon_reset(cpu)
     # Supply ready/lock signals without simulating oscillator settling.
     for register, value in ((0x40020054, 0x220), (0x40000584, 1), (0x40000520, 1)):
         cpu.mem_write(register, struct.pack("<I", value))
@@ -1426,7 +1567,7 @@ def main():
         parser.error("--active-stereo-excerpt needs --verified-pcm-trace and a nonnegative index")
     image, dsp = args.stock.read_bytes(), args.dsp.read_bytes()
     verify(hashlib.sha256(image).hexdigest() == STOCK_SHA256, "Expected unmodified Dev2FW 2.04.00")
-    verify(len(dsp) > FOREGROUND - DSP, "Rebuild the simulator module with the TX tap and worker")
+    verify(len(dsp) > CANDIDATE_BOOT - DSP, "Rebuild the simulator module with the TX tap, worker and reset")
     cases = (
         ("left_80", ((80,), ()), True, True, 0.85),
         ("right_190", ((), (190,)), True, True, 0.85),
@@ -1447,6 +1588,8 @@ def main():
     report.append(check_stock_dma_descriptor(image, dsp))
     report.append(check_continuous_dma(image, dsp, [tone(tick, ((80,), (190,))) for tick in range(128)]))
     report.append(check_dma_arrival_variation(image, dsp))
+    report.append(check_application_reset(image, dsp))
+    report.append(check_board_startup_boundary(image, dsp))
     report.append(check_tx_tap_contract(image, dsp))
     report.append(check_worker_interleaving(image, dsp))
     report.append(check_foreground_worker(image, dsp))
