@@ -288,6 +288,24 @@ pages with changed data and the old checksum. A cut before the first
 changed byte preserves the old profile. Partial pages are constructed
 snapshots, with no electrical power-loss or cell-level model.
 
+### Xbox trigger PWM
+
+The stock Xbox decoder maps regions 249 and 149 to separate command
+records at `0x20005150` and `0x2000523A`. The stock MRT ISR
+`0x1485C` advances the command counters. The trigger task `0x1B640`
+updates the duty requests at `0x20005156` and `0x20005240`, which the
+CTIMER2 callback passes to the SCT writer for outputs 6 and 7.
+
+The test uses a 4500-count SCT period and modeled event assignments.
+Across 18 runs, a band or transient changed only the intended trigger
+register. Strengths 20, 40 and 63 produced match counts of 900, 1800 and
+2835 at the tested points. Pitch codes 0, 60 and 127 gave identical
+register values at fixed strength in this path. Single transients retained
+their output through 1016 counting calls and returned to zero on the
+1017th call. The band was checked at counter 481. These counts express
+the scheduled calls in the fixture. Physical cadence and motor response
+still need measurement.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

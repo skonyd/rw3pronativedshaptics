@@ -29,7 +29,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   E-20261114-18 covers user profile reads and fallback. E-20261114-19
   covers deferred page attempts and interruption snapshots. E-20261114-20
   corrects the emulator completion hook and verifies save and reload.
-  Trace trigger output and independently validate hardware timing, then capture
+  E-20261114-21 covers Xbox trigger SCT output and transient cutoff.
+  Independently validate hardware timing and capture
   actual PWM. Build an end-to-end acceptance trace before selecting a firmware
   hook or transport command. The existing runtime switch is a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

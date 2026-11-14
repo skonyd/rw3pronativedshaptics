@@ -855,6 +855,56 @@ def replay_capture(image, dsp, path):
     return result
 
 
+def check_sensa_trigger_pwm(image, dsp):
+    """Trace both Xbox Sensa trigger channels to stock SCT register writes."""
+    trace = []
+    for side, kind, strength in ((0, "band", 40), (1, "band", 40), (0, "transient", 40),
+                                 (1, "transient", 40), (0, "band", 20), (1, "band", 63)):
+        for pitch in (0, 60, 127):
+            replay = Replay(image, dsp)
+            cpu = replay.cpu
+            replay.call(0x8EBC, RETURN, 0x37200, 0x20000000, 0xA00)
+            for page in (0xE000E000, 0x4000D000, 0x40028000, 0x40085000):
+                cpu.mem_map(page, 4096)
+            registers = [(0xE000ED88, 0xF00000), (0x40085000, 1), (0x40085100, 4500)]
+            for channel in range(4):
+                registers += [(0x20002270 + 4 * channel, channel * 2),
+                              (0x4008530C + 16 * channel, channel + 1)]
+            for address, value in registers:
+                cpu.mem_write(address, struct.pack("<I", value))
+            cpu.mem_write(0x200044ED, b"\x01")
+
+            bodies = [([], []) for _ in range(4)]
+            bodies[side + 2] = ([(strength, strength, pitch)], []) if kind == "band" else (
+                [], [(strength, pitch, 0)])
+            cpu.mem_write(0x20000B34, xbox_frame(bodies) + bytes(64))
+            cpu.mem_write(0x20000B2C, b"\x01")
+            replay.call(0x2B538, RETURN)
+
+            def trigger_tick():
+                replay.call(0x1B640, RETURN)
+                replay.call(0x2B6F0, RETURN)
+                return struct.unpack("<4I", cpu.mem_read(0x40085104, 16))
+
+            if kind == "band":
+                for _ in range(481):
+                    replay.call(0x1485C, RETURN)
+            else:
+                verify(trigger_tick()[side + 2] > 0, "Trigger transient did not start")
+            expected = tuple(strength * 45 if index == side + 2 else 0 for index in range(4))
+            observed = trigger_tick()
+            verify(observed == expected, f"Trigger {side}/{kind}/{pitch}: expected {expected}, got {observed}")
+            if kind == "transient":
+                for _ in range(1016):
+                    replay.call(0x1485C, RETURN)
+                verify(trigger_tick() == expected, "Trigger transient ended before the stock cutoff")
+                replay.call(0x1485C, RETURN)
+                verify(trigger_tick() == (0, 0, 0, 0), "Expired trigger transient left PWM active")
+            trace.append({"body_part": (249, 149)[side], "kind": kind, "pitch_code": pitch,
+                          "strength": strength, "match_count": expected[side + 2]})
+    return {"name": "stock_sensa_trigger_pwm", "cases": trace}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stock", type=Path)
@@ -895,6 +945,7 @@ def main():
                "Lower stock gain did not reduce PWM deviation")
         full["half_gain_peak_match_count_delta"] = half["peak_match_count_delta"]
     report.append(full_gain)
+    report.append(check_sensa_trigger_pwm(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

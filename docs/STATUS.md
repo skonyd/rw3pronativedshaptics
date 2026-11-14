@@ -41,6 +41,9 @@ fallback and field boundary checks.
 Deferred profile save clears its pending flag after eleven modeled EEPROM
 completions. Subsequent reload covers complete, interrupted and partial-page
 snapshots.
+Xbox Sensa trigger regions 249/149 reach independent SCT duty registers
+in replay. The tested pitch codes leave duty unchanged at fixed strength,
+and the stock transient cutoff clears the modeled output.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
