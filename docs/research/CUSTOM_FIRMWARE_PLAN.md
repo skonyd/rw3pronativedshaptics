@@ -13,6 +13,17 @@ explicit go from the user.
 
 ## Safety gates (nothing is flashed before gate G3)
 
+The owner has one Wolverine. The current work uses the updater images and
+USB traces offline. An SWD probe is a separate debug adapter, such as
+[NXP MCU-Link](https://www.nxp.com/design/design-center/software/development-software/mcuxpresso-software-and-tools-/mcu-link-debug-probe%3AMCU-LINK).
+It requires identifying the board pads and target voltage. First identify the
+board revision and confirm a read-only debug session. If debug access permits
+it, take two matching local readbacks and identify the bootloader, application
+and persistent settings before considering recovery tests. NXP documents
+[read protection that can disable debug access](https://community.nxp.com/t5/LPC-Microcontrollers-Knowledge/tkb-p/lpc%40tkb/label-name/lpc546xx).
+The read-only procedure stops if the tool requests unlock or erase. A verified
+restore on separate hardware is still open.
+
 | Gate | Condition to pass | Decided by |
 | --- | --- | --- |
 | G0 rollback known | How the bootloader is entered (software and by hand), what happens when the app image is broken, which flash regions an update writes and which it never touches (bootloaders) | analysis, then user |

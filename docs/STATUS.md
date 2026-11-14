@@ -15,7 +15,9 @@ payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.
 The stock audio queue now runs across startup, drain, underrun and recovery
 in the replay. The CTIMER2 callback and SCT duty register updates also run
-with fixture state.
+with fixture state. Stock I2S queue admission and DMA0 interrupt dispatch are
+covered at their boundaries. The repeatable build runs these checks against
+the pinned stock image and emits a local hash-identified report.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

@@ -218,7 +218,7 @@ def check_stream_queue(image, dsp, records):
 
     if len(pending) < 17:
         verify(played == 0, "USB queue primed before its stock threshold")
-        return {"blocks_received": len(pending), "primed_at_ms": None}
+        return {"blocks_received": len(pending), "primed_at_fixture_ms": None}
     verify(primed_at == 16, "USB queue did not prime after 16 blocks of prefill")
     for _ in range(len(pending) - played):
         replay.call(TX, DMA_SUBMIT, 0, 0)
@@ -240,7 +240,7 @@ def check_stream_queue(image, dsp, records):
             recovery_at = index
             break
     verify(recovery_at is not None, "Queue did not recover")
-    return {"blocks_received": len(pending), "primed_at_ms": primed_at,
+    return {"blocks_received": len(pending), "primed_at_fixture_ms": primed_at,
             "blocks_played": played, "underrun_selected_silence": True, "recovery_prefill_blocks": recovery_at}
 
 
@@ -270,6 +270,56 @@ def check_timer_pwm(image, dsp):
         verify(writes[-1] == (timer, 1), "CTIMER2 did not acknowledge match")
         observed.append({"enabled": enabled, "duty_percent": duty, "match_counts": [v for _, v in expected]})
     return {"name": "stock_timer_pwm_registers", "cases": observed}
+
+
+def check_dma_boundaries(image, dsp):
+    """Exercise stock I2S queue admission and DMA0 interrupt dispatch."""
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    i2s, handle, pcm = 0x40097000, 0x20023000, 0x20024000
+    statuses = []
+    for index in range(5):
+        replay.call(0x1278C, RETURN, i2s, handle, pcm + index * 192, 192)
+        statuses.append(cpu.reg_read(UC_ARM_REG_R0))
+    verify(statuses == [0, 0, 0, 0, 0xA8E], "Unexpected I2S queue admission status")
+    expected = [(pcm + index * 192, 192) for index in range(4)]
+    verify(list(struct.iter_unpack("<II", cpu.mem_read(handle + 0x14, 32))) == expected,
+           "Full I2S queue changed an admitted transfer")
+    verify(cpu.mem_read(handle + 0x34, 1)[0] == 0, "I2S queue did not wrap")
+
+    dma, channel, callback = 0x40082000, 13, DSP + 0x800
+    bit = 1 << channel
+    cpu.mem_map(dma, 4096)
+    # The callback is a fixture stub. The actual DMA IRQ vector and driver
+    # inspect modeled status bits, acknowledge them, and supply the arguments.
+    cpu.mem_write(callback, b"\x70\x47")  # bx lr
+    cpu.mem_write(handle, struct.pack("<IIIB", callback | 1, pcm, dma, channel))
+    cpu.mem_write(0x2000AB1C + 4 * channel, struct.pack("<I", handle))
+    calls = []
+    cpu.hook_add(UC_HOOK_CODE, lambda u, *_: calls.append(tuple(
+        u.reg_read(reg) for reg in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
+    )), begin=callback, end=callback)
+    writes = []
+    cpu.hook_add(UC_HOOK_MEM_WRITE, lambda _, access, address, size, value, data:
+                 writes.append((address, value)), begin=dma, end=dma + 4095)
+    for complete_a, complete_b, error, expected_calls in (
+        (False, False, False, []),
+        (True, False, False, [(1, 0)]),
+        (False, True, False, [(1, 1)]),
+        (False, False, True, [(0, 2)]),
+    ):
+        calls.clear()
+        writes.clear()
+        for offset, active in ((0x48, True), (0x58, complete_a), (0x60, complete_b), (0x40, error)):
+            cpu.mem_write(dma + offset, struct.pack("<I", bit if active else 0))
+        replay.call(0xC478, RETURN)
+        verify(calls == [(handle, pcm, *args) for args in expected_calls],
+               "Unexpected DMA callback arguments")
+        verify(writes == [(dma + offset, bit) for offset, active in
+                          ((0x58, complete_a), (0x60, complete_b), (0x40, error)) if active],
+               "Unexpected DMA IRQ acknowledgements")
+    return {"name": "stock_dma_boundaries", "queue_statuses": statuses,
+            "irq_cases": ["no_pending", "complete_a", "complete_b", "error"]}
 
 
 def replay_capture(image, dsp, path):
@@ -325,6 +375,7 @@ def main():
     report.append(check_stream_loss(image, dsp))
     report.append(check_toggle(image, dsp))
     report.append(check_timer_pwm(image, dsp))
+    report.append(check_dma_boundaries(image, dsp))
     if args.verified_pcm_trace:
         report.append(replay_capture(image, dsp, args.verified_pcm_trace))
     if args.fixture_wav:

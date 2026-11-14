@@ -134,6 +134,30 @@ duty values, so the synthesis chain and physical PWM waveform remain open.
 
 ## Remaining work
 
+### DMA boundaries and repeatable build
+
+Run `tools/firmware/build_audio_replay.ps1 -Stock <Dev2FW.bin> -Zig <zig.exe>`
+with Unicorn available to Python. The command builds the Cortex-M4 module,
+runs the checks and writes a local JSON report plus SHA-256 output. Pass
+`-VerifiedPcmTrace <capture.json>` to include queue and capture replay.
+
+The real I2S enqueue routine at 0x1278C accepted four 192-byte buffers, wrapped
+its write index, and returned 0xA8E for a fifth request without changing the
+previous entries. The DMA0 vector and driver at 0xC478 and 0xC804 dispatched
+completion A, completion B and error with the expected callback arguments and
+status acknowledgements. A status with no pending bits called no handler.
+The test injects completion status and observes a stub callback. Descriptor
+execution, the stock I2S completion handler and real interrupt timing remain open.
+
+Recovery timing depends on queue position in this fixture. After draining
+128 blocks, the first new PCM was selected after another 16 blocks of prefill.
+After draining 30 blocks, the next received block resumed playback immediately.
+The RX branch tests the modulo write index against 0xC00 when re-arming playback.
+The fixture verified the first recovered PCM in both cases. A hardware timing
+trace is still needed before using either delay as a device-wide guarantee.
+
+### Hardware and integration
+
 1. Trace endpoint registration and DMA completion into the
    confirmed 198-byte branch and on to I2S without fixture state. Capture a
    timed button/analog sequence. Identify the NXP–Telink link and use it to
