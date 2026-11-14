@@ -41,6 +41,8 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// <summary>Strict path: which pad the game sees (HIDMaestro profile, <see cref="OutputMatrix.Profile"/>).</summary>
     public string VirtualProfile { get; init; } = "xbox-360-wired";
     private int _xinputSlot = -1;
+    /// <summary>Virtual Xbox/PS4 pads of this process that currently own a HidHide state.</summary>
+    private static int s_hidersAlive;
     /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
     public Func<string>? EngineProbe { get; init; }
     private double _maxGameBody, _maxGameTrig;
@@ -180,6 +182,13 @@ public sealed class XboxAudioGameBridge : IDisposable
     private void StartCore(AudioHapticProfile profile, bool synthetic)
     {
         if (!synthetic && !Environment.IsPrivilegedProcess) throw new InvalidOperationException("Birleşik Xbox çıkışı için RW3'ü yönetici olarak aç.");
+        if (!synthetic && HidHideControl.RestorePending && Interlocked.CompareExchange(ref s_hidersAlive, 0, 0) == 0)
+        {
+            // Left over from an earlier run that ended without undoing its hide (2026-11-15: blocked a restart).
+            // No virtual pad of this process owns it, so undo it before hiding again.
+            try { DiagnosticsService.Info("Virtual pad: stale HidHide state undone: " + HidHideControl.Restore()); }
+            catch (Exception ex) { DiagnosticsService.Info("Virtual pad: stale HidHide restore failed: " + ex.Message); }
+        }
         if (!synthetic && (!HidHideControl.Query().Ready || HidHideControl.RestorePending))
             throw new InvalidOperationException("HidHide hazır olmalı ve önceki gizleme geri alınmalı.");
         try
@@ -202,6 +211,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _controller = _context.CreateController(model, "rw3-xbox-audio");
                 _controller.OutputReceived += OnOutput;
                 _hideOwned = true;
+                Interlocked.Increment(ref s_hidersAlive);
                 // Strict also runs in PC mode (the pad is XInput there too): hide whichever nodes the pad has now.
                 HidHideControl.HidePad(null, xboxOnly: !Strict || WolverineModeControl.Detect() == WolverineControllerMode.Xbox);
                 if (Strict)
@@ -482,6 +492,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             try { _physical.Dispose(); }
             finally
             {
+                if (_hideOwned) Interlocked.Decrement(ref s_hidersAlive);
                 if (_hideOwned && HidHideControl.RestorePending) HidHideControl.Restore();
                 _hideOwned = false;
             }
