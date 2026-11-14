@@ -131,8 +131,10 @@ public sealed class HapticOrchestrator
         {
             if (AudioRoute != WolverineMode.Xbox)
                 throw new InvalidOperationException("Birleşik Xbox çıkışı için Wolverine Xbox modunda olmalı.");
+            bool strict = VirtualDualSenseBridge.StrictHide && XboxSensa.Enabled;
             var combined = new XboxAudioGameBridge
             {
+                Strict = strict,
                 OutputLevel = _settings.OutputLevelPercent,
                 IncludeGameRumble = IncludeXboxGameRumble(),
                 IncludeGameTriggers = IncludeXboxGameTriggers()
@@ -144,6 +146,13 @@ public sealed class HapticOrchestrator
                 return false;
             }
             CombinedXbox = combined;
+            if (strict)
+            {
+                // Strict: the sound goes to the palms (Sensa engine over GIP); the virtual pad bridge only does input,
+                // the game's rumble (XInput body) and the game's triggers (Sensa frame).
+                await _bridge.StartAudioToSensaAsync(profile: profile);
+                if (Superseded(mode)) { await Task.Run(combined.Dispose); CombinedXbox = null; _bridge.Stop(); return false; }
+            }
             combined.OutputLevel = _settings.OutputLevelPercent;
             combined.IncludeGameRumble = IncludeXboxGameRumble();
             combined.IncludeGameTriggers = IncludeXboxGameTriggers();
@@ -247,7 +256,8 @@ public sealed class HapticOrchestrator
         bool audioAlive = AudioRoute switch
         {
             WolverineMode.Pc => _bridge.IsAudioToSensaRunning,
-            WolverineMode.Xbox => CombinedXbox?.IsRunning ?? XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
+            WolverineMode.Xbox => CombinedXbox is { } c ? c.IsRunning && (!c.Strict || _bridge.IsAudioToSensaRunning)
+                : XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
             _ => XboxAudio?.IsCapturing ?? _rumble.Snapshot().IsCapturing
         };
         if (Run == RunState.Audio && !audioAlive)
@@ -255,7 +265,7 @@ public sealed class HapticOrchestrator
             LastError = (AudioRoute switch
             {
                 WolverineMode.Pc => _bridge.AudioFailure,
-                WolverineMode.Xbox => CombinedXbox?.Failure ?? XboxAudio?.Failure ?? _bridge.AudioFailure,
+                WolverineMode.Xbox => CombinedXbox?.Failure ?? (CombinedXbox?.Strict == true ? _bridge.AudioFailure : null) ?? XboxAudio?.Failure ?? _bridge.AudioFailure,
                 _ => XboxAudio?.Failure ?? _rumble.Snapshot().LastError
             }) ?? "Ses yakalama beklenmedik biçimde durdu.";
             StopOutputs();

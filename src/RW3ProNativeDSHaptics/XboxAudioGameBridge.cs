@@ -31,10 +31,30 @@ public sealed class XboxAudioGameBridge : IDisposable
     private volatile bool _running;
     private volatile string? _failure;
 
-    public XboxAudioGameBridge() => _output = new(frame =>
-        _physical.Set(frame.BodyLeft, frame.BodyRight, frame.TriggerLeft, frame.TriggerRight));
+    /// <summary>Strict (experimental, VirtualDualSenseBridge.StrictHide + Xbox-mode Sensa): the physical pad is never touched
+    /// through GameInput, so a GDK / Game Pass game cannot see it and plays the virtual Xbox pad only. Physical input and
+    /// body motors go through XInput, the game's trigger values go to the trigger motors in the Sensa frame, and the sound
+    /// goes to the palms through the Sensa engine (started by the orchestrator), not to the body motors.</summary>
+    public bool Strict { get; init; }
+    private int _xinputSlot = -1;
+    private ushort _bodyL, _bodyR;
+    private long _bodyTick;
 
-    public bool IsRunning => _running && _audio?.IsCapturing == true;
+    public XboxAudioGameBridge() => _output = new(frame =>
+    {
+        if (!Strict) { _physical.Set(frame.BodyLeft, frame.BodyRight, frame.TriggerLeft, frame.TriggerRight); return; }
+        ushort l = (ushort)(BodyMotorLimit.Big(frame.BodyLeft) * 65535), r = (ushort)(Math.Clamp(frame.BodyRight, 0, 1) * 65535);
+        long now = Environment.TickCount64;
+        // Only on change (or every 100 ms as a keep-alive): the loop runs every 8 ms.
+        if (_xinputSlot >= 0 && (l != _bodyL || r != _bodyR || (l | r) != 0 && now - _bodyTick >= 100))
+        {
+            var v = new XInput.Vibration { wLeftMotorSpeed = l, wRightMotorSpeed = r };
+            if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; }
+        }
+        XboxSensa.SetTriggers(frame.TriggerLeft, frame.TriggerRight);
+    });
+
+    public bool IsRunning => _running && (Strict || _audio?.IsCapturing == true);
     public bool HasRecentSound => _audio?.HasRecentSound == true;
     public string? Failure => _failure ?? _audio?.Failure;
     public long FeedbackReports => Interlocked.Read(ref _reports);
@@ -148,7 +168,8 @@ public sealed class XboxAudioGameBridge : IDisposable
             throw new InvalidOperationException("HidHide hazır olmalı ve önceki gizleme geri alınmalı.");
         try
         {
-            if (!_physical.TryAcquire() || !_physical.TryReadPad(out _))
+            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Xbox modunda Wolverine XInput ile görünmüyor (tek kol olmalı)."); }
+            else if (!_physical.TryAcquire() || !_physical.TryReadPad(out _))
                 throw new InvalidOperationException("Xbox modunda tek Wolverine gerekli. " + _physical.LastError);
             if (!synthetic)
             {
@@ -162,13 +183,16 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _controller.OutputReceived += OnOutput;
                 _hideOwned = true;
                 HidHideControl.HidePad(null, xboxOnly: true);
-                if (!HidHideControl.RestorePending || !_physical.TryReadPad(out _))
+                if (Strict)
+                    try { DiagnosticsService.Info("Virtual Xbox pad (strict): " + HidHideControl.DisallowApp(HidHideControl.GameInputServicePath)); }
+                    catch (Exception ex) { DiagnosticsService.Info("Virtual Xbox pad (strict): GameInputSvc " + ex.Message); }
+                if (!HidHideControl.RestorePending || !(Strict ? TryReadXInput(out _) : _physical.TryReadPad(out _)))
                     throw new InvalidOperationException("Gizleme sonrası Wolverine giriş yolu doğrulanamadı.");
 #else
                 throw new InvalidOperationException("HIDMaestro SDK bu derlemede yok.");
 #endif
             }
-            _audio = new AudioHapticsBridge(new XboxAudioSink(v =>
+            if (!Strict) _audio = new AudioHapticsBridge(new XboxAudioSink(v =>
             {
                 lock (_gate)
                 {
@@ -178,8 +202,9 @@ public sealed class XboxAudioGameBridge : IDisposable
                     _soundAt = Environment.TickCount64;
                 }
             })) { Profile = profile, DelayOverrideMs = synthetic ? 0 : null };
-            _audio.Start();
+            _audio?.Start();
             _running = true;
+            if (Strict) DiagnosticsService.Info("Virtual Xbox pad (strict): input/body via XInput slot " + _xinputSlot + ", game triggers → Sensa frame, sound → palms.");
             _watchdog = new System.Threading.Timer(_ =>
             {
                 try
@@ -234,10 +259,11 @@ public sealed class XboxAudioGameBridge : IDisposable
 #endif
             while (_running)
             {
-                if (_audio?.IsCapturing != true)
+                if (!Strict && _audio?.IsCapturing != true)
                     throw new InvalidOperationException(_audio?.Failure ?? "Ses yakalama durdu.");
-                if (!_physical.TryReadPad(out var pad))
-                    throw new InvalidOperationException("Wolverine girişi kesildi. " + _physical.LastError);
+                XInputPad pad;
+                if (!(Strict ? TryReadXInput(out pad) : _physical.TryReadPad(out pad)))
+                    throw new InvalidOperationException("Wolverine girişi kesildi. " + (Strict ? "XInput" : _physical.LastError));
 #if HAS_HIDMAESTRO
                 if (controller != null)
                 {
@@ -261,6 +287,20 @@ public sealed class XboxAudioGameBridge : IDisposable
             }
         }
         catch (Exception ex) { Fail(ex.Message); }
+    }
+
+    private bool TryReadXInput(out XInputPad pad)
+    {
+        pad = default;
+        int slot = _xinputSlot;
+        if (slot < 0)
+            for (int i = 0; i < 4; i++)
+                if (XInput.GetState((uint)i, out _) == 0) { if (slot >= 0) return false; slot = i; }
+        if (slot < 0 || XInput.GetState((uint)slot, out var s) != 0) { _xinputSlot = -1; return false; }
+        _xinputSlot = slot;
+        var g = s.Gamepad;
+        pad = new(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
+        return true;
     }
 
     private void Fail(string reason)

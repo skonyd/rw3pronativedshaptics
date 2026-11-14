@@ -353,6 +353,9 @@
               <CheckBox x:Name="IncludeXboxGameTriggers" Content="Oyunun LT/RT tetik titreşimi" Foreground="#EEF3FF"
                         Checked="CombineXboxFeedback_Changed" Unchecked="CombineXboxFeedback_Changed"/>
               <TextBlock Text="Kol Xbox modunda olmalı. Sanal Xbox kolu (HIDMaestro + HidHide) kurulur, fiziksel kol oyundan gizlenir; oyunu bundan sonra aç. Bu yolda ses gövde motorlarına gider." Style="{StaticResource Hint}"/>
+              <CheckBox x:Name="AudioStrictHide" Content="Deneysel · Game Pass / GDK oyunları: kolu GameInput'tan da gizle" Foreground="#FFB547" Margin="0,8,0,0"
+                        Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
+              <TextBlock Text="Yukarıdaki seçeneklerle birlikte: oyun yalnızca sanal Xbox kolunu görür; ses avuçlara (Sensa, melodi), oyunun tetik titreşimi tetik motorlarına, rumble gövdeye gider. Açtıktan sonra kolu çıkarıp tak ve oyunu yeniden başlat." Style="{StaticResource Hint}"/>
 
               <Expander Header="Gelişmiş ses ayarları" Foreground="#EEF3FF" Margin="0,12,0,0">
                 <StackPanel Margin="4,6,0,0">
@@ -419,7 +422,7 @@
               </Grid>
               <CheckBox x:Name="XboxStrictHide" Content="Deneysel · Xbox modu: kolu GameInput'tan da gizle (Game Pass / GDK oyunları)" Foreground="#FFB547" Margin="0,8,0,0"
                         Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
-              <TextBlock Text="Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
+              <TextBlock Text="Ses panelindeki aynı seçenekle tek ayardır. Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
               <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" Margin="0,6,0,6"/>
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>
