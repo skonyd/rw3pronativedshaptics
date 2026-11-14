@@ -272,6 +272,7 @@ public sealed class HapticOrchestrator
                 WolverineMode.Xbox => CombinedXbox?.Failure ?? (CombinedXbox?.Strict == true ? _bridge.AudioFailure : null) ?? XboxAudio?.Failure ?? _bridge.AudioFailure,
                 _ => XboxAudio?.Failure ?? _rumble.Snapshot().LastError
             }) ?? "Ses yakalama beklenmedik biçimde durdu.";
+            DiagnosticsService.Info("Audio mode stopped by the liveness check: " + LastError);
             StopOutputs();
             NextAutoStartTick = HapticModePolicy.RetryAfterFailure(HapticMode.Audio, UseXboxGameBridge, Environment.TickCount64);
         }

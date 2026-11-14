@@ -261,14 +261,27 @@ public sealed class XboxAudioGameBridge : IDisposable
             foreach (var axis in controller?.Profile.AvailableAxes ?? []) axes[axis] = .5f;
             var state = new HMGamepadState { Axes = axes };
 #endif
-            long nextLog = Environment.TickCount64 + 10_000;
+            long nextLog = Environment.TickCount64 + 10_000, lostSince = 0;
             while (_running)
             {
                 if (!Strict && _audio?.IsCapturing != true)
                     throw new InvalidOperationException(_audio?.Failure ?? "Ses yakalama durdu.");
                 XInputPad pad;
-                if (!(Strict ? TryReadXInput(out pad) : _physical.TryReadPad(out pad)))
-                    throw new InvalidOperationException("Wolverine girişi kesildi. " + (Strict ? "XInput" : _physical.LastError));
+                if (Strict)
+                {
+                    // A replug (which the strict setup asks for) drops XInput for a few seconds. Until 2026-11-15 that ended
+                    // the bridge silently, HidHide was restored and the game went back to the physical pad.
+                    if (!TryReadXInput(out pad))
+                    {
+                        long t = Environment.TickCount64;
+                        if (lostSince == 0) { lostSince = t; DiagnosticsService.Info("Virtual Xbox pad (strict): Wolverine left XInput; waiting up to 60 s."); }
+                        if (t - lostSince > 60_000) throw new InvalidOperationException("Wolverine 60 sn XInput'ta görünmedi.");
+                        pad = default;
+                    }
+                    else if (lostSince != 0) { lostSince = 0; DiagnosticsService.Info("Virtual Xbox pad (strict): Wolverine back on XInput slot " + _xinputSlot + "."); }
+                }
+                else if (!_physical.TryReadPad(out pad))
+                    throw new InvalidOperationException("Wolverine girişi kesildi. " + _physical.LastError);
 #if HAS_HIDMAESTRO
                 if (controller != null)
                 {
@@ -307,14 +320,23 @@ public sealed class XboxAudioGameBridge : IDisposable
         catch (Exception ex) { Fail(ex.Message); }
     }
 
+    private int _lastGoodSlot = -1;
+
     private bool TryReadXInput(out XInputPad pad)
     {
         pad = default;
         int slot = _xinputSlot;
         if (slot < 0)
-            for (int i = 0; i < 4; i++)
-                if (XInput.GetState((uint)i, out _) == 0) { if (slot >= 0) return false; slot = i; }
+        {
+            // The pad's earlier slot first (after a replug Windows usually gives it back, and the virtual Xbox pad may now
+            // also be on XInput); otherwise a single connected slot. Two unknown pads: keep waiting, never guess.
+            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0) slot = _lastGoodSlot;
+            else
+                for (int i = 0; i < 4; i++)
+                    if (XInput.GetState((uint)i, out _) == 0) { if (slot >= 0) return false; slot = i; }
+        }
         if (slot < 0 || XInput.GetState((uint)slot, out var s) != 0) { _xinputSlot = -1; return false; }
+        _lastGoodSlot = slot;
         _xinputSlot = slot;
         var g = s.Gamepad;
         pad = new(g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
@@ -325,6 +347,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     {
         _failure = reason;
         _running = false;
+        DiagnosticsService.Info("Virtual Xbox pad stopped: " + reason);
         try { _output.Stop(); } catch (Exception ex) { DiagnosticsService.Error("Xbox birleşik motor duruşu", ex); }
     }
 
