@@ -200,6 +200,34 @@ public sealed class MelodyAnalyzer
         }
     }
 
+    /// <summary>Hit blend: band 1 (bass) takes at least the standard envelope <paramref name="envelope"/> (4 points, limiter
+    /// applied) at each point; when bass + melody would exceed 1 the melody yields first. True when a hit raised the bass
+    /// noticeably (≥ 2 strength steps) at some point.</summary>
+    public static bool BlendEnvelope(Span<SensaBand> bands, double[] envelope)
+    {
+        if (bands.Length == 0) return false;
+        var b = bands[0];
+        Span<double> a = stackalloc double[] { b.A0, b.A1, b.A2, b.A3 };
+        Span<double> m = stackalloc double[4];
+        var mb = bands.Length > 1 ? bands[1] : default;
+        m[0] = mb.A0; m[1] = mb.A1; m[2] = mb.A2; m[3] = mb.A3;
+        bool raised = false;
+        for (int k = 0; k < 4; k++)
+        {
+            double e = Math.Clamp(envelope[k], 0, 1);
+            if (e > a[k] + 2 / 63.0) raised = true;
+            a[k] = Math.Max(a[k], e);
+            if (a[k] + m[k] > 1) m[k] = Math.Max(0, 1 - a[k]);
+        }
+        bands[0] = b with { A0 = a[0], A1 = a[1], A2 = a[2], A3 = a[3] };
+        if (bands.Length > 1) bands[1] = mb with { A0 = m[0], A1 = m[1], A2 = m[2], A3 = m[3] };
+        return raised;
+    }
+
+    /// <summary>All 4 points of a band below the first strength step.</summary>
+    public static bool Silent(in SensaBand b) =>
+        SensaFrameEncoder.Quantize6(Math.Max(Math.Max(b.A0, b.A1), Math.Max(b.A2, b.A3))) == 0;
+
     /// <summary>Strongest point of any band (0..1).</summary>
     public static double Peak(ReadOnlySpan<SensaBand> bands)
     {

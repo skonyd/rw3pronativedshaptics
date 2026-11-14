@@ -1766,7 +1766,13 @@ SpectralContracts.Run(Check);
     var (toneOverNoise, _) = Run(t => (0.2 * Sin(330, t) + 0.02 * (rng.NextDouble() * 2 - 1), 0), 0.3);
     bool tonal = noise.Length == 4 && noise.All(p => p.MelodyAmp == 0) && toneOverNoise.Length == 4 && toneOverNoise[3].MelodyAmp > 0.1
         && new UserSettings().OutputMethod == (int)SensaOutputMethod.Melody;
-    Check(tonal, $"Melody tonality gate: white noise melody {(noise.Length > 0 ? noise.Max(p => p.MelodyAmp) : -1):0.000}, 330 Hz over light noise {(toneOverNoise.Length > 0 ? toneOverNoise[3].MelodyAmp : -1):0.000}; Melody is the default method");
+    // Hit blend: a boom raises the bass band to the envelope, the melody keeps playing and yields only above a sum of 1.
+    var hb = new[] { new SensaBand(.42, .42, .42, .42, .1), new SensaBand(.25, .25, .25, .25, .5) };
+    bool raised = MelodyAnalyzer.BlendEnvelope(hb, new[] { .4, .7, .9, .4 });
+    bool blend = raised && Math.Abs(hb[0].A0 - .42) < 1e-9 && Math.Abs(hb[0].A1 - .7) < 1e-9 && Math.Abs(hb[0].A2 - .9) < 1e-9
+        && Math.Abs(hb[1].A1 - .25) < 1e-9 && Math.Abs(hb[1].A2 - .1) < 1e-9 && hb[0].Pitch == .1 && hb[1].Pitch == .5;
+    tonal &= blend;
+    Check(tonal, $"Melody hit blend {blend}; tonality gate: white noise melody {(noise.Length > 0 ? noise.Max(p => p.MelodyAmp) : -1):0.000}, 330 Hz over light noise {(toneOverNoise.Length > 0 ? toneOverNoise[3].MelodyAmp : -1):0.000}; Melody is the default method");
     Check(basic && fundamental && change && silent && fold && perPoint,
         $"Melody output: bass {(a.Length > 0 ? a[3].BassHz : 0):0.0} Hz, melody {(a.Length > 0 ? a[3].MelodyHz : 0):0.0} Hz, 880→{(b.Length > 0 ? b[3].MelodyHz : 0):0.0} Hz, voice-like fundamental {(v.Length > 0 ? v[3].MelodyHz : 0):0.0} Hz, note change {(c.Length > 0 ? c[0].MelodyHz : 0):0}→{(c.Length > 0 ? c[3].MelodyHz : 0):0} Hz, silence {silent}, per-point pitch codes {p0}→{p3}");
 }

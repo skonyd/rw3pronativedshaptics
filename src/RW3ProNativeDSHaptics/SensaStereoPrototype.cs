@@ -116,10 +116,8 @@ public sealed class SensaStereoPrototype : IDisposable
     public long HybridMultiFrames { get; private set; }
     public long HybridStandardFrames { get; private set; }
     public long MultibandFrames { get; private set; }
-    /// <summary>Melody output: hand-frames that fell back to the standard band (loud unpitched hits).</summary>
+    /// <summary>Melody output: hand-frames where a hit raised the bass band above its tone (envelope blend).</summary>
     public long MelodyFallbackFrames { get; private set; }
-    /// <summary>Melody hand falls back to the standard band when its strongest tone is below this share of the envelope.</summary>
-    public const double MelodyFallbackRatio = 0.5;
     public long MultibandHeadroomReductions { get; private set; }
 
     private int _sourceGainPercent = 140;
@@ -394,13 +392,11 @@ public sealed class SensaStereoPrototype : IDisposable
                     // Melody: bands from the raw audio; a melody alone (no bass) is still sound to play.
                     mln = MelodyAnalyzer.Bands(mL, level, lBands, ref lBassHz, ref lMelHz);
                     mrn = MelodyAnalyzer.Bands(mR, level, rBands, ref rBassHz, ref rMelHz);
-                    // A loud unpitched hit (explosion, gunshot, impact) has little bass/melody tone but a strong
-                    // envelope: that hand plays the standard band for this frame, so impacts stay punchy.
-                    if (mln > 0 && leftOn && MelodyAnalyzer.Peak(lBands.AsSpan(0, mln)) < MelodyFallbackRatio * Math.Max(Math.Max(la[0], la[1]), Math.Max(la[2], la[3]))) mln = -1;
-                    if (mrn > 0 && rightOn && MelodyAnalyzer.Peak(rBands.AsSpan(0, mrn)) < MelodyFallbackRatio * Math.Max(Math.Max(ra[0], ra[1]), Math.Max(ra[2], ra[3]))) mrn = -1;
+                    // Hits (explosion, gunshot, kick) live in the envelope, not in a steady tone: the bass band takes at least
+                    // the standard envelope at every point, so a boom punches through while the melody band keeps playing.
+                    if (mln > 0 && leftOn && MelodyAnalyzer.BlendEnvelope(lBands.AsSpan(0, mln), la)) MelodyFallbackFrames++;
+                    if (mrn > 0 && rightOn && MelodyAnalyzer.BlendEnvelope(rBands.AsSpan(0, mrn), ra)) MelodyFallbackFrames++;
                     leftOn |= mln > 0; rightOn |= mrn > 0;
-                    if (mln < 0) MelodyFallbackFrames++;
-                    if (mrn < 0) MelodyFallbackFrames++;
                 }
                 var (trigL, trigR) = gipMode ? XboxSensa.Triggers() : (0, 0);
                 bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
