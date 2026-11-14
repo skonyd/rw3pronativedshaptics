@@ -169,6 +169,8 @@ public partial class MainWindow : Window
         UpdateNativeSourceUi();
         AudioMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
         NativeMelody.IsChecked = _settings.OutputMethod == (int)SensaOutputMethod.Melody;
+        ControllerFocusGuard.FallbackEnabled = _settings.XboxRumbleFallback;
+        AudioRumbleFallback.IsChecked = NativeRumbleFallback.IsChecked = _settings.XboxRumbleFallback;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
 
@@ -2168,6 +2170,19 @@ public partial class MainWindow : Window
         SettingsBasicPanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
         SettingsAdvancedPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
+    }
+
+    /// <summary>One setting shown in both panels; applies live (read per 5 ms block).</summary>
+    private void RumbleFallback_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not System.Windows.Controls.CheckBox box) return;
+        bool on = box.IsChecked == true;
+        AudioRumbleFallback.IsChecked = NativeRumbleFallback.IsChecked = on;
+        if (_settings.XboxRumbleFallback == on) return;
+        _settings.XboxRumbleFallback = on;
+        ControllerFocusGuard.FallbackEnabled = on;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Rumble yedeği", ex); }
+        DiagnosticsService.Info("Xbox-mode rumble fallback while a browser/Electron app is in front: " + on + ".");
     }
 
     private void NativeMelody_Changed(object sender, RoutedEventArgs e)

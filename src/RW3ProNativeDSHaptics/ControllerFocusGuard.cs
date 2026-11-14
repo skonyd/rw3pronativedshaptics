@@ -21,15 +21,18 @@ public static class ControllerFocusGuard
         "claude", "codex", "chatgpt", "discord", "spotify", "steamwebhelper", "code", "slack", "ms-teams", "whatsapp", "obsidian", "notion"
     };
 
-    /// <summary>Pure decision (contract-tested): a known name, or an Electron / Chromium / CEF build next to the exe.</summary>
+    /// <summary>User option (both audio panels): play the body motors while such an app blocks the palms. Off = the
+    /// vibration simply stops meanwhile, so everything felt is Sensa.</summary>
+    public static volatile bool FallbackEnabled = true;
+
+    /// <summary>Pure decision (contract-tested): a known name, or an Electron app (resources/app.asar next to the exe).
+    /// chrome_elf.dll / libcef.dll are not used: some games ship CEF for menus and would be mistaken for a browser.</summary>
     public static bool IsTaker(string? exeName, string? exeDirectory, Func<string, bool> fileExists)
     {
         if (string.IsNullOrWhiteSpace(exeName)) return false;
         if (KnownTakers.Contains(Path.GetFileNameWithoutExtension(exeName))) return true;
         if (string.IsNullOrEmpty(exeDirectory)) return false;
-        return fileExists(Path.Combine(exeDirectory, "resources", "app.asar"))
-            || fileExists(Path.Combine(exeDirectory, "chrome_elf.dll"))
-            || fileExists(Path.Combine(exeDirectory, "libcef.dll"));
+        return fileExists(Path.Combine(exeDirectory, "resources", "app.asar"));
     }
 
     private static int _cachedPid;

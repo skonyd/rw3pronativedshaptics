@@ -44,6 +44,8 @@ public sealed class UserSettings
     /// <summary>Which sound becomes vibration (audio mode and the native sound source): all system sound or only
     /// the foreground app (the game). Default: all system sound.</summary>
     public AudioCaptureScope AudioScope { get; set; }
+    /// <summary>Xbox mode: while a browser/Electron app in front blocks the palms, play the sound on the rumble motors.</summary>
+    public bool XboxRumbleFallback { get; set; } = true;
     /// <summary>The first-start guide was answered or closed. False shows it on the next start.</summary>
     public bool GuideDone { get; set; }
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>

@@ -342,6 +342,10 @@
                         Checked="AudioMelody_Changed" Unchecked="AudioMelody_Changed"/>
               <TextBlock Text="Bir el iki ton çalar: bas kendi frekansında, melodi (vokal, solo) bir iki oktav aşağıda; kolu kulağına dayayınca ezgi duyulur, sözler duyulmaz. Patlama, silah gibi perdesiz güçlü vuruşlarda o el kendiliğinden Standart'a geçer. Kapalıyken Standart: tek ton, en hızlı tepki." Style="{StaticResource Hint}"/>
 
+              <CheckBox x:Name="AudioRumbleFallback" Content="Xbox modu: tarayıcı/Claude öndeyken titreşim rumble ile devam etsin" Foreground="#EEF3FF" Margin="0,8,0,0"
+                        Checked="RumbleFallback_Changed" Unchecked="RumbleFallback_Changed"/>
+              <TextBlock Text="Opera, Chrome, Claude, Codex gibi uygulamalar öndeyken Windows avuçları (Sensa) engeller. Açık: o sırada rumble motorları çalar (daha kaba). Kapalı: titreşim o sırada durur, hissettiğin her şey Sensa olur. Oyunlarda etkisi yok." Style="{StaticResource Hint}"/>
+
               <!-- the game's own Xbox feedback, merged through a virtual Xbox pad -->
               <TextBlock Text="Oyunun kendi titreşimini de ekle (Xbox modu)" FontWeight="SemiBold" Margin="0,12,0,2"/>
               <CheckBox x:Name="IncludeXboxGameRumble" Content="Oyunun gövde titreşimi (rumble)" Foreground="#EEF3FF"
@@ -400,6 +404,9 @@
               <CheckBox x:Name="NativeMelody" Content="Melodi modu: avuçlarda bas + melodi (müzikli sahneler, oyun içi müzik)" Foreground="#EEF3FF" Margin="0,8,0,0"
                         Checked="NativeMelody_Changed" Unchecked="NativeMelody_Changed"/>
               <TextBlock Text="Sesten titreşim modundaki Melodi ile aynı ayar. Değiştirince köprü kısa bir an yeniden başlar." Style="{StaticResource Hint}"/>
+              <CheckBox x:Name="NativeRumbleFallback" Content="Xbox modu: tarayıcı/Claude öndeyken titreşim rumble ile devam etsin" Foreground="#EEF3FF" Margin="0,8,0,0"
+                        Checked="RumbleFallback_Changed" Unchecked="RumbleFallback_Changed"/>
+              <TextBlock Text="Opera, Chrome, Claude, Codex gibi uygulamalar öndeyken Windows avuçları (Sensa) engeller. Açık: o sırada rumble motorları çalar (daha kaba). Kapalı: titreşim o sırada durur, hissettiğin her şey Sensa olur. Oyunlarda etkisi yok." Style="{StaticResource Hint}"/>
               <TextBlock Text="Oyunun diğer geri bildirimi" FontWeight="SemiBold" Margin="0,12,0,2"/>
               <CheckBox x:Name="RouteTriggers" Content="Tetik efektleri (L2/R2): Xbox modunda tetik motorlarında" Foreground="#EEF3FF" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>
               <CheckBox x:Name="RouteRumble" Content="Oyunun normal titreşimi: rumble motorlarında (ayrı, avuçlara karışmaz)" Foreground="#EEF3FF" Margin="0,4,0,0" Checked="RouteSource_Changed" Unchecked="RouteSource_Changed"/>

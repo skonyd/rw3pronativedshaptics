@@ -67,7 +67,8 @@ public sealed class XboxAudioSink : IAudioHapticSink
     {
         _inBlock = 0;
 
-        double level = Companion && !ControllerFocusGuard.ForegroundTakesController() ? 0 : HapticOutputLevel.Apply(1.0, OutputLevelPercent);
+        double level = Companion && !(ControllerFocusGuard.FallbackEnabled && ControllerFocusGuard.ForegroundTakesController())
+            ? 0 : HapticOutputLevel.Apply(1.0, OutputLevelPercent);
         double g = (float.IsFinite(Gain) ? Math.Max(0, Gain) : 0) * Math.Clamp(LevelPercent, 0, 400) / 100.0;
         var v = new GamepadVibration
         {
