@@ -48,6 +48,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     private long _physChanges;
     private XInputPad _lastPad;
     private VirtualPadInputProbe? _inputProbe;
+    private Thread? _probeThread;
     private int _virtualXSlot = -2;
     private uint _virtualXPacket0;
     private long _xinputWrites;
@@ -304,7 +305,17 @@ public sealed class XboxAudioGameBridge : IDisposable
             var state = new HMGamepadState { Axes = axes };
 #endif
             long nextLog = Environment.TickCount64 + 10_000, lostSince = 0;
-            int probeTick = 0;
+            if (Strict && _inputProbe == null)
+            {
+                // Own thread: GameInput's first enumeration blocks for a while, and the motor watchdog stops the bridge
+                // when this loop pauses > 250 ms (2026-11-15).
+                _inputProbe = new VirtualPadInputProbe();
+                _probeThread = new Thread(() =>
+                {
+                    while (_running) { try { _inputProbe.Poll(); } catch { } Thread.Sleep(64); }
+                }) { IsBackground = true, Name = "RW3 virtual pad input probe" };
+                _probeThread.Start();
+            }
             while (_running)
             {
                 if (!Strict && _audio?.IsCapturing != true)
@@ -347,8 +358,6 @@ public sealed class XboxAudioGameBridge : IDisposable
                 if (Strict)
                 {
                     if (!pad.Equals(_lastPad)) { _physChanges++; _lastPad = pad; }
-                    if ((++probeTick & 7) == 0)   // ~every 64 ms: read the virtual pad back through GameInput
-                        try { (_inputProbe ??= new VirtualPadInputProbe()).Poll(); } catch { }
                     _maxGameBody = Math.Max(_maxGameBody, Math.Max(_game.BodyLeft, _game.BodyRight));
                     _maxGameTrig = Math.Max(_maxGameTrig, Math.Max(_game.TriggerLeft, _game.TriggerRight));
                     if (now >= nextLog)
@@ -430,7 +439,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     public void Dispose()
     {
         _running = false;
-        try { _inputProbe?.Dispose(); } catch { }
+        try { _probeThread?.Join(500); _inputProbe?.Dispose(); } catch { }
         _watchdog?.Dispose();
         _watchdog = null;
         try
