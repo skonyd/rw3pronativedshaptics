@@ -96,14 +96,68 @@ Selected RAM variables found so far:
 The data still to be named includes float tables (0x305C8, 0x3085E, 0x35CE9), USB descriptors, GIP metadata, LED
 colour tables (0x36CDF) and the compressed RW data.
 
-## Subsystems (to be filled in)
+## Subsystems
 
-- Razer command dispatcher 0x30524: class table at 0x3074C. Class 0x16 commands are at 0x30BC2: 07–0E, 87–8D,
-  8F, 90, 91.
-- Sensa: cmd 0x0E (0x30EFC) → frame buffer → decoder 0x2A708 (PC) / 0xEF50 (Xbox) → body structs 0x20013530 →
-  output (to trace).
-- GIP class dispatch with the 0x60 audio test: 0x25AD4.
-- USB0 ISR 0x23160.
-- I2S + DMA (0x12418 …) driven from 0x13D6C.
-- SPI + DMA (0x20374 …).
-- SCTimer PWM (0x1F374 …).
+### Razer commands
+
+See [RAZER_COMMANDS.md](RAZER_COMMANDS.md): 104 commands, dispatcher 0x30524.
+
+### Sensa (palm haptics) and the actuator drive
+
+1. **Input:** class 0x16 cmd 0x0E (0x30EFC) copies the frame to 0x20000B34 and sets the flag 0x20000B2C. Frames
+   less than 11 ticks apart are dropped.
+2. **Decoding:** 0x2B538 picks decoder 0x2A708 (PC) or 0xEF50 (Xbox) by the mode flag. Either one fills four
+   0x82-byte body-part structs at 0x20013530. A struct holds a band count, then points of
+   (time, pitch Hz, amplitude), then transients.
+3. **Consumers of the structs:** 0x0DFF0, 0x17C1C, 0x1C43C, 0x227E4, 0x22B20, 0x2BD00, 0x2BDA8 and 0x1051C
+   (synthesis and render state at 0x20013738–0x2001373E).
+4. **Actuator drive: SCTimer PWM.** Init is 0x1F48C, called from board init 0x27C40.
+   - Four PWM channels on SCT0 outputs 3, 5, 6 and 7, active-high, **40 kHz** (`SCTIMER_SetupPwm`, 0x1FA00).
+   - Initial duty: SCT 3 and 5 from 0x200007A4, SCT 6 and 7 at 0.
+   - Event numbers are stored at 0x20002270, 0x74, 0x78 and 0x7C.
+   - Two output pairs at 40 kHz fit an H-bridge drive of the two voice-coil palm actuators.
+5. **Sample clock:** the CTIMER2 match callback (0x2B6F0, a RAM callback) runs the SCT duty update 0x1F5CC when
+   0x200044C4+0x29 == 1, then clears the timer interrupt.
+   - 0x1F5CC switches on a mode byte at 0x200090E6: 0/2 normal, 3, 0xFE, 0xFF.
+   - CTIMER3 (0x2B718) runs two more periodic tasks, 0x2D534 and 0x2D210.
+
+### Headset audio (console ↔ controller) passes through the NXP
+
+The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA channels 13 and 14).
+- The blocks are **192 bytes = 1 ms of 48 kHz, stereo, 16-bit**, the USB/GIP audio packet size.
+
+**Downstream: console → headset jack.**
+- USB audio is written into a 3-block ring at **0x20013A38** (3 × 192 bytes, index 0x20013C78).
+- The **I2S TX DMA callback 0x22FF8** hands the next block to I2S every millisecond, towards the audio SoC.
+- With no audio it sends the zero block at 0x200056EC.
+- The streaming flag is 0x20000A59.
+
+**Upstream: microphone → console.** The I2S RX callback 0x1F230 collects 192-byte blocks into a 6144-byte ring at
+0x2000712C (write offset at 0x20008F10+0xA4).
+
+**Consequence for the custom firmware:**
+- The console's game audio exists **as PCM in the NXP's RAM every millisecond** (wired Xbox mode). The I2S TX
+  callback 0x22FF8 is a natural hook.
+- So the NXP that drives Sensa also sees the audio, and an audio → Sensa patch needs **only the NXP image**.
+- The wireless path through the dongle and the radio SoC is still to be checked.
+
+### Flash use
+
+- **Application:** 0x8000–0x37800.
+- **IAP wrappers** (ROM entry 0x03000205): `PrepareSectors` 0xE6A8 (IAP 50), `CopyRamToFlash` 0xE60C (51),
+  `EraseSectors` 0xE65C (52).
+- **Staging area 0x40000–0x77FFF** (sectors 8–14, 32 KB each):
+  - Used by class 0x10 commands (handler 0x2B820). 10/09 prepares sectors 8..14.
+  - 10/83 writes a 32 KB block from RAM 0x2000B4C8 to sector [0x200000FC] in 4 KB steps (0x2C604).
+  - This is where firmware for the radio SoC is staged (`UpdateType.FLASH` through the controller).
+- **Settings and profiles** live in the on-chip **EEPROM** (`fsl_eeprom`, 0x40108000 window), not in flash.
+- **Free flash:** 0x37800–0x3FFFF (~34 KB, between the application and the staging area), available for patch code.
+  - The official updater erases [first HEX record, last HEX record end].
+  - Whether the bootloader accepts an image beyond 0x37800 is unknown.
+
+### Next
+
+- USB/GIP device stack: USB0 ISR 0x23160, GIP class dispatch 0x25AD4, descriptors for XUSB (PC) and GIP (Xbox).
+- Audio path from USB message 0x60 into the ring at 0x20013A38.
+- The input path: ADC sticks and triggers, PINT buttons.
+- The link to the radio SoC (FLEXCOMM9; 0x22D08 packet handler).
