@@ -37,6 +37,10 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// goes to the palms through the Sensa engine (started by the orchestrator), not to the body motors.</summary>
     public bool Strict { get; init; }
     private int _xinputSlot = -1;
+    /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
+    public Func<string>? EngineProbe { get; init; }
+    private double _maxGameBody, _maxGameTrig;
+    private long _xinputWrites;
     private ushort _bodyL, _bodyR;
     private long _bodyTick;
 
@@ -49,7 +53,7 @@ public sealed class XboxAudioGameBridge : IDisposable
         if (_xinputSlot >= 0 && (l != _bodyL || r != _bodyR || (l | r) != 0 && now - _bodyTick >= 100))
         {
             var v = new XInput.Vibration { wLeftMotorSpeed = l, wRightMotorSpeed = r };
-            if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; }
+            if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; _xinputWrites++; }
         }
         XboxSensa.SetTriggers(frame.TriggerLeft, frame.TriggerRight);
     });
@@ -257,6 +261,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             foreach (var axis in controller?.Profile.AvailableAxes ?? []) axes[axis] = .5f;
             var state = new HMGamepadState { Axes = axes };
 #endif
+            long nextLog = Environment.TickCount64 + 10_000;
             while (_running)
             {
                 if (!Strict && _audio?.IsCapturing != true)
@@ -283,6 +288,19 @@ public sealed class XboxAudioGameBridge : IDisposable
                     frame = XboxGameFeedback.Mix(!_muteTestAudio && now - _soundAt < 250 ? _sound : default,
                         now - _gameAt < 1000 ? _game : default, _includeGameRumble, _includeGameTriggers);
                 if (_running) _output.Submit(frame, now);
+                if (Strict)
+                {
+                    _maxGameBody = Math.Max(_maxGameBody, Math.Max(_game.BodyLeft, _game.BodyRight));
+                    _maxGameTrig = Math.Max(_maxGameTrig, Math.Max(_game.TriggerLeft, _game.TriggerRight));
+                    if (now >= nextLog)
+                    {
+                        nextLog = now + 10_000;
+                        string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
+                        DiagnosticsService.Info($"Virtual Xbox pad (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
+                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; {engine}");
+                        _maxGameBody = _maxGameTrig = 0;
+                    }
+                }
                 Thread.Sleep(8);
             }
         }

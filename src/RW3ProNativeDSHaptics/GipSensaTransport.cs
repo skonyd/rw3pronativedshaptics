@@ -24,6 +24,10 @@ public static class XboxSensa
         if (left > Volatile.Read(ref _maxSentL)) Volatile.Write(ref _maxSentL, left);
         if (right > Volatile.Read(ref _maxSentR)) Volatile.Write(ref _maxSentR, right);
     }
+    private static long _palmFrames;
+    /// <summary>Engine: a sent frame carried palm bands (not only triggers). The periodic log reads and resets it.</summary>
+    public static void NotePalm() => Interlocked.Increment(ref _palmFrames);
+    public static long TakePalmFrames() => Interlocked.Exchange(ref _palmFrames, 0);
     public static (int Left, int Right) TakeMaxSent() => (Interlocked.Exchange(ref _maxSentL, 0), Interlocked.Exchange(ref _maxSentR, 0));
 
     /// <summary>Bridge → engine: trigger-motor strengths 0..1 (after mix and output level).</summary>

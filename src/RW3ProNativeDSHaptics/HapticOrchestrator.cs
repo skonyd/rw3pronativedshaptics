@@ -135,6 +135,7 @@ public sealed class HapticOrchestrator
             var combined = new XboxAudioGameBridge
             {
                 Strict = strict,
+                EngineProbe = () => _bridge.SensaEngineSummary,
                 OutputLevel = _settings.OutputLevelPercent,
                 IncludeGameRumble = IncludeXboxGameRumble(),
                 IncludeGameTriggers = IncludeXboxGameTriggers()

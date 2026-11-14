@@ -275,7 +275,7 @@ public sealed class NativeBridgeService : IDisposable
     public string SensaEngineSummary =>
         $"Sensa {(_sensa.IsRunning ? "running" : "STOPPED")}/{(_sensa.IsActive ? "active" : "inactive")}, frames {_sensa.DirectFramesSent}, " +
         $"ticks {_sensa.EngineTicks}, slots {_sensa.Features.CompletedSlots}, gain {SourceGainPercent}%, level {_sensa.OutputLevelPercent}%, '{_sensa.Status}'" +
-        (XboxSensa.Active ? $", Sensa trigger raw max {XboxSensa.TakeMaxSent()}" : "");
+        (XboxSensa.Active ? $", Sensa trigger raw max {XboxSensa.TakeMaxSent()}, palm frames {XboxSensa.TakePalmFrames()}" : "");
     public (long Haptic, long Output, long Trigger) VirtualDualSenseCounters =>
         _virtual == null ? (0, 0, 0) : (_virtual.HapticBlocks, _virtual.OutputReports, _virtual.TriggerReports);
 
