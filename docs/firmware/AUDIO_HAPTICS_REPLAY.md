@@ -277,6 +277,16 @@ the 16-bit field at `0x53E` to 300–3600 and flags an out-of-range value
 for rewrite. Both exact endpoints were accepted without a rewrite.
 The factory field value is 900.
 
+The deferred-save replay runs stock task `0x19620` and observes its
+128-byte page programming requests. Under the current MMIO model the
+driver returns a nonzero status and retries each of the eleven pages
+four times. The save remains pending. The final partial page preserves
+all 60 neighboring bytes. Rebooting from proposed page contents accepts
+the old block or the fully updated block. Each of the ten incomplete
+prefixes of this fixture is rejected and restores factory data. This
+test simulates page-boundary interruptions using snapshots. Successful
+controller completion and interruption within a page remain open.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

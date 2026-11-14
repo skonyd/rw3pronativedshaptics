@@ -38,6 +38,8 @@ Stock EEPROM calibration loading accepts a valid block, restores factory
 data on four invalid inputs, and passes the selected data to the gain initializer.
 The separate EEPROM user profile loader also passes validation, factory
 fallback and field boundary checks.
+Deferred profile page attempts and ten incomplete page prefixes are
+covered. The current EEPROM model still returns a failure on save.
 Bootloader acceptance, recovery, wireless audio, PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

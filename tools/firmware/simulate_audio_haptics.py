@@ -690,6 +690,64 @@ def check_eeprom_user_profile(image, dsp):
     return {"name": "stock_eeprom_user_profile", "cases": outcomes}
 
 
+def check_deferred_profile_write(image, dsp):
+    """Replay the deferred save, then reboot from each committed page prefix."""
+    profile, size = 0x20001BF5, 0x544
+    eeprom, offset, page_size = 0x40108000, 0x400, 128
+    factory = image[0x34F66 - 0x8000:0x34F66 - 0x8000 + size]
+    replay = Replay(image, dsp)
+    cpu = replay.cpu
+    cpu.mem_map(eeprom, 4096)
+    cpu.mem_map(0x40014000, 4096)
+    cpu.mem_write(0x200094DA, b"\x01")
+
+    def read_checksum():
+        replay.call(0x2B6B8, RETURN, profile, size - 2)
+        return struct.pack("<H", cpu.reg_read(UC_ARM_REG_R0) & 0xFFFF)
+
+    cpu.mem_write(profile, factory)
+    original = factory[:-2] + read_checksum()
+    cpu.mem_write(eeprom + offset, original + b"\xA5" * (page_size - size % page_size))
+    changed = bytearray(original)
+    changed[0x20] ^= 1  # first page
+    struct.pack_into("<H", changed, 0x53E, 1200)  # final page
+    cpu.mem_write(profile, bytes(changed))
+    changed[-2:] = read_checksum()
+    verify(changed[-2:] != original[-2:], "The interruption fixture needs distinct checksums")
+    cpu.mem_write(0x200019B8, b"\x80\x00")
+    page_attempts = []
+
+    def capture_page_commit(machine, access, register, width, command, data):
+        verify(command == 6, "Unexpected EEPROM command")
+        page_attempts.append(bytes(machine.mem_read(eeprom + offset, size)))
+        machine.mem_write(0x40014FE0, struct.pack("<I", 4))
+
+    # The stock driver writes command 6 after copying each complete page.
+    cpu.hook_add(UC_HOOK_MEM_WRITE, capture_page_commit, begin=0x40014000, end=0x40014000)
+    replay.call(0x19620, RETURN, instruction_limit=300000)
+    # With this MMIO model the driver reports a nonzero status and retries
+    # each page four times. Treat snapshots as proposed page contents only.
+    verify(len(page_attempts) == 44 and page_attempts[-1] == changed, "Unexpected deferred page attempts")
+    verify(cpu.mem_read(0x200019B8, 2) == b"\x80\x00", "Failed save did not stay pending")
+    verify(cpu.mem_read(eeprom + offset + size, 60) == b"\xA5" * 60,
+           "Partial final page changed neighboring EEPROM bytes")
+
+    snapshots = page_attempts[::4]
+    for pages, snapshot in enumerate([original, *snapshots]):
+        boot = Replay(image, dsp)
+        boot.cpu.mem_map(eeprom, 4096)
+        boot.cpu.mem_write(0x200094DA, b"\x01")
+        boot.cpu.mem_write(eeprom + offset, snapshot)
+        boot.call(0x2DDDA, 0x2DE70, instruction_limit=200000)
+        expected = original if pages == 0 else changed if pages == len(snapshots) else factory
+        verify(bytes(boot.cpu.mem_read(profile, size)) == expected, f"Unexpected boot after {pages} pages")
+        pending, = struct.unpack("<H", boot.cpu.mem_read(0x200019B8, 2))
+        verify(bool(pending & 0x80) == (0 < pages < len(snapshots)), "Wrong recovery write request")
+    return {"name": "stock_deferred_profile_write", "page_attempts": len(page_attempts),
+            "save_remained_pending": True, "incomplete_prefixes_rejected": len(snapshots) - 1,
+            "old_and_full_images_accepted": True}
+
+
 def check_sensa_pwm(image, dsp, continuous=False, gain_percent=100):
     """Follow stock synthesis into the stock PWM register writer."""
     results = {}
@@ -820,6 +878,7 @@ def main():
     report.append(check_stock_profile_calibration(image, dsp))
     report.append(check_eeprom_calibration(image, dsp))
     report.append(check_eeprom_user_profile(image, dsp))
+    report.append(check_deferred_profile_write(image, dsp))
     full_gain = check_sensa_pwm(image, dsp, continuous=True)
     half_gain = check_sensa_pwm(image, dsp, continuous=True, gain_percent=50)
     for full, half in zip(full_gain["cases"], half_gain["cases"]):
