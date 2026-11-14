@@ -75,8 +75,9 @@ public static class SensaXboxFrameEncoder
         for (int i = 0; i < n; i++)
         {
             var b = bands[i];
+            // 2 points per band here; each keeps its own pitch (as in PC mode), so a melody can change note mid-frame.
             Band(f, ref bit, SensaFrameEncoder.Quantize6(Math.Max(b.A0, b.A1)), SensaFrameEncoder.Quantize6(Math.Max(b.A2, b.A3)),
-                SensaFrameEncoder.Quantize7(b.Pitch));
+                SensaFrameEncoder.Quantize7(b.PitchAt(1)), SensaFrameEncoder.Quantize7(b.PitchAt(3)));
         }
         if (Math.Max(1, n) < 2) Put(f, ref bit, 0, 1);   // end of the band list
         if (hit is { } h && SensaFrameEncoder.Quantize6(h.Strength) > 0)
@@ -109,11 +110,13 @@ public static class SensaXboxFrameEncoder
         Put(f, ref bit, 0, 1);   // no transient
     }
 
-    private static void Band(Span<byte> f, ref int bit, int a0, int a1, int pitch)
+    private static void Band(Span<byte> f, ref int bit, int a0, int a1, int pitch) => Band(f, ref bit, a0, a1, pitch, pitch);
+
+    private static void Band(Span<byte> f, ref int bit, int a0, int a1, int pitch0, int pitch1)
     {
         Put(f, ref bit, 1, 1);
-        Put(f, ref bit, a0, 6); Put(f, ref bit, pitch, 7);
-        Put(f, ref bit, a1, 6); Put(f, ref bit, pitch, 7);
+        Put(f, ref bit, a0, 6); Put(f, ref bit, pitch0, 7);
+        Put(f, ref bit, a1, 6); Put(f, ref bit, pitch1, 7);
     }
 
     private static void Put(Span<byte> f, ref int bit, int value, int width)
