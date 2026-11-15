@@ -280,6 +280,34 @@ This establishes an interoperable stock codec pair with the
 tested initialization. The previous independent frame comparison
 still disagrees with this configuration. The paired test supplies
 the PCM before the encoder's stock splitter and bridges the encoded
-bytes in the host. The USB worker scheduling, over-the-air packet
-header, integrity and retransmission, radio receive dispatch and
-the physical NXP-facing link are outside this replay.
+bytes in the host.
+
+### Windows USB capture through the stock audio worker
+
+Add `--dongle-usb-trace <dongle.pcap>` to the paired command to
+run the two active windows from the lab capture. The fixture
+uses zero-based slots 600 and 1600 at USB address 9.
+
+The stock endpoint routine fills the PCM ring, writes the worker
+cursor at `0x880A4` from `0x530C`, and publishes the same index
+in its event. The fixture seeds the read position and steady-state
+mode, then sets the modeled timer interrupt status bit. The stock
+interrupt routine at `0x3CDC` reaches worker `0x5958` through
+the original call at `0x3D28`. With the pending bit clear the read
+position stays unchanged. The stock worker reads 241 samples per channel from the
+1,024-word ring. At the resampler call `0x5F54`, the PCM matches the
+recorded inputs after the documented fixed-point rounding of
+negative samples. The worker passes the first 240 stereo frames of
+its resampled block to the two stock encoders and returns with a
+70-byte pair at `0x8E1FD`.
+
+| Capture window | Ring read | Controller decoder peaks L/R | Modeled FIFO peaks L/R |
+| --- | --- | --- | --- |
+| 15 slots from slot 600 | Contiguous at word 258 | 10,757 / 1 | 10,757 / 0 |
+| 27 slots from slot 1600 | Wrap starting at word 834 | 1 / 11,602 | 0 / 11,598 |
+
+Both windows deliver 240 stereo frames to the controller's
+modeled I²S FIFO. The host still supplies the interrupt arrival
+and forwards the pair to the decoder. Stock interrupt timing,
+over-the-air headers and integrity, retransmission, radio receive
+dispatch and the physical NXP-facing link remain open.

@@ -32,6 +32,10 @@ The dongle's stock encoder now supplies its exact 35-byte per-channel
 outputs to the stock controller decoder in a paired offline test.
 Eight scenes produce 6,960 stereo frames at the modeled I²S FIFO,
 covering channel swaps, selective loss, recovery and silence.
+Two recorded USB windows also pass through the stock dongle timer
+handler and audio worker, with contiguous and wrapped PCM reads.
+The resulting codec bytes reach the controller's modeled FIFO with
+channel isolation.
 The real scheduling, RF handoff, and controller-to-NXP link still need
 to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio

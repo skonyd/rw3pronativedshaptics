@@ -29,9 +29,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   runs the board setup and 0x2002656C decoder with 240 samples per
   channel. Its return value is insufficient to verify audio.
   E-20261115-99 verifies the stock 0x26D58 encoder and pairs its
-  35-byte outputs with the controller's decoder. Next connect the
-  dongle service at 0x5958 (call 0x3D28) to USB ring fill and
-  obtain a verified RF packet envelope and receive dispatch. Check the
+  35-byte outputs with the controller's decoder. E-20261115-100
+  connects the stock USB endpoint to service 0x5958 in two capture
+  windows. Stock writes the worker cursor and the timer handler
+  reaches it using a modeled pending bit. Next verify interrupt
+  pacing and follow the encoded pair from 0x8E1FD into RF packet
+  preparation and receive dispatch. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

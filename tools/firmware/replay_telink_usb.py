@@ -438,7 +438,7 @@ def replay_ring_consumer(cpu, first_word, expected_advance, pcm, stack):
         cpu.mem_write(leftovers, previous_leftovers)
 
 
-def replay_endpoint(cpu, slots):
+def replay_endpoint(cpu, slots, observe_ring=None):
     require(bool(slots), "Expected at least one USB audio slot")
     cpu.mem_map(0x80101000, 4096)
     cpu.mem_map(0x80140000, 4096)
@@ -526,6 +526,8 @@ def replay_endpoint(cpu, slots):
         index = next_index
     require(adjacent == tuple(bytes(cpu.mem_read(address, 4)) for address in (RING_WORDS - 4, ring_end)),
             "USB firmware ring write modified an adjacent word")
+    if observe_ring is not None:
+        observe_ring(cpu, stack)
     resampler = replay_resampler(cpu, stack)
     return {"dispatcher": hex(USB_DISPATCH), "handler": hex(USB_HANDLER),
             "no_pending_leaves_ring_untouched": True, "event_call": hex(EVENT_CALL),
