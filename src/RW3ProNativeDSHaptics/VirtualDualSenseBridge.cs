@@ -42,7 +42,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
     /// XInput and the trigger motors through the Sensa frame only, and never allows the GameInput service.</summary>
     public static volatile bool StrictHide;
     private bool _strictApplied;
+#if HAS_HIDMAESTRO
     private int _xboxXInputSlot = -1;
+#endif
     public string HidHideNote { get; private set; } = "";
     /// <summary>HID path of the virtual DualSense (what games open); null until the readback found it.</summary>
     public string? VirtualHidPath => _readback?.DevicePath;
