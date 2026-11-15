@@ -23,7 +23,9 @@ namespace RW3ProNativeDSHaptics;
 /// </summary>
 #if !HAS_HIDMAESTRO
 // Keep the status API available in builds without the optional SDK.
-#pragma warning disable CS0169, CS0649
+// Optional HIDMaestro-only state can be assigned by the no-SDK stub but not read.
+// Suppress the resulting unused-field diagnostics only in SDK-free builds.
+#pragma warning disable CS0169, CS0649, CS0414
 #endif
 public sealed class VirtualDualSenseBridge : IDisposable
 {
