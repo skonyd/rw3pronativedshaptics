@@ -32,10 +32,10 @@ The dongle's stock encoder supplies exact 35-byte per-channel outputs
 to the controller's stock queue copy and receive dispatcher in a
 paired offline test. Ten scenes produce 8,160 decoded stereo frames
 and 160 startup silence frames at the modeled I²S FIFO. They cover
-channel swaps, receiver-signaled loss of both
-lanes, recovery and silence. Selective left loss remains a separate
-decoder-level control. The host prepares receive slots and interleaves
-decoded PCM for the stock resampler.
+channel swaps, receiver-signaled loss of both lanes, recovery and
+silence. The stock receiver interleaves and resamples both lanes and
+clears each consumed slot. The separate decoder-level left-loss
+control supplies interleaved PCM from the host.
 Two recorded USB windows also pass through the stock dongle timer
 handler and audio worker, with contiguous and wrapped PCM reads.
 The resulting codec bytes reach the controller's modeled FIFO with
@@ -44,7 +44,8 @@ The dongle's stock TX routine now points RF DMA at the same encoded
 bytes. The controller's stock RF interrupt checks modeled receive
 metadata and queues the audio in its eight-slot ring. Absent IRQ,
 CRC-error, oversize and duplicate controls leave that ring untouched.
-The replay supplies transmit completion, arrival and metadata.
+The replay supplies transmit completion, arrival, metadata and the
+receiver's selected slot and playout-ready state.
 Live scheduling, the physical RF link and the controller-to-NXP link
 remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio

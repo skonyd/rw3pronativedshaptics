@@ -6,13 +6,16 @@ import math
 from pathlib import Path
 import struct
 
+from unicorn import UC_HOOK_CODE
 from unicorn.riscv_const import (
     UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A2, UC_RISCV_REG_A3,
     UC_RISCV_REG_MSTATUS, UC_RISCV_REG_RA, UC_RISCV_REG_S0,
     UC_RISCV_REG_S2, UC_RISCV_REG_S3, UC_RISCV_REG_S5, UC_RISCV_REG_SP,
 )
 
-from replay_telink_radio import DECODE_FRAME, PCM_WRITE_CURSOR, fifo_input, initialize_i2s, resample_to_fifo
+from replay_telink_radio import (
+    DECODE_FRAME, FRAME_BYTES, PCM_WRITE_CURSOR, PCM_WRITER, fifo_input, initialize_i2s, resample_to_fifo,
+)
 from replay_telink_rf import (
     AUDIO_OFFSET, RX_SLOTS, RX_STATE, SLOT_BYTES, SLOT_COUNT, SLOT_STATUS_OFFSET, TX_SLOTS,
     check_receive_rejections, receive_audio, run_receive_irq, transmit_audio,
@@ -32,6 +35,8 @@ PCM_FRAMES, CODED_BYTES = 240, 35
 RECEIVE_SLOT, RECEIVE_DISPATCH = 0x131B4, 0x12834
 RECEIVE_LEFT_OK, RECEIVE_LEFT_LOST, RECEIVE_RIGHT = 0x12F14, 0x129D8, 0x129F8
 RECEIVE_MARK_LOSS, RECEIVE_AFTER_LOSS = 0x132A8, 0x132AE
+RECEIVE_CONSUMED = 0x131D4
+STEREO_RESAMPLER = 0x20022374
 RECEIVE_PRIME_FRAMES = 160
 ENCODED_LENGTH_OFFSET = 0x1C
 LEFT_ENCODED, RIGHT_ENCODED = 0x5CB4, 0x5D08
@@ -227,19 +232,62 @@ def check_tones(lanes, frequencies):
     return levels
 
 
+def gated_pcm(pcm):
+    return b"".join(struct.pack("<h", value if abs(value) > 1 else 0)
+                    for value, in struct.iter_unpack("<h", pcm))
+
+
+def validate_fifo(output, written, pending):
+    pending.extend(written)
+    require(output == pending[:len(written)], "Modeled FIFO differs from the queued writer bytes")
+    del pending[:len(written)]
+
+
 def send_to_fifo(cpu, tx, caller_stack, lanes, pending):
     interleaved = tuple(zip(*lanes))
     fifo_pcm = bytearray()
     for start in range(0, len(interleaved), 40):
         pcm = b"".join(struct.pack("<hh", *frame) for frame in interleaved[start:start + 40])
         resampled, output = resample_to_fifo(cpu, tx, caller_stack, pcm)
-        written = b"".join(struct.pack("<h", value if abs(value) > 1 else 0)
-                           for value, in struct.iter_unpack("<h", resampled))
-        pending.extend(written)
-        require(output == pending[:len(written)], "Modeled FIFO differs from the queued writer bytes")
-        del pending[:len(written)]
+        written = gated_pcm(resampled)
+        validate_fifo(output, written, pending)
         fifo_pcm.extend(written)
     return fifo_pcm
+
+
+def render_received(cpu, tx, address, lanes, pending):
+    """Continue the stock receiver until it writes stereo PCM and consumes the slot."""
+    # Supply the steady playout state that is owned by the receive scheduler.
+    cpu.mem_write(RX_STATE + 0x1C, struct.pack("<I", 1))
+    resampler_inputs = []
+    writer_inputs = []
+
+    def read_pcm(machine, pc, size, captures):
+        source = machine.reg_read(UC_RISCV_REG_A0)
+        count = machine.reg_read(UC_RISCV_REG_A1)
+        require(0 < count <= PCM_FRAMES, "Unexpected receiver PCM span")
+        captures.append(bytes(machine.mem_read(source, count * FRAME_BYTES)))
+
+    resampler_hook = cpu.hook_add(UC_HOOK_CODE, read_pcm, resampler_inputs, STEREO_RESAMPLER, STEREO_RESAMPLER)
+    writer_hook = cpu.hook_add(UC_HOOK_CODE, read_pcm, writer_inputs, PCM_WRITER, PCM_WRITER)
+    try:
+        run_until(cpu, RECEIVE_RIGHT, RECEIVE_CONSUMED, vendor_budget=240_000)
+    finally:
+        cpu.hook_del(writer_hook)
+        cpu.hook_del(resampler_hook)
+
+    expected = b"".join(struct.pack("<hh", *frame) for frame in zip(*lanes))
+    require([len(block) for block in resampler_inputs] == [40 * FRAME_BYTES] * 6
+            and b"".join(resampler_inputs) == expected,
+            "Stock receiver did not interleave all decoded samples in order")
+    require(len(writer_inputs) == len(resampler_inputs), "Stock receiver skipped a PCM writer block")
+    require(cpu.mem_read(address + SLOT_STATUS_OFFSET, 1) == b"\x00",
+            "Stock receiver did not mark its slot consumed")
+    written = gated_pcm(b"".join(writer_inputs))
+    require(len(written) == len(expected), "Unexpected stock playout frame count")
+    output, _ = fifo_input(cpu, tx, len(written) // FRAME_BYTES)
+    validate_fifo(output, written, pending)
+    return written
 
 
 def drain_fifo(cpu, tx, pending):
@@ -277,9 +325,10 @@ def decode_link(cpu, scenes):
                 packet = bytes(cpu.mem_read(address, CODED_BYTES * 2))
                 first = decode_lane(cpu, stack, 0, packet[:CODED_BYTES], True)
                 second = decode_lane(cpu, stack, 1, packet[CODED_BYTES:], False)
+                fifo_pcm = send_to_fifo(cpu, tx, caller_stack, (first, second), pending)
             else:
                 first, second = receive_pair(cpu, caller_stack, address, lost=lost, priming=frames == 0)
-            fifo_pcm = send_to_fifo(cpu, tx, caller_stack, (first, second), pending)
+                fifo_pcm = render_received(cpu, tx, address, (first, second), pending)
             fifo.update(fifo_pcm)
             frames += len(fifo_pcm) // 4
             if name == "cold_silence":
@@ -338,7 +387,7 @@ def replay_capture_worker(dongle_image, radio_image, capture, usb_address):
             require(not run_receive_irq(cpu, caller_stack, frame), "Stock RF receiver queued a duplicate packet")
             lanes = receive_pair(cpu, caller_stack, address, priming=True)
             pending = bytearray(RECEIVE_PRIME_FRAMES * 4)
-            output = send_to_fifo(cpu, tx, caller_stack, lanes, pending)
+            output = render_received(cpu, tx, address, lanes, pending)
             drain_fifo(cpu, tx, pending)
             return {"decoder_peaks": [max(map(abs, lane)) for lane in lanes],
                     "fifo_peaks": [max(map(abs, lane)) for lane in zip(*struct.iter_unpack("<hh", output))],

@@ -388,3 +388,26 @@ and metadata. It drives the chosen receive queue slot into stock
 copy and decode. The physical radio waveform, CRC generation, link
 negotiation, retransmission timing, and autonomous queue consumption
 remain unverified.
+
+### Stock receive playout and slot completion
+
+The paired replay continues from the second decoder's return at
+`0x129F8` to the receive return at `0x131D4`. The fixture supplies
+the steady playout flag at `0x87510`. The stock routine makes two
+calls per block to `0xE53C` to interleave the channels and passes six
+40-frame blocks to the stock stereo resampler at `0x20022374`.
+The test observes each input to the resampler and checks every
+interleaved sample against the two decoded lanes. The stock writer
+at `0xF808` writes all output blocks. After each packet the replay
+advances modeled DMA, checks the FIFO's bytes against the writer's
+output and checks that stock cleared status byte 127 of the consumed
+queue slot. A final modeled drain verifies the last 160 queued frames.
+
+The same stock playout code covers fresh audio and concealment after
+the stock missing-slot marker. Both captured USB windows reach it
+with 240 decoded frames each. Including the stock playout rate
+adjustment, their modeled FIFO peaks are 10,758 / 0 and 0 / 11,603.
+Only the separate synthetic left-only loss control supplies
+host-interleaved PCM. The fixture uses a selected queue slot and
+controlled I²S state. Actual interrupt pacing and the LPC-facing
+connection remain open.

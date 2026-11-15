@@ -38,8 +38,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   lanes. E-20261115-102 follows those encoded bytes through the
   stock TX DMA pointer and into the controller's queue with the
   stock RX IRQ. It rejects absent IRQ, CRC error, oversize, and
-  immediate duplicates. Next verify autonomous slot selection,
-  TX completion/retransmission, and real interrupt pacing. Check the
+  immediate duplicates. E-20261115-103 follows the stock playout
+  branch to stereo interleaving, resampling, ring write and slot
+  clear under a fixture ready state. Next verify autonomous slot
+  selection, TX completion/retransmission, and real interrupt pacing. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.
