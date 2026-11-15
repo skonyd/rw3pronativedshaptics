@@ -18,16 +18,21 @@ AUDIO_OFFSET, AUDIO_BYTES, AIR_LENGTH = 13, 70, 77
 
 
 def transmit_audio(cpu, index, payload):
-    """Run stock TX selection and return the bytes its DMA source points to."""
-    address = TX_SLOTS + SLOT_BYTES * index
-    require(cpu.mem_read(address + AUDIO_OFFSET, AUDIO_BYTES) == payload,
-            "Stock TX slot does not already contain the encoded audio")
+    """Send one independent frame with a fixture-cleared send state."""
     # Supply the negotiated link and scheduled counter, and model completion
     # of any previous transmission before requesting another stock packet.
     cpu.mem_write(TX_STATE + 8, struct.pack("<H", index << 3))
     cpu.mem_write(TX_STATE + 0x24, bytes(2))
     cpu.mem_write(TX_STATE + 0x41, b"\x20")
     cpu.mem_write(TX_STATE + 0x4C, struct.pack("<I", 1))
+    return select_audio(cpu, index, payload)
+
+
+def select_audio(cpu, index, payload):
+    """Run stock TX selection with the current in-flight and pending state."""
+    address = TX_SLOTS + SLOT_BYTES * index
+    require(cpu.mem_read(address + AUDIO_OFFSET, AUDIO_BYTES) == payload,
+            "Stock TX slot does not already contain the encoded audio")
     cpu.reg_write(UC_RISCV_REG_RA, 0x700)
     run_until(cpu, TX_ENTRY, 0x700, vendor_budget=4096)
 

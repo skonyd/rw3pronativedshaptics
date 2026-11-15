@@ -52,9 +52,11 @@ plays with the opposite channel silent. Stock timer compare writes
 drive the two-phase modeled clock, which returns to a 5 ms period
 after a modeled 100 µs delay. The stock system-timer handler now
 advances and publishes the RF counter from one initial state.
-The test still supplies arrival timestamps, transmit completion
-and peripheral timing. Physical RF timing and the controller-to-NXP
-link remain open.
+The paired run still supplies arrival timestamps and peripheral
+timing. A separate duplex replay runs stock transmission, retry
+and controller reply. Local TX completion alone leaves the slot
+pending. A matching reply retires it and the next audio slot sends.
+Physical RF timing and the controller-to-NXP link remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

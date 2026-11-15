@@ -45,8 +45,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   pacing, cold mute and loss/recovery. E-20261115-105 runs stock
   system-timer counter publication and catch-up from a single
   synchronized seed. It also tests the RF timestamp gate. Next
-  model the full system-timer event cadence, sync acquisition,
-  TX completion and retransmission. Check the
+  model the full system-timer event cadence and sync acquisition.
+  E-20261115-106 verifies a stock retry and matching response with
+  the next slot sent after stock releases the previous one. Extend
+  it to the full TX schedule and retry budget. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

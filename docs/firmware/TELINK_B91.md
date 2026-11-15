@@ -480,3 +480,32 @@ modeled RF arrival times, initial sync epoch and peripheral/DMA
 timing. Live RF sync acquisition and drift behavior, TX completion
 and retransmission, nested interrupts, and the physical
 Telink-to-NXP connection remain open.
+
+### Stock dongle retry and controller reply
+
+```powershell
+python -B tools/firmware/replay_telink_duplex.py <Dev1FW.bin> <Flash2FW.bin>
+```
+
+The stock dongle sends audio slot 1 and sets its in-flight mask at
+`0x8E084` to 2. The replay advances one RF subslot with the reply
+withheld. Stock selects the same DMA address and keeps all 70 codec
+bytes and the sequence tag. The send counter changes from 8 to 9.
+The stock controller RX handler queues the original once, rejects
+the retry as a duplicate, and runs its reply formatter at `0x10A40`
+on both arrivals. Both formatter calls produce the same six DMA
+bytes `01 00 80 00 00 00`.
+
+The dongle's stock RF IRQ at `0x3B08` reads the reply buffer and
+distributes validated replies to `0x4214`. The fixture models the
+DMA metadata and write-to-clear status at `0x80170220`. Tests with
+no pending interrupt, local TX completion only, a CRC error and
+an altered reply sequence all leave the in-flight mask at 2.
+Delivering the original controller reply clears it. Stock then
+sends slot 2 with mask 4 and without a host write to clear the
+previous in-flight or pending state.
+
+The test enters the TX selector at scheduled subslots and moves
+each RF frame between DMA buffers. It exercises one complete
+retry and reply cycle. Physical RF delivery, the retry budget and
+the system-timer events that invoke the TX selector remain open.
