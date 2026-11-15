@@ -72,10 +72,12 @@ def andes_next(cpu, pc):
     if word & 0x307F == 0x100B:
         execute_addigp(cpu, word)
         return pc + 4
-    if word & 0x307F == 0x200B:
+    if word & 0x307F in (0x000B, 0x200B):  # LBGP / LBUGP
         offset = (field(word, 14, 1) | field(word, 21, 10) << 1 | field(word, 20, 1) << 11 |
                   field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 17)
         result = cpu.mem_read(cpu.reg_read(UC_RISCV_REG_GP) + offset, 1)[0]
+        if word & 0x2000 == 0 and result & 0x80:
+            result -= 0x100
     elif word & 0x307F == 0x300B:
         offset = (field(word, 14, 1) | field(word, 8, 4) << 1 | field(word, 25, 6) << 5 |
                   field(word, 7, 1) << 11 | field(word, 17, 3) << 12 |

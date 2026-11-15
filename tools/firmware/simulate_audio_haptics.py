@@ -41,16 +41,17 @@ def verify(condition, message):
 
 
 class Replay:
-    def __init__(self, image, dsp):
-        verify(0 < len(dsp) <= 4096, "Invalid simulator DSP binary size")
+    def __init__(self, image, dsp=None):
         self.cpu = cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         cpu.mem_map(0, 0x40000)
         cpu.mem_write(0x8000, image)
-        cpu.mem_map(DSP, 4096)
-        cpu.mem_write(DSP, dsp)
         cpu.mem_map(0x20000000, 0x28000)
         self.steps = 0
-        cpu.hook_add(UC_HOOK_CODE, self.count_step, begin=DSP, end=DSP + len(dsp) - 1)
+        if dsp is not None:
+            verify(0 < len(dsp) <= 4096, "Invalid simulator DSP binary size")
+            cpu.mem_map(DSP, 4096)
+            cpu.mem_write(DSP, dsp)
+            cpu.hook_add(UC_HOOK_CODE, self.count_step, begin=DSP, end=DSP + len(dsp) - 1)
 
     def count_step(self, *_):
         self.steps += 1

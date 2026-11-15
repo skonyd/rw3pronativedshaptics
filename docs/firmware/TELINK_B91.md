@@ -481,6 +481,44 @@ timing. Live RF sync acquisition and drift behavior, TX completion
 and retransmission, nested interrupts, and the physical
 Telink-to-NXP connection remain open.
 
+### Controller SPI control transaction
+
+```powershell
+python -B tools/firmware/replay_controller_spi.py <Flash2FW.bin> <Dev2FW.bin>
+```
+
+The stock Telink transaction at `0x20029844` selects PSPI and
+starts it via `0x80140046`. The cold form configures a four-byte
+write of `04 12 30 80` and a 96-byte read. The normal form
+transmits 100 bytes beginning `04 12 30 00 BB 00`. The model
+reads these bytes from the source of the stock DMA descriptor.
+[Telink SPI driver handbook](https://doc.telink-semi.cn/doc/en/software/res/sdk/driver/driver_sdk_en/)
+
+The NXP runtime control bus is prepared by `0x13B90` on
+FLEXCOMM5 at `0x40096000`, with 100-byte DMA descriptors
+for channels 10 and 11. The model moves the bus bytes using
+those descriptors and invokes the stock DMA dispatcher
+at `0xC478`. RX-first and TX-first completions both release
+exactly one application callback at `0x1FFC4` after both
+channels complete. A malformed header sets the firmware's
+error flag and takes the branch that skips rearming.
+[NXP LPC546xx user manual](https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/lpc/58795/1/lpc546_series.pdf)
+
+The stock NXP response starts `00 00 00 00 AA 00 01 03`,
+includes the XOR at byte 98 and increments its counter to 1.
+The next modeled read returns bytes 4–99 unchanged into the
+Telink's stock DMA destination at `0x957C4`. The following
+stock normal transaction puts these bytes into its receive
+queue, validates them at `0x20028958` and selects the stock
+handler at `0x20028C84`. Flipping the checksum byte reaches
+the stock rejection path instead. Both records retire from
+the queue.
+
+The simulator chooses the cold and normal calls and drives
+SPI clock and DMA events. This exercises the firmware on both
+ends of the control transaction. The live transaction schedule
+and the physical I²S path require separate evidence.
+
 ### Stock dongle retry and controller reply
 
 ```powershell

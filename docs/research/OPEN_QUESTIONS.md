@@ -48,9 +48,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   model the full system-timer event cadence and sync acquisition.
   E-20261115-106 verifies a stock retry and matching response with
   the next slot sent after stock releases the previous one. Extend
-  it to the full TX schedule and retry budget. Check the
-  LPC SPI path separately from the I²S FIFO before
-  connecting the controller-radio replay to the NXP.
+  it to the full TX schedule and retry budget. E-20261115-107
+  connects controller PSPI to the stock NXP FLEXCOMM5 (DMA 10/11)
+  and verifies the reply in the stock Telink parser. Determine
+  the separate I²S clock roles, signal direction and pin topology
+  before connecting the PCM paths.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.

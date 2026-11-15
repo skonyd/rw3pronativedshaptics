@@ -56,7 +56,11 @@ The paired run still supplies arrival timestamps and peripheral
 timing. A separate duplex replay runs stock transmission, retry
 and controller reply. Local TX completion alone leaves the slot
 pending. A matching reply retires it and the next audio slot sends.
-Physical RF timing and the controller-to-NXP link remain open.
+The controller SPI replay now connects the stock Telink PSPI
+descriptors to the stock NXP FLEXCOMM5 DMA and parser, and checks
+the stock reply through the Telink receive queue and checksum
+branch. The SPI bus clocks and interrupts are modeled. Physical
+RF timing and the separate inter-chip I²S connection remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

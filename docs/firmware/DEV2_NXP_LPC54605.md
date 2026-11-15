@@ -173,4 +173,8 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 - USB/GIP device stack: USB0 ISR 0x23160, GIP class dispatch 0x25AD4, descriptors for XUSB (PC) and GIP (Xbox).
 - Endpoint registration and USB/DMA scheduling for the PCM ring at 0x200057AC.
 - The input path: ADC sticks and triggers, PINT buttons.
-- The link to the radio SoC (FLEXCOMM9; 0x22D08 packet handler).
+- The stock runtime radio SPI path uses FLEXCOMM5. The setup at
+  0x13B90 arms DMA channels 10 and 11. DMA completion reaches 0x1FFC4,
+  which calls 0x22D08 for one application response type. The separate
+  FLEXCOMM9 references include radio update commands. See
+  [the inter-chip SPI replay](TELINK_B91.md#controller-spi-control-transaction).
