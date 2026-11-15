@@ -27,9 +27,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   Telink's stock I²S setup and PCM writer from 0x12B44. E-20261115-97
   adds the stereo resampler at 0x20022374 to that replay. E-20261115-98
   runs the board setup and 0x2002656C decoder with 240 samples per
-  channel. Its return value is insufficient to verify audio. Locate
-  the stock dongle encoder output and replay paired captures to resolve
-  the mismatch with standalone LC3. Check the
+  channel. Its return value is insufficient to verify audio.
+  E-20261115-99 verifies the stock 0x26D58 encoder and pairs its
+  35-byte outputs with the controller's decoder. Next connect the
+  dongle service at 0x5958 (call 0x3D28) to USB ring fill and
+  obtain a verified RF packet envelope and receive dispatch. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

@@ -242,3 +242,44 @@ frames to the I²S FIFO. The writer zeroes 18 one-count samples in this
 run. The test checks this rule and preservation of the remaining
 resampled samples. Upstream scheduling and the stock channel
 interleaver remain outside this fixture.
+
+### Stock dongle encoder paired with the controller decoder
+
+```powershell
+python -B tools/firmware/replay_telink_link.py <Dev1FW.bin> <Flash2FW.bin>
+```
+
+The dongle initializes its two encoder contexts at `0x26BC4`.
+The replay supplies 240 interleaved PCM frames at `0x5C6C`.
+Stock code separates the channels, calls the encoder at
+`0x26D58` from `0x5CB0` and `0x5D04`, and copies two
+35-byte outputs to the destination. Each call returns zero and
+reports 35 bytes. The test checks both lengths and the destination
+guards. The frame size and sample rate agree with the controller
+board setup fixture.
+
+The host forwards the resulting encoded bytes to the stock controller
+decoder unchanged. It models a left-only loss by withholding that
+payload and supplying the stock loss flag. It interleaves the
+decoded PCM and then executes the receiver's stock resampler,
+writer and modeled DMA. Across eight scenes, **29 stereo blocks**
+(2,030 encoded bytes) produce **6,960 stereo frames** at the
+modeled I²S FIFO. The scenes cover cold silence, each channel
+alone, stereo, a left drop, recovery, swapped channels and drain.
+
+The 20,000-count synthetic signals recover in the stock decoder
+at 20,002.8 counts for left 200 Hz and 19,975.4 for right 1 kHz
+in the settled stereo block. Swapping the inputs moves the tones
+to the opposite channels at 19,990.9 and 19,999.9 counts. Opposite
+test-tone components stay under 5 counts in those settled decoder
+blocks. The inactive output is zero in the settled single-channel
+tests. The right signal continues during the left-only loss and
+both channels recover. The settled drain block is silent.
+
+This establishes an interoperable stock codec pair with the
+tested initialization. The previous independent frame comparison
+still disagrees with this configuration. The paired test supplies
+the PCM before the encoder's stock splitter and bridges the encoded
+bytes in the host. The USB worker scheduling, over-the-air packet
+header, integrity and retransmission, radio receive dispatch and
+the physical NXP-facing link are outside this replay.

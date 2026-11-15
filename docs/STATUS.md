@@ -28,6 +28,10 @@ The complete controller board setup now returns in replay and configures
 synthetic LC3 cases are covered. The independent tone probes yielded
 weak output or silence. Host-interleaved decoder output reaches the
 modeled FIFO through the stock writer.
+The dongle's stock encoder now supplies its exact 35-byte per-channel
+outputs to the stock controller decoder in a paired offline test.
+Eight scenes produce 6,960 stereo frames at the modeled I²S FIFO,
+covering channel swaps, selective loss, recovery and silence.
 The real scheduling, RF handoff, and controller-to-NXP link still need
 to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio

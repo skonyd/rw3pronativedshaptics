@@ -219,7 +219,7 @@ def replay_decoder(cpu, stack, tx, caller_stack):
                                          "sha256": digest.hexdigest()}}
 
 
-def replay_i2s(cpu):
+def initialize_i2s(cpu):
     for base in (0x80120000, 0x80140000):
         cpu.mem_map(base, 0x1000)
     install_andes_hooks(cpu, ((0x508, 0x1345B), (0x20009000, 0x20030FFF)))
@@ -236,6 +236,12 @@ def replay_i2s(cpu):
     tx = dma_descriptor(cpu, 3, (0xA48101, 0xC0213878, I2S_FIFO, 512, 0xC021568C))
     rx = dma_descriptor(cpu, 2, (0xAA2201, I2S_FIFO, 0xC0207D24, 512, 0xC0215678))
     run_until(cpu, AFTER_I2S_ENABLE, 0x500, vendor_budget=400_000)
+    return tx, rx
+
+
+def replay_i2s(cpu):
+    stack = cpu.reg_read(UC_RISCV_REG_SP)
+    tx, rx = initialize_i2s(cpu)
     ring_start = tx["source"] - DMA_DLM_ALIAS
     ring_frames = tx["frame_words"]
     ring_end = ring_start + ring_frames * FRAME_BYTES
