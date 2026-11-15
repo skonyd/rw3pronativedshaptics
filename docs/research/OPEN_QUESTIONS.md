@@ -32,9 +32,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   35-byte outputs with the controller's decoder. E-20261115-100
   connects the stock USB endpoint to service 0x5958 in two capture
   windows. Stock writes the worker cursor and the timer handler
-  reaches it using a modeled pending bit. Next verify interrupt
-  pacing and follow the encoded pair from 0x8E1FD into RF packet
-  preparation and receive dispatch. Check the
+  reaches it using a modeled pending bit. E-20261115-101 runs the
+  controller's stock 128-byte receive copy and dispatcher with
+  prepared queue slots. A slot's bit 2 selects loss on both
+  lanes. Next verify interrupt pacing and follow the pair from
+  0x8E1FD into RF packet preparation and the controller's queue
+  producer. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

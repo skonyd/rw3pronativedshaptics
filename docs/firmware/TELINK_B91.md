@@ -307,7 +307,41 @@ its resampled block to the two stock encoders and returns with a
 | 27 slots from slot 1600 | Wrap starting at word 834 | 1 / 11,602 | 0 / 11,598 |
 
 Both windows deliver 240 stereo frames to the controller's
-modeled I²S FIFO. The host still supplies the interrupt arrival
-and forwards the pair to the decoder. Stock interrupt timing,
-over-the-air headers and integrity, retransmission, radio receive
-dispatch and the physical NXP-facing link remain open.
+modeled I²S FIFO. The host supplies the interrupt arrival and
+forwards the pair to the local receive queue fixture below. Stock
+interrupt timing, over-the-air headers and integrity, retransmission
+and the physical NXP-facing link remain open.
+
+### Controller receive slot and loss flags
+
+The paired replay also enters the controller's stock local queue
+copy loop at `0x131B4`. The host places the 70 bytes from both
+dongle encoders at the front of a prepared 128-byte slot and
+seeds the application state needed by the audio branch. The
+stock loop copies the complete slot into its stack and calls
+`0x12834`. The receive code passes byte offsets 0 and 35 to
+decoder `0x2002656C` for left and right respectively. The replay
+checks the complete copy and both call arguments.
+
+The healthy fixture uses status byte `0x81` at slot offset 127.
+Changing it to `0x85` sets bit 2. In this branch the stock
+dispatcher passes the loss flag to **both** decoder calls.
+Concealment retains previous signal energy on both channels,
+and subsequent healthy slots restore the correct stereo tones.
+The existing left-only loss case continues to exercise the
+decoder directly. It describes decoder behavior under selective
+loss and gives no evidence that the live receiver signals that
+condition.
+
+The expanded synthetic replay covers **34 encoded pairs** and
+**8,160 decoded stereo FIFO frames**. The stock receive code handles
+33 of those pairs plus both recorded USB windows. For each fresh
+receiver, the stock code advances the PCM writer 160 frames ahead of
+the modeled DMA reader on the first slot. The test verifies that
+initial region contains silence, maintains the 160-frame lead while
+checking every FIFO word against the expected stream, and drains
+the remaining words at the end. The host still
+prepares queued records, supplies the clock state used at this
+boundary and interleaves the decoded PCM for the stock resampler.
+The receiver queue producer, radio DMA and transmission protocol
+remain open.

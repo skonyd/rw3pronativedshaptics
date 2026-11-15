@@ -28,16 +28,20 @@ The complete controller board setup now returns in replay and configures
 synthetic LC3 cases are covered. The independent tone probes yielded
 weak output or silence. Host-interleaved decoder output reaches the
 modeled FIFO through the stock writer.
-The dongle's stock encoder now supplies its exact 35-byte per-channel
-outputs to the stock controller decoder in a paired offline test.
-Eight scenes produce 6,960 stereo frames at the modeled I²S FIFO,
-covering channel swaps, selective loss, recovery and silence.
+The dongle's stock encoder supplies exact 35-byte per-channel outputs
+to the controller's stock queue copy and receive dispatcher in a
+paired offline test. Ten scenes produce 8,160 decoded stereo frames
+and 160 startup silence frames at the modeled I²S FIFO. They cover
+channel swaps, receiver-signaled loss of both
+lanes, recovery and silence. Selective left loss remains a separate
+decoder-level control. The host prepares receive slots and interleaves
+decoded PCM for the stock resampler.
 Two recorded USB windows also pass through the stock dongle timer
 handler and audio worker, with contiguous and wrapped PCM reads.
 The resulting codec bytes reach the controller's modeled FIFO with
 channel isolation.
-The real scheduling, RF handoff, and controller-to-NXP link still need
-to be reproduced.
+Live scheduling, RF queue production and the controller-to-NXP link
+remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.
