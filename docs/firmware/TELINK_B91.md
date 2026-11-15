@@ -411,3 +411,52 @@ Only the separate synthetic left-only loss control supplies
 host-interleaved PCM. The fixture uses a selected queue slot and
 controlled I²S state. Actual interrupt pacing and the LPC-facing
 connection remain open.
+
+### Controller Timer0 vector and queued audio
+
+The same `replay_telink_link.py` command now also executes the
+controller's stock Timer0 vector at `0x199C`. The RV32 replay enters
+with modeled trap registers. It runs the stock context save and
+call to `0x12F78`, observes the timer acknowledgement and PLIC
+completion 4, and executes the stock restore and `mret`. The
+Andes `mxstatus` read and write use a controlled value and the
+replay verifies that the handler preserves it and the interrupted
+integer registers.
+[Telink B91 vector assignments and Timer0 mode](https://doc.telink-semi.cn/doc/en/software/res/sdk/driver/driver_sdk_en/)
+
+Stock reads the RF slot counter at `0x8750C` and relative offsets
+from receiver state, selects the queue address at `0x13140` and
+copies the record at `0x131B4`. In this fixture five packets lead
+playout. The host sets the RF counter and supplies arrivals but
+gives the handler no slot pointer or playout-ready flag. The test
+checks the selected slot, both decoder calls and all six PCM
+blocks, then checks that the slot was cleared and its FIFO samples
+appeared in order. One frame is withheld from RX. The stock
+timer selects the empty slot, writes its loss flag and passes the
+two loss controls to the decoders. The test checks recovery after
+that loss, ring wrap and eventual silence.
+
+The first interrupt writes 82,320 peripheral clock cycles to
+the compare and handles audio. The second writes 37,680 cycles
+without another decode. At the modeled 24 MHz peripheral clock
+and 16 MHz system tick, those phases take 3,430 and 1,570 µs.
+When the first interrupt is delayed by 100 µs, stock shortens
+its phase by 2,400 cycles and the next audio deadline stays at
+5,000 µs. The test feeds the actual compare values into the
+next modeled interrupt time.
+[Telink B91 system tick reference](https://doc.telink-semi.cn/doc/en/software/res/sdk/ble/b91_ble_single_connection_en/b91_ble_single_connection_en/#system-timer-usage)
+
+The two Windows capture cases use repeated RF frames from the same
+stock-encoded 70 bytes under fresh sequence tags. The first one
+decodes to peaks of 10,757 / 1 and 1 / 11,602 respectively. In the
+cold state the stock output routine writes all 240 frames as
+silence. This is in addition to the 160 initial silent ring frames.
+The next packet plays and yields modeled FIFO peaks of 11,003 / 0
+and 0 / 11,619 respectively. The prior isolated playout result
+used a fixture-ready flag and began after the stock cold transition.
+
+The fixture seeds the initial sync epoch and a representative
+peripheral clock multiplier. It supplies RF counter progression,
+arrival and DMA timing. RF clock acquisition and drift behavior on
+hardware, retransmissions, nested interrupts and the physical
+Telink-to-NXP connection remain open.

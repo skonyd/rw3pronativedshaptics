@@ -21,6 +21,7 @@ from replay_telink_rf import (
     check_receive_rejections, receive_audio, run_receive_irq, transmit_audio,
 )
 from replay_telink_startup import replay_startup, require
+from replay_telink_timer import CLOCK_MHZ, PERIOD_TICKS, SYSTEM_MHZ, ReceiveTimer
 from replay_telink_usb import (
     EVENT_BYTES, EVENT_RING, RING_SIZE, RING_STATE, initialize_resampler,
     install_andes_hooks, replay_endpoint, run_until,
@@ -38,6 +39,7 @@ RECEIVE_MARK_LOSS, RECEIVE_AFTER_LOSS = 0x132A8, 0x132AE
 RECEIVE_CONSUMED = 0x131D4
 STEREO_RESAMPLER = 0x20022374
 RECEIVE_PRIME_FRAMES = 160
+RECEIVE_LOOKAHEAD = 5
 ENCODED_LENGTH_OFFSET = 0x1C
 LEFT_ENCODED, RIGHT_ENCODED = 0x5CB4, 0x5D08
 SAMPLE_RATE, AMPLITUDE = 48_000, 20_000
@@ -132,7 +134,7 @@ def encode_link(cpu):
     guard = b"\xA5" * 4
     scenes = {}
     index = 1
-    for name, left, right, blocks in SCENES:
+    for name, left, right, blocks in (*SCENES, ("lookahead_silence", 0, 0, RECEIVE_LOOKAHEAD)):
         pcm = b"".join(struct.pack("<hh", l, r) for l, r in zip(sine(left), sine(right)))
         packets = []
         for _ in range(blocks):
@@ -303,6 +305,102 @@ def initialize_receive(cpu):
     return tx
 
 
+def play_timed_block(cpu, tx, timer, pending, frame, *, lost=False, late_ticks=0):
+    """Verify what the stock Timer0 scheduler plays from the receive queue."""
+    selected, decodes, decoded_peaks, pcm = [], [], [], []
+
+    def select_slot(machine, pc, size, data):
+        address = machine.reg_read(UC_RISCV_REG_S2)
+        selected.append((address, machine.mem_read(address + SLOT_STATUS_OFFSET, 1)[0]))
+
+    def decode(machine, pc, size, data):
+        source = machine.reg_read(UC_RISCV_REG_A1)
+        decodes.append((machine.reg_read(UC_RISCV_REG_A0), machine.reg_read(UC_RISCV_REG_A3),
+                        bytes(machine.mem_read(source, CODED_BYTES)), machine.reg_read(UC_RISCV_REG_A2)))
+
+    def decoded(machine, pc, size, data):
+        mono = machine.mem_read(decodes[-1][3], PCM_FRAMES * 2)
+        decoded_peaks.append(max(abs(sample) for sample, in struct.iter_unpack("<h", mono)))
+
+    def write_pcm(machine, pc, size, data):
+        source, count = (machine.reg_read(r) for r in (UC_RISCV_REG_A0, UC_RISCV_REG_A1))
+        require(count == 40, "Stock Timer0 wrote an unexpected PCM block size")
+        pcm.append(bytes(machine.mem_read(source, count * FRAME_BYTES)))
+
+    hooks = [cpu.hook_add(UC_HOOK_CODE, callback, begin=address, end=address)
+             for address, callback in ((RECEIVE_SLOT, select_slot), (DECODE_FRAME, decode),
+                                       (RECEIVE_LEFT_LOST if lost else RECEIVE_LEFT_OK, decoded),
+                                       (RECEIVE_RIGHT, decoded), (PCM_WRITER, write_pcm))]
+    before = timer.tick
+    try:
+        first = timer.interrupt(late_ticks)
+        after_playout = (len(selected), len(decodes), len(decoded_peaks), len(pcm))
+        second = timer.interrupt()
+        require(after_playout == (1, 2, 2, 6)
+                and after_playout == (len(selected), len(decodes), len(decoded_peaks), len(pcm)),
+                "Stock Timer0 cycle did not decode and write exactly once")
+    finally:
+        for hook in hooks:
+            cpu.hook_del(hook)
+
+    index = frame[12] & (SLOT_COUNT - 1)
+    expected_address = RX_SLOTS + index * SLOT_BYTES
+    require(selected == [(expected_address, 4 if lost else 1)]
+            and cpu.mem_read(expected_address + SLOT_STATUS_OFFSET, 1) == b"\x00",
+            "Stock Timer0 consumed the wrong receive slot or loss status")
+    require([(channel, flag) for channel, flag, _, _ in decodes] == [(0, int(lost)), (1, int(lost))],
+            "Unexpected stock Timer0 decoder arguments")
+    if not lost:
+        require(b"".join(payload for _, _, payload, _ in decodes) == frame[AUDIO_OFFSET:],
+                "Stock Timer0 selected the wrong codec bytes")
+    require((first, second) == ((3430 - late_ticks // SYSTEM_MHZ) * CLOCK_MHZ, 1570 * CLOCK_MHZ)
+            and timer.tick == before + PERIOD_TICKS, "Stock timer compares did not recover the 5 ms period")
+    written = gated_pcm(b"".join(pcm))
+    output, _ = fifo_input(cpu, tx, PCM_FRAMES)
+    validate_fifo(output, written, pending)
+    return written, decoded_peaks, (first, second)
+
+
+def replay_scheduled_link(cpu, scenes):
+    stack = cpu.reg_read(UC_RISCV_REG_SP) - 0x1800
+    tx = initialize_receive(cpu)
+    timer = ReceiveTimer(cpu, stack)
+    pending = bytearray(RECEIVE_PRIME_FRAMES * FRAME_BYTES)
+    frames = [(name, frame) for name, *_ in SCENES for frame in scenes[name]]
+    arrivals = frames + [("lookahead_silence", frame) for frame in scenes["lookahead_silence"]]
+    report = {}
+    compares = set()
+    output = hashlib.sha256()
+    frequencies = {name: (left, right) for name, left, right, _ in SCENES}
+    for number, (name, frame) in enumerate(frames):
+        newest = number + RECEIVE_LOOKAHEAD
+        # RF delivery runs five packet periods ahead of playout. Withhold
+        # the loss test packet entirely and let stock mark the empty slot.
+        for arrival, packet in arrivals[0 if number == 0 else newest:newest + 1]:
+            if arrival != "lose_pair":
+                receive_audio(cpu, stack, packet)
+        timer.set_radio_counter((newest + 1) << 3)
+        late = 100 * SYSTEM_MHZ if number % 8 == 3 else 0
+        written, _, phase_compares = play_timed_block(
+            cpu, tx, timer, pending, frame, lost=name == "lose_pair", late_ticks=late)
+        compares.add(phase_compares)
+        output.update(written)
+        samples = tuple(zip(*struct.iter_unpack("<hh", written)))
+        report[name] = [max(map(abs, lane)) for lane in samples]
+        if name == "cold_silence":
+            require(not any(written), "Stock scheduled playout introduced cold noise")
+        if name == "lose_pair":
+            require(all(report[name]), "Stock scheduled loss did not conceal both lanes")
+        final_block = number + 1 == len(frames) or frames[number + 1][0] != name
+        if final_block and name != "lose_pair":
+            check_tones(samples, frequencies[name])
+    require(report["drain"] == [0, 0], "Stock scheduled playout did not drain to silence")
+    drain_fifo(cpu, tx, pending)
+    return {"blocks_played": len(frames), "vector_interrupts": 2 * len(frames),
+            "compare_cycles": sorted(compares), "final_pcm_peaks_by_scene": report,
+            "fifo_sha256": output.hexdigest()}
+
+
 def decode_link(cpu, scenes):
     stack = cpu.reg_read(UC_RISCV_REG_SP)
     caller_stack = stack - 0x1800
@@ -372,32 +470,54 @@ def replay_capture_worker(dongle_image, radio_image, capture, usb_address):
 
         def encode(cpu):
             reports = []
-            replay_endpoint(cpu, window, lambda machine, stack:
-                            reports.append(encode_captured_worker(machine, stack, window)))
+
+            def worker(machine, stack):
+                frame, report = encode_captured_worker(machine, stack, window)
+                payload = frame[AUDIO_OFFSET:]
+                # Repeat the exact captured payload under fresh sequence tags
+                # so the receiver moves from cold to buffered playout.
+                frames = [frame] * (RECEIVE_LOOKAHEAD + 2)
+                for index in (0, *range(2, len(frames))):
+                    machine.mem_write(TX_SLOTS + SLOT_BYTES * index + AUDIO_OFFSET, payload)
+                    frames[index] = transmit_audio(machine, index, payload)
+                reports.append((frames, report))
+
+            replay_endpoint(cpu, window, worker)
             return reports[0]
 
-        frame, report = replay_startup(dongle_image, "dongle", inspect_application=encode)["application"]
+        frames, report = replay_startup(dongle_image, "dongle", inspect_application=encode)["application"]
 
         def decode(cpu):
             stack = cpu.reg_read(UC_RISCV_REG_SP)
             tx = initialize_receive(cpu)
             caller_stack = stack - 0x1800
-            check_receive_rejections(cpu, caller_stack, frame)
-            address = receive_audio(cpu, caller_stack, frame)
-            require(not run_receive_irq(cpu, caller_stack, frame), "Stock RF receiver queued a duplicate packet")
-            lanes = receive_pair(cpu, caller_stack, address, priming=True)
+            timer = ReceiveTimer(cpu, caller_stack)
+            # The modeled previous sequence must differ from the first arrival.
+            cpu.mem_write(RX_STATE + 0x9B, b"\x07")
+            check_receive_rejections(cpu, caller_stack, frames[0])
+            receive_audio(cpu, caller_stack, frames[0])
+            require(not run_receive_irq(cpu, caller_stack, frames[0]), "Stock RF receiver queued a duplicate packet")
+            for frame in frames[1:-1]:
+                receive_audio(cpu, caller_stack, frame)
             pending = bytearray(RECEIVE_PRIME_FRAMES * 4)
-            output = render_received(cpu, tx, address, lanes, pending)
+            timer.set_radio_counter(RECEIVE_LOOKAHEAD << 3)
+            cold_pcm, cold_peaks, _ = play_timed_block(cpu, tx, timer, pending, frames[0])
+            require(cold_peaks[active_side] > 1000 and not any(cold_pcm),
+                    "Cold stock receiver did not decode and mute the first packet")
+            receive_audio(cpu, caller_stack, frames[-1])
+            timer.set_radio_counter((RECEIVE_LOOKAHEAD + 1) << 3)
+            output, decoded_peaks, phase_compares = play_timed_block(cpu, tx, timer, pending, frames[1])
             drain_fifo(cpu, tx, pending)
-            return {"decoder_peaks": [max(map(abs, lane)) for lane in lanes],
+            return {"decoder_peaks": decoded_peaks, "cold_decoder_peaks": cold_peaks,
                     "fifo_peaks": [max(map(abs, lane)) for lane in zip(*struct.iter_unpack("<hh", output))],
                     "fifo_frames": len(output) // 4, "startup_silence_frames": RECEIVE_PRIME_FRAMES,
+                    "cold_muted_frames": len(cold_pcm) // FRAME_BYTES, "timer_compare_cycles": phase_compares,
                     "rx_guard_controls": ["no_pending", "crc_error", "length_limit", "duplicate"]}
 
         levels = replay_startup(radio_image, "radio", inspect_application=decode)["application"]
-        for peaks in (levels["decoder_peaks"], levels["fifo_peaks"]):
-            require(peaks[active_side] > 1000 and peaks[1 - active_side] <= 2,
-                    f"Expected only channel {active_side} to carry PCM in this capture window: {peaks}")
+        peaks = levels["fifo_peaks"]
+        require(peaks[active_side] > 1000 and peaks[1 - active_side] == 0,
+                f"Expected only channel {active_side} to carry PCM in this capture window: {peaks}")
         cases.append({"capture_slot": start, "usb_slots": count, **report, **levels})
     return cases
 
@@ -413,12 +533,14 @@ def main():
     radio_image = args.controller_radio_fw.read_bytes()
     encoded = replay_startup(dongle_image, "dongle", inspect_application=encode_link)["application"]
     decoded = replay_startup(radio_image, "radio", inspect_application=lambda cpu: decode_link(cpu, encoded))
-    frames = [frame for scene in encoded.values() for frame in scene]
+    frames = [frame for name, *_ in SCENES for frame in encoded[name]]
     audio = b"".join(frame[AUDIO_OFFSET:] for frame in frames)
     report = {"encoded_pairs": len(frames), "encoded_bytes": len(audio),
               "encoded_sha256": hashlib.sha256(audio).hexdigest(),
               "rf_dma_sha256": hashlib.sha256(b"".join(frames)).hexdigest(),
-              "decoder_to_fifo": decoded["application"]}
+              "decoder_to_fifo": decoded["application"],
+              "scheduled_receive": replay_startup(radio_image, "radio", inspect_application=lambda cpu:
+                                                  replay_scheduled_link(cpu, encoded))["application"]}
     if args.dongle_usb_trace is not None:
         report["capture_worker"] = replay_capture_worker(dongle_image, radio_image, args.dongle_usb_trace,
                                                         args.usb_address)

@@ -40,8 +40,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   stock RX IRQ. It rejects absent IRQ, CRC error, oversize, and
   immediate duplicates. E-20261115-103 follows the stock playout
   branch to stereo interleaving, resampling, ring write and slot
-  clear under a fixture ready state. Next verify autonomous slot
-  selection, TX completion/retransmission, and real interrupt pacing. Check the
+  clear under a fixture ready state. E-20261115-104 verifies the
+  stock Timer0 vector, autonomous slot choice, modeled compare-driven
+  pacing, cold mute and loss/recovery. The RF counter and arrivals
+  are supplied. Next derive the RF counter from the stock sync
+  interrupt and verify TX completion and retransmission. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.
