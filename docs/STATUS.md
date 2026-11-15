@@ -72,13 +72,15 @@ The stock NXP analog replay scans six modeled ADC channels, retries a
 delayed conversion and verifies startup calibration and the foreground
 ten-sample moving average. With fixture calibration it follows both
 trigger values into the queued GIP `0x20` report and confirms that
-release clears both fields. An offline suite runs the stock and DSP
+release clears both fields. The stock USB driver arms the same bytes
+on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
+retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
 All ten stages passed with the lab inputs, including active stereo
 excerpts from wired and dongle captures in the PWM model. Its JSON
 reports record input hashes and individual stage outcomes.
-Physical input mapping, USB report delivery and Xbox authentication
-remain outside the analog replay.
+Physical input mapping, host USB packet delivery and Xbox
+authentication remain outside the analog replay.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 
 from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
+from unicorn.arm_const import UC_ARM_REG_R0
 
 from simulate_audio_haptics import RETURN, STOCK_SHA256, Replay, verify
 
@@ -27,6 +28,13 @@ GIP_INPUT_TRANSLATE, GIP_INPUT_BUILD = 0xC19C, 0x20F2C
 INPUT_CHANGED, GIP_INPUT_READY, GIP_INPUT_BUSY = 0x20008AEF, 0x200134CC, 0x200134CA
 GIP_INPUT_HEADER, GIP_INPUT_BUFFER, GIP_INPUT_PENDING = 0x200000F5, 0x20005514, 0x20005594
 GIP_INPUT_LENGTH = 36
+USB_SUBMIT = 0x239EC
+USB_REGISTERS, USB_RAM = 0x40084000, 0x40100000
+USB_DEVICE_INTERFACE = 0x357F4
+USB_APP_CLASS_POINTER, USB_APP_DEVICE_POINTER = 0x20000AA4, 0x20008F10
+USB_CLASS, USB_ENDPOINT, USB_DEVICE, USB_SETTINGS = 0x20022000, 0x20022200, 0x20022300, 0x20022500
+USB0_INTERRUPT, USB_ENDPOINT_CALLBACK = 0x23160, 0x28649
+USB_IN_INDEX, USB_ACTIVE = 3, 1 << 31
 SCAN_ORDER = (5, 9, 3, 4, 6, 7)
 INVERTED_CHANNELS = (3, 9)
 
@@ -146,6 +154,74 @@ def replay_foreground(image):
             "disabled_or_not_due_reads": 0}
 
 
+def initialize_usb_input(replay):
+    cpu = replay.cpu
+    cpu.mem_map(USB_REGISTERS, 0x1000)
+    cpu.mem_map(USB_RAM, 0x2000)
+    initialize, _, transmit, _, _, control = read_values(cpu, USB_DEVICE_INTERFACE)
+    verify((initialize, transmit, control) == (0x27421, 0x276D5, 0x26DF9), "Unexpected stock USB driver table")
+    replay.call(initialize & ~1, RETURN, 4, USB_DEVICE, USB_SETTINGS)
+    verify(cpu.reg_read(UC_ARM_REG_R0) == 0, "Stock USB driver initialization failed")
+    hardware_handle, = struct.unpack("<I", cpu.mem_read(USB_SETTINGS, 4))
+    # Endpoint 0x81, interrupt, max packet 64 bytes in the captured wired descriptor.
+    cpu.mem_write(USB_SETTINGS + 4, struct.pack("<HBBB", 64, 0x81, 3, 0))
+    replay.call(control & ~1, RETURN, hardware_handle, 2, USB_SETTINGS + 4)
+    verify(cpu.reg_read(UC_ARM_REG_R0) == 0, "Stock USB driver endpoint configuration failed")
+    cpu.mem_write(USB_APP_CLASS_POINTER, struct.pack("<I", USB_CLASS))
+    cpu.mem_write(USB_APP_DEVICE_POINTER, struct.pack("<I", USB_DEVICE))
+    cpu.mem_write(USB_CLASS + 0x104, struct.pack("<I", USB_ENDPOINT))
+    cpu.mem_write(USB_ENDPOINT, struct.pack("<I", USB_DEVICE))
+    cpu.mem_write(USB_DEVICE + 8, struct.pack("<III", hardware_handle, USB_DEVICE_INTERFACE, 0x23A25))
+    callback = USB_DEVICE + 0x14 + USB_IN_INDEX * 12
+    cpu.mem_write(callback, struct.pack("<II", USB_ENDPOINT_CALLBACK, USB_ENDPOINT))
+
+
+def submit_usb_input(replay, packet):
+    cpu = replay.cpu
+    replay.call(USB_SUBMIT, RETURN, GIP_INPUT_BUFFER, len(packet))
+    verify(cpu.reg_read(UC_ARM_REG_R0) == 0, "Stock USB submission rejected the queued input report")
+    descriptor_list, data_base = struct.unpack("<II", cpu.mem_read(USB_REGISTERS + 8, 8))
+    descriptor = descriptor_list + USB_IN_INDEX * 8
+    command, = struct.unpack("<I", cpu.mem_read(descriptor, 4))
+    address = (data_base & 0xFFC00000) | ((command & 0xFFFF) << 6)
+    count = (command >> 16) & 0x3FF
+    verify(command & USB_ACTIVE and count == len(packet) and cpu.mem_read(address, count) == packet,
+            "Stock USB descriptor did not arm the exact queued gamepad report")
+    busy = USB_ENDPOINT + 0x1A
+    verify(cpu.mem_read(busy, 1) == b"\x01", "USB endpoint did not latch the pending report")
+    replay.call(USB_SUBMIT, RETURN, GIP_INPUT_BUFFER, len(packet))
+    verify(cpu.reg_read(UC_ARM_REG_R0) == 2 and cpu.mem_read(descriptor, 4) == struct.pack("<I", command),
+            "Stock USB endpoint accepted another report before completion")
+
+    status_register = USB_REGISTERS + 0x20
+    mask = 1 << USB_IN_INDEX
+    cpu.mem_write(USB_REGISTERS + 0x24, struct.pack("<I", mask))
+
+    def interrupt(pending):
+        acknowledged = []
+        hook = cpu.hook_add(UC_HOOK_MEM_WRITE, lambda _, access, address, size, value, data:
+                            acknowledged.append(value), begin=status_register, end=status_register)
+        try:
+            cpu.mem_write(status_register, struct.pack("<I", pending))
+            replay.call(USB0_INTERRUPT, RETURN)
+        finally:
+            cpu.hook_del(hook)
+        verify(acknowledged == [pending], "USB ISR did not acknowledge the modeled interrupt status")
+        cpu.mem_write(status_register, struct.pack("<I", pending & ~acknowledged[0]))
+
+    interrupt(0)
+    verify(cpu.mem_read(busy, 1) == b"\x01", "USB interrupt without a pending bit retired the report")
+    interrupt(mask)
+    verify(cpu.mem_read(busy, 1) == b"\x01", "USB pending bit retired a still-active descriptor")
+
+    # Model the peripheral retiring all bytes and raising the IN completion bit.
+    cpu.mem_write(descriptor, struct.pack("<I", command & ~(USB_ACTIVE | (0x3FF << 16))))
+    interrupt(mask)
+    verify(cpu.mem_read(busy, 1) == b"\0", "Stock USB ISR and completion callback did not retire the report")
+    return {"endpoint": "0x81", "descriptor": hex(descriptor), "buffer": hex(address), "bytes": count,
+            "refuses_submission_while_busy": True, "retired_by_stock_irq": True}
+
+
 def replay_trigger_values(image):
     cases = (("released", 3000, 3000, (0, 0)), ("below_deadzone", 2951, 2951, (0, 0)),
              ("first_active_step", 2949, 3000, (1, 0)), ("first_side_partial", 2525, 3000, (458, 0)),
@@ -190,6 +266,8 @@ def replay_trigger_values(image):
                     f"Unexpected queued GIP trigger fields for {name}")
             report.update({"gip_queued_bytes": pending, "gip_trigger_bytes": gip[6:10].hex()})
         if name == "both_saturated":
+            initialize_usb_input(replay)
+            report["usb_submission"] = submit_usb_input(replay, gip)
             # Model consumption of the pending report, then feed the analog
             # release through the same firmware state and moving average.
             cpu.mem_write(INPUT_CHANGED, b"\0")
@@ -202,6 +280,7 @@ def replay_trigger_values(image):
             verify(cpu.mem_read(GIP_INPUT_PENDING, 1) == bytes([GIP_INPUT_LENGTH]) and
                     cpu.mem_read(GIP_INPUT_BUFFER + 6, 4) == bytes(4),
                     "Stock GIP report did not clear the previously active triggers")
+            report["usb_release"] = submit_usb_input(replay, bytes(cpu.mem_read(GIP_INPUT_BUFFER, GIP_INPUT_LENGTH)))
             report["gip_release_trigger_bytes"] = "00000000"
         check_reads(model, len(scans))
         results[name] = report

@@ -56,9 +56,10 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   pin routing and mode-dependent clock ownership before connecting
   the PCM paths. Then follow the Telink mono block into RF and USB.
 - E-20261115-109 exercises six NXP ADC channels and reaches the stock
-  GIP input queue with two analog trigger fields. Next verify stick
-  calibration, GPIO/PINT edges, final USB submission and reports with
-  independently observed physical controller input.
+  GIP input queue with two analog trigger fields. E-20261115-111
+  reaches the stock USB0 descriptor and completion on endpoint 0x81.
+  Next verify stick calibration, GPIO/PINT edges and reports with
+  independently observed physical controller input and USB timing.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.

@@ -179,9 +179,22 @@ and spans, the stock continuation converts ADC 6 and 7 to two
 step, each trigger alone, joint saturation, release to zero,
 the unchanged neutral state, and a busy report buffer.
 
-The ADC values, calibration and USB-ready state are fixtures.
-Checks stop at the firmware report queue and leave physical axis
-mapping, USB transactions and console authentication open.
+The USB continuation uses the stock driver table at `0x357F4`,
+initializes USB0 and configures interrupt IN endpoint `0x81` as
+described by the wired capture (maximum packet 64 bytes). Stock
+submission `0x239EC` calls the original send routine `0x276D4`.
+The test checks the active descriptor at `0x40100118` and all 36
+report bytes in the USB RAM buffer at `0x40100240`. A repeated
+submission returns busy. The stock vector at `0x23160` and the
+endpoint callback at `0x28648` keep the report busy with no pending
+bit or an active descriptor, then retire it after both modeled
+peripheral conditions indicate completion. The release report also
+arms and retires with both trigger fields cleared.
+
+The ADC values, calibration, negotiated USB state, class context
+and endpoint completion are fixtures. Checks reach USB RAM and
+the stock completion callback. Physical axis mapping, link-level
+USB transactions and console authentication remain open.
 
 ### Flash use
 
