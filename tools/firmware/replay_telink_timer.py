@@ -3,7 +3,7 @@ import struct
 
 from unicorn import UC_HOOK_MEM_WRITE
 from unicorn.riscv_const import (
-    UC_RISCV_REG_MCAUSE, UC_RISCV_REG_MEPC, UC_RISCV_REG_MSTATUS, UC_RISCV_REG_S0,
+    UC_RISCV_REG_MCAUSE, UC_RISCV_REG_MEPC, UC_RISCV_REG_MSTATUS, UC_RISCV_REG_RA, UC_RISCV_REG_S0,
     UC_RISCV_REG_SP, UC_RISCV_REG_X0,
 )
 
@@ -13,6 +13,7 @@ from replay_telink_usb import run_until
 
 
 TIMER0_VECTOR = 0x199C
+RADIO_CLOCK_HANDLER, RADIO_COUNTER, PLAYOUT_COUNTER = 0x11C8C, RX_STATE + 6, RX_STATE + 0x18
 READ_MXSTATUS, WRITE_MXSTATUS = 0x19F4, 0x1A10
 RESUME_PC, PLIC_COMPLETION = 0x500, 0xE4200004
 SYSTEM_TICK, PCLK_SCALE = 0x80140200, 0x2A0
@@ -22,7 +23,7 @@ PERIOD_TICKS, INITIAL_TICK = SYSTEM_MHZ * 5000, 1_000_000
 
 
 class ReceiveTimer:
-    def __init__(self, cpu, stack):
+    def __init__(self, cpu, stack, radio_counter):
         self.cpu = cpu
         self.stack = stack
         self.tick = INITIAL_TICK
@@ -30,11 +31,21 @@ class ReceiveTimer:
         cpu.mem_write(PCLK_SCALE, bytes([CLOCK_MHZ]))
         # Begin in a synchronized phase of the stock 5 ms audio clock.
         cpu.mem_write(RX_STATE + 0xB0, struct.pack("<I", self.tick - SYSTEM_MHZ * 4750))
+        cpu.mem_write(RADIO_COUNTER, struct.pack("<H", radio_counter))
+        cpu.mem_write(RX_STATE + 0x14, struct.pack("<I", self.tick - PERIOD_TICKS))
         cpu.mem_write(TIMER_CONTROL, b"\x04")
 
-    def set_radio_counter(self, counter):
-        """Supply the RF clock observed by the stock audio timer."""
-        self.cpu.mem_write(RX_STATE + 0x18, struct.pack("<H", counter & 0xFFFF))
+    def advance_radio_clock(self):
+        """Let the stock system-timer handler publish the RF counter."""
+        cpu = self.cpu
+        before = cpu.mem_read(RADIO_COUNTER, 2)
+        cpu.mem_write(SYSTEM_TICK, struct.pack("<I", self.tick & 0xFFFFFFFF))
+        cpu.reg_write(UC_RISCV_REG_SP, self.stack)
+        cpu.reg_write(UC_RISCV_REG_RA, RESUME_PC)
+        run_until(cpu, RADIO_CLOCK_HANDLER, RESUME_PC, vendor_budget=16_384)
+        require(cpu.mem_read(PLAYOUT_COUNTER, 2) == before and cpu.mem_read(RADIO_COUNTER, 2) != before,
+                "Stock system-timer handler did not publish and advance its RF counter")
+        return struct.unpack("<H", before)[0]
 
     def interrupt(self, late_ticks=0):
         cpu = self.cpu

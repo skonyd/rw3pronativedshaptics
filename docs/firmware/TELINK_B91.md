@@ -427,8 +427,8 @@ integer registers.
 Stock reads the RF slot counter at `0x8750C` and relative offsets
 from receiver state, selects the queue address at `0x13140` and
 copies the record at `0x131B4`. In this fixture five packets lead
-playout. The host sets the RF counter and supplies arrivals but
-gives the handler no slot pointer or playout-ready flag. The test
+playout. The host sets the initial RF counter and supplies arrivals.
+The stock system-timer handler updates the counter for playout. The test
 checks the selected slot, both decoder calls and all six PCM
 blocks, then checks that the slot was cleared and its FIFO samples
 appeared in order. One frame is withheld from RX. The stock
@@ -455,8 +455,28 @@ The next packet plays and yields modeled FIFO peaks of 11,003 / 0
 and 0 / 11,619 respectively. The prior isolated playout result
 used a fixture-ready flag and began after the stock cold transition.
 
-The fixture seeds the initial sync epoch and a representative
-peripheral clock multiplier. It supplies RF counter progression,
-arrival and DMA timing. RF clock acquisition and drift behavior on
-hardware, retransmissions, nested interrupts and the physical
+### Stock RF counter and timestamp gate
+
+The scheduled replay enters the stock system-timer handler at
+`0x11C8C` immediately before each modeled Timer0 playout event.
+It initializes the RF counter at `0x874FA` and its clock deadline
+at `0x87508` once. Stock copies the current counter to the input
+used by playout at `0x11D92`, then calls the stock catch-up helper
+at `0xE460` to advance the counter from the system tick.
+The test verifies both changes on each call and derives the slot
+by executing the Timer0 vector.
+
+The RF IRQ checks the timestamp in its DMA buffer against the
+current stock receiver timestamp at `0x87504`. Each recorded
+USB fixture delivers one packet at the stock reference and retries
+the same sequence after verifying that a timestamp 16,001 ticks
+above the reference produces no queue writes. Stock proceeds with
+the correctly timed packet and preserves the earlier channel
+isolation and cold mute. The 16 MHz system tick makes that test
+offset just over 1 ms.
+
+The fixture supplies the system-timer handler's invocation,
+modeled RF arrival times, initial sync epoch and peripheral/DMA
+timing. Live RF sync acquisition and drift behavior, TX completion
+and retransmission, nested interrupts, and the physical
 Telink-to-NXP connection remain open.

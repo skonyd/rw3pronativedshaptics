@@ -50,9 +50,11 @@ handles it with the stock loss path. In the two recorded USB tests
 the first decoded block is muted during cold start. The next block
 plays with the opposite channel silent. Stock timer compare writes
 drive the two-phase modeled clock, which returns to a 5 ms period
-after a modeled 100 µs delay. The test provides initial sync, the RF
-link counter, arrivals, transmit completion and peripheral timing.
-Physical RF timing and the controller-to-NXP link remain open.
+after a modeled 100 µs delay. The stock system-timer handler now
+advances and publishes the RF counter from one initial state.
+The test still supplies arrival timestamps, transmit completion
+and peripheral timing. Physical RF timing and the controller-to-NXP
+link remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

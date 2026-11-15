@@ -42,9 +42,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   branch to stereo interleaving, resampling, ring write and slot
   clear under a fixture ready state. E-20261115-104 verifies the
   stock Timer0 vector, autonomous slot choice, modeled compare-driven
-  pacing, cold mute and loss/recovery. The RF counter and arrivals
-  are supplied. Next derive the RF counter from the stock sync
-  interrupt and verify TX completion and retransmission. Check the
+  pacing, cold mute and loss/recovery. E-20261115-105 runs stock
+  system-timer counter publication and catch-up from a single
+  synchronized seed. It also tests the RF timestamp gate. Next
+  model the full system-timer event cadence, sync acquisition,
+  TX completion and retransmission. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

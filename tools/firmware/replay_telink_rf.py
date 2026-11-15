@@ -44,12 +44,13 @@ def transmit_audio(cpu, index, payload):
     return frame
 
 
-def run_receive_irq(cpu, stack, frame, *, pending=True, crc_error=False, max_length=AIR_LENGTH):
+def run_receive_irq(cpu, stack, frame, *, pending=True, crc_error=False, max_length=AIR_LENGTH, timestamp=0):
     """Deliver the exact frame bytes with modeled hardware RX metadata."""
     require(frame[5] == AIR_LENGTH and len(frame) == 6 + AIR_LENGTH, "Unexpected RF input frame")
-    # RX has its own DMA prefix. The modeled CRC bytes and hardware timestamp,
-    # frequency offset and RSSI are zero, followed by the CRC status bit.
-    cpu.mem_write(RX_BUFFER, bytes(4) + frame[4:] + bytes(10) + bytes([int(crc_error)]))
+    # RX has its own DMA prefix. The modeled CRC bytes, frequency offset and
+    # RSSI are zero. Supply the timestamp and CRC status separately.
+    metadata = struct.pack("<3xI3xB", timestamp, int(crc_error))
+    cpu.mem_write(RX_BUFFER, bytes(4) + frame[4:] + metadata)
     cpu.mem_write(RX_STATE + 0x8C, struct.pack("<I", RX_BUFFER))
     cpu.mem_write(RX_LENGTH_LIMIT, bytes([max_length]))
     cpu.mem_write(RX_IRQ_STATUS, struct.pack("<H", int(pending)))
@@ -75,11 +76,11 @@ def run_receive_irq(cpu, stack, frame, *, pending=True, crc_error=False, max_len
     return bool(queue_writes)
 
 
-def receive_audio(cpu, stack, frame):
+def receive_audio(cpu, stack, frame, *, timestamp=0):
     index = frame[12] & (SLOT_COUNT - 1)
     slot = RX_SLOTS + index * SLOT_BYTES
     before = bytes(cpu.mem_read(RX_SLOTS, SLOT_COUNT * SLOT_BYTES))
-    require(run_receive_irq(cpu, stack, frame), "Stock RF receiver ignored a fresh audio packet")
+    require(run_receive_irq(cpu, stack, frame, timestamp=timestamp), "Stock RF receiver ignored a fresh audio packet")
     expected = bytearray(before)
     offset = index * SLOT_BYTES
     expected[offset:offset + AUDIO_BYTES] = frame[AUDIO_OFFSET:]

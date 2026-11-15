@@ -364,22 +364,25 @@ def play_timed_block(cpu, tx, timer, pending, frame, *, lost=False, late_ticks=0
 def replay_scheduled_link(cpu, scenes):
     stack = cpu.reg_read(UC_RISCV_REG_SP) - 0x1800
     tx = initialize_receive(cpu)
-    timer = ReceiveTimer(cpu, stack)
+    timer = ReceiveTimer(cpu, stack, ((1 + RECEIVE_LOOKAHEAD) << 3) + 2)
     pending = bytearray(RECEIVE_PRIME_FRAMES * FRAME_BYTES)
     frames = [(name, frame) for name, *_ in SCENES for frame in scenes[name]]
     arrivals = frames + [("lookahead_silence", frame) for frame in scenes["lookahead_silence"]]
     report = {}
     compares = set()
     output = hashlib.sha256()
+    counters = []
     frequencies = {name: (left, right) for name, left, right, _ in SCENES}
     for number, (name, frame) in enumerate(frames):
         newest = number + RECEIVE_LOOKAHEAD
         # RF delivery runs five packet periods ahead of playout. Withhold
         # the loss test packet entirely and let stock mark the empty slot.
-        for arrival, packet in arrivals[0 if number == 0 else newest:newest + 1]:
+        first_arrival = newest if number else 0
+        receive_timestamp, = struct.unpack("<I", cpu.mem_read(RX_STATE + 0x10, 4))
+        for arrival, packet in arrivals[first_arrival:newest + 1]:
             if arrival != "lose_pair":
-                receive_audio(cpu, stack, packet)
-        timer.set_radio_counter((newest + 1) << 3)
+                receive_audio(cpu, stack, packet, timestamp=receive_timestamp)
+        counters.append(timer.advance_radio_clock())
         late = 100 * SYSTEM_MHZ if number % 8 == 3 else 0
         written, _, phase_compares = play_timed_block(
             cpu, tx, timer, pending, frame, lost=name == "lose_pair", late_ticks=late)
@@ -397,6 +400,7 @@ def replay_scheduled_link(cpu, scenes):
     require(report["drain"] == [0, 0], "Stock scheduled playout did not drain to silence")
     drain_fifo(cpu, tx, pending)
     return {"blocks_played": len(frames), "vector_interrupts": 2 * len(frames),
+            "first_rf_counter": counters[0], "last_rf_counter": counters[-1],
             "compare_cycles": sorted(compares), "final_pcm_peaks_by_scene": report,
             "fifo_sha256": output.hexdigest()}
 
@@ -491,7 +495,7 @@ def replay_capture_worker(dongle_image, radio_image, capture, usb_address):
             stack = cpu.reg_read(UC_RISCV_REG_SP)
             tx = initialize_receive(cpu)
             caller_stack = stack - 0x1800
-            timer = ReceiveTimer(cpu, caller_stack)
+            timer = ReceiveTimer(cpu, caller_stack, (RECEIVE_LOOKAHEAD << 3) + 2)
             # The modeled previous sequence must differ from the first arrival.
             cpu.mem_write(RX_STATE + 0x9B, b"\x07")
             check_receive_rejections(cpu, caller_stack, frames[0])
@@ -500,19 +504,22 @@ def replay_capture_worker(dongle_image, radio_image, capture, usb_address):
             for frame in frames[1:-1]:
                 receive_audio(cpu, caller_stack, frame)
             pending = bytearray(RECEIVE_PRIME_FRAMES * 4)
-            timer.set_radio_counter(RECEIVE_LOOKAHEAD << 3)
+            timer.advance_radio_clock()
             cold_pcm, cold_peaks, _ = play_timed_block(cpu, tx, timer, pending, frames[0])
             require(cold_peaks[active_side] > 1000 and not any(cold_pcm),
                     "Cold stock receiver did not decode and mute the first packet")
-            receive_audio(cpu, caller_stack, frames[-1])
-            timer.set_radio_counter((RECEIVE_LOOKAHEAD + 1) << 3)
+            receive_timestamp, = struct.unpack("<I", cpu.mem_read(RX_STATE + 0x10, 4))
+            require(not run_receive_irq(cpu, caller_stack, frames[-1], timestamp=receive_timestamp + 16_001),
+                    "Stock RF receiver accepted a packet outside its modeled timestamp window")
+            receive_audio(cpu, caller_stack, frames[-1], timestamp=receive_timestamp)
+            timer.advance_radio_clock()
             output, decoded_peaks, phase_compares = play_timed_block(cpu, tx, timer, pending, frames[1])
             drain_fifo(cpu, tx, pending)
             return {"decoder_peaks": decoded_peaks, "cold_decoder_peaks": cold_peaks,
                     "fifo_peaks": [max(map(abs, lane)) for lane in zip(*struct.iter_unpack("<hh", output))],
                     "fifo_frames": len(output) // 4, "startup_silence_frames": RECEIVE_PRIME_FRAMES,
                     "cold_muted_frames": len(cold_pcm) // FRAME_BYTES, "timer_compare_cycles": phase_compares,
-                    "rx_guard_controls": ["no_pending", "crc_error", "length_limit", "duplicate"]}
+                    "rx_guard_controls": ["no_pending", "crc_error", "length_limit", "duplicate", "late_timestamp"]}
 
         levels = replay_startup(radio_image, "radio", inspect_application=decode)["application"]
         peaks = levels["fifo_peaks"]
