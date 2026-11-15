@@ -34,3 +34,32 @@ python -I tools/firmware/dev2_vectors.py Dev2FW.bin
 
 `fwmap_arm.py` writes `functions.csv` (address, size, callers, callees, peripherals, strings), `coverage.json`
 (every byte classified) and `summary.txt`.
+
+## Run the offline replay suite
+
+Install Unicorn 2.1.4 in the Python environment and have Zig 0.15.2
+available. Use the local stock images and the two original USBPcap
+captures with independently verified 48 kHz stereo PCM16. Build the
+simulator module with the stock-and-DSP build script, then run the suite.
+
+```powershell
+$lab = 'TestResults/firmware-lab'
+& tools/firmware/build_audio_replay.ps1 -Stock "$lab/images/Dev2FW.bin" -Output "$lab/suite-build"
+python -B tools/firmware/run_simulator_suite.py "$lab/images" "$lab/suite-build/audio_haptics.bin" "$lab/wired.pcap" "$lab/dongle.pcap" --active-stereo-excerpt 3000
+```
+
+The default USB addresses are 1 for wired and 9 for HyperSpeed. Pass
+`--wired-usb-address` and `--dongle-usb-address` for other captures.
+The stereo excerpt starts at slot 3000 in the lab captures. Omit
+`--active-stereo-excerpt` or pass a verified active stereo index when
+using different traces. The runner derives both NXP PCM inputs from the
+supplied captures and rejects missing audio, the wrong slot width and
+sequence gaps. It writes individual reports and a `summary.json` under
+`$lab/suite`. Check both `complete` and `passed`. Firmware, packet data
+and full local reports remain under ignored `TestResults/`.
+
+The suite covers currently modeled paths, including the stock and
+candidate NXP runs, Telink boot and audio, RF retry, controller SPI,
+I²S and the ADC-to-GIP queue. The physical inter-chip audio route,
+live timing, GPIO and analog board behavior, console authentication,
+and the resident bootloader need further evidence.

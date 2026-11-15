@@ -153,6 +153,36 @@ The NXP runs a **full-duplex I2S on FLEXCOMM6/7 with DMA** (init 0x13D6C; DMA ch
 - NXP-only audio-to-Sensa is a wired-path hypothesis. The wireless path through
   the dongle and radio SoC remains open.
 
+### Analog input and queued GIP trigger reports
+
+```powershell
+python -B tools/firmware/replay_nxp_analog.py <Dev2FW.bin>
+```
+
+NXP stock startup reader `0x1E628` and foreground reader `0x197F8`
+select ADC channels 5, 9, 3, 4, 6, 7 in order. The shared routine
+`0x9268` retries when `DATAVALID` is clear and inverts channels 9
+and 3 as `4096 - sample`. The replay provides modeled ADC register
+results with one delayed conversion. Startup collects 18 scans. It
+discards the two observed extremes in a mixed fixture. With strictly
+increasing values the `new maximum` branch skips the minimum update,
+leaving the initial `4095` minimum in the subtraction. The example
+from 1000 to 1850 in steps of 50 returns `1231`.
+[NXP ADC register definitions](https://github.com/nxp-mcuxpresso/mcux-sdk/blob/master/devices/LPC54605/LPC54605.h)
+
+Foreground requires both enable and due state, and publishes each
+channel's average after ten scans. With synthetic release points
+and spans, the stock continuation converts ADC 6 and 7 to two
+10-bit trigger values. The mapper at `0xC19C` and builder at
+`0x20F2C` carry those fields to bytes 6–9 of the 36-byte queued
+`0x20` report. The test covers the zero zone, the first active
+step, each trigger alone, joint saturation, release to zero,
+the unchanged neutral state, and a busy report buffer.
+
+The ADC values, calibration and USB-ready state are fixtures.
+Checks stop at the firmware report queue and leave physical axis
+mapping, USB transactions and console authentication open.
+
 ### Flash use
 
 - **Application:** 0x8000–0x37800.

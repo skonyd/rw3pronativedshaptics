@@ -105,9 +105,12 @@ Next steps, in order:
   and image placement checks in the
   [custom firmware plan](research/CUSTOM_FIRMWARE_PLAN.md).
   The [B91 map](firmware/TELINK_B91.md) includes executable startup
-  relocation checks for both images and the dongle Xbox USB descriptor.
-  No device image was modified or flashed. G0 still lacks a verified recovery path
-  for a broken application.
+  relocation for both images, stock RF playout and retry, the controller
+  SPI transaction and I²S clock initialization. The NXP analog replay
+  reaches the trigger fields in the GIP input queue. The
+  [offline suite](firmware/README.md#run-the-offline-replay-suite)
+  runs these stages alongside stock/DSP comparisons from the local USB
+  captures. The board's I²S wiring and recovery path remain open.
 - Any tool continuing here must read CUSTOM_FIRMWARE_PLAN.md first and treat flashing as a hard stop that needs
   the user's own decision.
 
