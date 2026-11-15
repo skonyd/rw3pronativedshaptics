@@ -50,9 +50,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   the next slot sent after stock releases the previous one. Extend
   it to the full TX schedule and retry budget. E-20261115-107
   connects controller PSPI to the stock NXP FLEXCOMM5 (DMA 10/11)
-  and verifies the reply in the stock Telink parser. Determine
-  the separate I²S clock roles, signal direction and pin topology
-  before connecting the PCM paths.
+  and verifies the reply in the stock Telink parser. E-20261115-108
+  reads the stock I²S clock configuration on both MCUs and runs the
+  Telink mono receive reader through a modeled DMA wrap. Resolve the
+  pin routing and mode-dependent clock ownership before connecting
+  the PCM paths. Then follow the Telink mono block into RF and USB.
 - Model FIFO pacing and independently validate interrupt timing.
   E-20261114-12 covers grouped USB arrivals with 0–48 fixture ticks of
   midstream pause, including silence and PCM recovery.

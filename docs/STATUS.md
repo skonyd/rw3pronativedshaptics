@@ -61,6 +61,13 @@ descriptors to the stock NXP FLEXCOMM5 DMA and parser, and checks
 the stock reply through the Telink receive queue and checksum
 branch. The SPI bus clocks and interrupts are modeled. Physical
 RF timing and the separate inter-chip I²S connection remain open.
+The I²S checkpoint now reads both stock images after initialization.
+The Telink RX and TX clock fields and NXP FLEXCOMM6 select master;
+NXP FLEXCOMM7 selects slave. The stock Telink receive reader consumes
+242 low half-words from a modeled wrapped DMA ring and returns 240
+mono samples. An empty ring, 241 pending words and changes confined
+to the high half-word are covered. The PCB clock and data routing
+are still open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
 ring in emulation. The captures and replay cover the host USB boundary.

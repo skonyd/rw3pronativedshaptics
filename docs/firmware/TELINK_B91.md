@@ -519,6 +519,38 @@ SPI clock and DMA events. This exercises the firmware on both
 ends of the control transaction. The live transaction schedule
 and the physical I²S path require separate evidence.
 
+### Controller I²S clock roles and receive reader
+
+```powershell
+python -B tools/firmware/replay_controller_i2s.py <Flash2FW.bin> <Dev2FW.bin>
+```
+
+The stock Telink setup leaves `0xC2` at `0x80140501`. Bit 6
+selects the receive-side master clock and bit 7 selects the
+transmit-side master clock. The format and width fields select
+classic I²S and 16-bit samples. The stock NXP setup leaves
+`CFG1=0x000F0031` on FLEXCOMM6 and `CFG1=0x000F0001` on
+FLEXCOMM7, with `CFG2=0x1F` on both. FLEXCOMM6 is master and
+FLEXCOMM7 is slave. Both NXP ports use 16-bit samples and 32
+clock edges per stereo frame. These initializations alone
+cannot establish a shared PCB clock net or who drives it in
+each active mode.
+[NXP register definitions](https://github.com/nxp-mcuxpresso/mcux-sdk/blob/master/devices/LPC54605/LPC54605.h)
+[Telink B91 I²S driver](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/audio.c)
+[Telink B91 register definitions](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/audio_reg.h)
+
+The receive fixture advances DMA channel 2 through its stock
+512-word self-link. Reader `0xE658` takes no samples with an
+empty ring or with 241 words pending. Adding the 242nd word
+releases a block. The traced loads at `0xE788` read only the
+low half of each FIFO word, crossing the wrap and advancing
+the stock read cursor by 242. The function returns 240 mono
+samples after its stock processing. Inverting the high lane
+leaves the output byte-identical. Zeroing the low lane while
+retaining the high lane yields silence. FIFO words and DMA
+progress are modeled, and this test leaves their physical
+source open.
+
 ### Stock dongle retry and controller reply
 
 ```powershell
