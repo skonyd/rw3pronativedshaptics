@@ -13,6 +13,10 @@ from unicorn.riscv_const import (
 )
 
 from replay_telink_radio import DECODE_FRAME, PCM_WRITE_CURSOR, fifo_input, initialize_i2s, resample_to_fifo
+from replay_telink_rf import (
+    AUDIO_OFFSET, RX_SLOTS, RX_STATE, SLOT_BYTES, SLOT_COUNT, SLOT_STATUS_OFFSET, TX_SLOTS,
+    check_receive_rejections, receive_audio, run_receive_irq, transmit_audio,
+)
 from replay_telink_startup import replay_startup, require
 from replay_telink_usb import (
     EVENT_BYTES, EVENT_RING, RING_SIZE, RING_STATE, initialize_resampler,
@@ -25,10 +29,9 @@ ENCODER_INIT = 0x26BC4
 PAIR_START, PAIR_END = 0x5C6C, 0x5D18
 WORKER_INTERRUPT, PCM_WORKER, WORKER_IRQ_STATUS = 0x3CDC, 0x5958, 0x80140143
 PCM_FRAMES, CODED_BYTES = 240, 35
-RECEIVE_SLOT, RECEIVE_DISPATCH, RECEIVE_STATE = 0x131B4, 0x12834, 0x874F4
-RECEIVE_SLOT_BYTES, RECEIVE_SLOT_STATUS = 128, 127
+RECEIVE_SLOT, RECEIVE_DISPATCH = 0x131B4, 0x12834
 RECEIVE_LEFT_OK, RECEIVE_LEFT_LOST, RECEIVE_RIGHT = 0x12F14, 0x129D8, 0x129F8
-RECEIVE_FIXTURE_SLOT = 0xA4600
+RECEIVE_MARK_LOSS, RECEIVE_AFTER_LOSS = 0x132A8, 0x132AE
 RECEIVE_PRIME_FRAMES = 160
 ENCODED_LENGTH_OFFSET = 0x1C
 LEFT_ENCODED, RIGHT_ENCODED = 0x5CB4, 0x5D08
@@ -88,10 +91,12 @@ def encode_captured_worker(cpu, stack, slots):
     packet = bytes(cpu.mem_read(address, CODED_BYTES * 2))
     run_until(cpu, PAIR_END, 0x700, vendor_budget=4096)
     require(cpu.mem_read(address, CODED_BYTES * 2) == packet, "Stock worker changed the encoded pair at return")
-    return packet, {"source_ring_word": first_word % RING_SIZE, "frames_read": frames,
-                    "irq_entry": hex(WORKER_INTERRUPT), "no_pending_leaves_cursor_unchanged": True,
-                    "ring_wrap": (first_word % RING_SIZE) + frames > RING_SIZE,
-                    "packet_sha256": hashlib.sha256(packet).hexdigest()}
+    frame = transmit_audio(cpu, 1, packet)
+    return frame, {"source_ring_word": first_word % RING_SIZE, "frames_read": frames,
+                   "irq_entry": hex(WORKER_INTERRUPT), "no_pending_leaves_cursor_unchanged": True,
+                   "ring_wrap": (first_word % RING_SIZE) + frames > RING_SIZE,
+                   "packet_sha256": hashlib.sha256(packet).hexdigest(),
+                   "rf_dma_sha256": hashlib.sha256(frame).hexdigest()}
 
 
 def sine(frequency):
@@ -117,14 +122,16 @@ def encode_link(cpu):
     cpu.reg_write(UC_RISCV_REG_RA, 0x700)
     run_until(cpu, ENCODER_INIT, 0x700, vendor_budget=160_000)
 
-    caller_stack, encoded_address = stack - 0x2000, 0xA4600
+    caller_stack = stack - 0x2000
     pcm_address, mono_address = caller_stack + 0xC0, caller_stack + 0x480
     guard = b"\xA5" * 4
     scenes = {}
+    index = 1
     for name, left, right, blocks in SCENES:
         pcm = b"".join(struct.pack("<hh", l, r) for l, r in zip(sine(left), sine(right)))
         packets = []
         for _ in range(blocks):
+            encoded_address = TX_SLOTS + SLOT_BYTES * index + AUDIO_OFFSET
             cpu.mem_write(pcm_address, pcm)
             cpu.mem_write(encoded_address - 4, b"\xA5" * (CODED_BYTES * 2 + 8))
             cpu.reg_write(UC_RISCV_REG_SP, caller_stack)
@@ -136,7 +143,8 @@ def encode_link(cpu):
             require(cpu.mem_read(encoded_address - 4, 4) == guard
                     and cpu.mem_read(encoded_address + len(packet), 4) == guard,
                     "Stock encoder output crossed its packet bounds")
-            packets.append(packet)
+            packets.append(transmit_audio(cpu, index, packet))
+            index = (index + 1) % SLOT_COUNT
         scenes[name] = packets
     return scenes
 
@@ -157,19 +165,18 @@ def decode_lane(cpu, stack, channel, payload, lost):
     return tuple(sample for sample, in struct.iter_unpack("<h", cpu.mem_read(output_address, end - output_address)))
 
 
-def receive_pair(cpu, stack, packet, *, lost=False, priming=False):
-    """Feed a prepared local queue entry into the stock copy and decode path."""
-    require(len(packet) == CODED_BYTES * 2, "Unexpected receive fixture size")
-    # Supply the application state seen by the audio receive branch.
-    # This entry is downstream of the radio and its queue producer.
+def receive_pair(cpu, stack, address, *, lost=False, priming=False):
+    """Run the stock copy and decode path for a selected receive queue slot."""
     before, = struct.unpack("<H", cpu.mem_read(PCM_WRITE_CURSOR, 2))
-    cpu.mem_write(RECEIVE_STATE + 0xBC, b"\x01")
-    cpu.mem_write(RECEIVE_STATE + 0xA4, b"\x20")
-    slot = packet + bytes(RECEIVE_SLOT_STATUS - len(packet)) + bytes([0x85 if lost else 0x81])
-    require(len(slot) == RECEIVE_SLOT_BYTES, "Unexpected stock receive slot size")
-    cpu.mem_write(RECEIVE_FIXTURE_SLOT, slot)
+    require(cpu.mem_read(RX_STATE + 0xA4, 1)[0] & 0x20, "Stock receiver is outside audio mode")
     cpu.reg_write(UC_RISCV_REG_SP, stack)
-    cpu.reg_write(UC_RISCV_REG_S2, RECEIVE_FIXTURE_SLOT)
+    cpu.reg_write(UC_RISCV_REG_S2, address)
+    if lost:
+        # Model a missed arrival by invoking the stock loss marker. The
+        # enclosing RF scheduler and its timeout are outside this replay.
+        run_until(cpu, RECEIVE_MARK_LOSS, RECEIVE_AFTER_LOSS, vendor_budget=128)
+    slot = bytes(cpu.mem_read(address, SLOT_BYTES))
+    require(slot[SLOT_STATUS_OFFSET] == (4 if lost else 1), "Unexpected stock queue status")
     run_until(cpu, RECEIVE_SLOT, RECEIVE_DISPATCH, vendor_budget=128)
     copied = cpu.reg_read(UC_RISCV_REG_A0)
     require(copied == stack and cpu.mem_read(copied, len(slot)) == slot,
@@ -185,13 +192,13 @@ def receive_pair(cpu, stack, packet, *, lost=False, priming=False):
                 and cpu.reg_read(UC_RISCV_REG_A3) == int(lost)
                 and cpu.reg_read(UC_RISCV_REG_RA) == after_call,
                 "Stock dispatch selected unexpected decoder arguments")
-        require(cpu.mem_read(source, CODED_BYTES) == packet[offset:offset + CODED_BYTES],
+        require(cpu.mem_read(source, CODED_BYTES) == slot[offset:offset + CODED_BYTES],
                 "Stock dispatch changed the codec bytes")
         run_until(cpu, DECODE_FRAME, after_call, vendor_budget=200_000)
         require(cpu.reg_read(UC_RISCV_REG_A0) == CODED_BYTES, "Stock slot decoder returned an unexpected size")
         lanes.append(tuple(sample for sample, in struct.iter_unpack("<h", cpu.mem_read(output, PCM_FRAMES * 2))))
         entry = after_call
-    require(cpu.mem_read(RECEIVE_FIXTURE_SLOT, RECEIVE_SLOT_BYTES) == slot,
+    require(cpu.mem_read(address, SLOT_BYTES) == slot,
             "Stock dispatch changed the queued slot before both decoders returned")
     after, = struct.unpack("<H", cpu.mem_read(PCM_WRITE_CURSOR, 2))
     require((after - before) % 512 == (RECEIVE_PRIME_FRAMES if priming else 0),
@@ -240,22 +247,38 @@ def drain_fifo(cpu, tx, pending):
     require(output == pending, "Modeled FIFO drain differs from the last queued PCM bytes")
 
 
+def initialize_receive(cpu):
+    tx, _ = initialize_i2s(cpu)
+    # The controller IRQ starts with a negotiated link and an allocated DMA
+    # buffer. The packet handler will select the audio mode from the header.
+    cpu.mem_write(RX_STATE + 0xBC, b"\x01\x01")
+    return tx
+
+
 def decode_link(cpu, scenes):
     stack = cpu.reg_read(UC_RISCV_REG_SP)
     caller_stack = stack - 0x1800
-    tx, _ = initialize_i2s(cpu)
+    tx = initialize_receive(cpu)
     fifo = hashlib.sha256()
     pending = bytearray(RECEIVE_PRIME_FRAMES * 4)
     frames = 0
     report = {}
+    accepted = 0
     for name, left, right, _ in SCENES:
         packets = scenes[name]
-        for packet in packets:
+        for frame in packets:
+            lost = name == "lose_pair"
+            if lost:
+                address = RX_SLOTS + (frame[12] & (SLOT_COUNT - 1)) * SLOT_BYTES
+            else:
+                address = receive_audio(cpu, caller_stack, frame)
+                accepted += 1
             if name == "lose_left":
+                packet = bytes(cpu.mem_read(address, CODED_BYTES * 2))
                 first = decode_lane(cpu, stack, 0, packet[:CODED_BYTES], True)
                 second = decode_lane(cpu, stack, 1, packet[CODED_BYTES:], False)
             else:
-                first, second = receive_pair(cpu, caller_stack, packet, lost=name == "lose_pair", priming=frames == 0)
+                first, second = receive_pair(cpu, caller_stack, address, lost=lost, priming=frames == 0)
             fifo_pcm = send_to_fifo(cpu, tx, caller_stack, (first, second), pending)
             fifo.update(fifo_pcm)
             frames += len(fifo_pcm) // 4
@@ -279,6 +302,7 @@ def decode_link(cpu, scenes):
     return {"scenes": report, "fifo_frames": frames, "fifo_sha256": fifo.hexdigest(),
             "startup_silence_frames": RECEIVE_PRIME_FRAMES,
             "stock_slot_copy": hex(RECEIVE_SLOT), "stock_slot_dispatch": hex(RECEIVE_DISPATCH),
+            "rf_frames_accepted": accepted,
             "slots_dispatched": sum(blocks for name, _, _, blocks in SCENES if name != "lose_left")}
 
 
@@ -303,19 +327,23 @@ def replay_capture_worker(dongle_image, radio_image, capture, usb_address):
                             reports.append(encode_captured_worker(machine, stack, window)))
             return reports[0]
 
-        packet, report = replay_startup(dongle_image, "dongle", inspect_application=encode)["application"]
+        frame, report = replay_startup(dongle_image, "dongle", inspect_application=encode)["application"]
 
         def decode(cpu):
             stack = cpu.reg_read(UC_RISCV_REG_SP)
-            tx, _ = initialize_i2s(cpu)
+            tx = initialize_receive(cpu)
             caller_stack = stack - 0x1800
-            lanes = receive_pair(cpu, caller_stack, packet, priming=True)
+            check_receive_rejections(cpu, caller_stack, frame)
+            address = receive_audio(cpu, caller_stack, frame)
+            require(not run_receive_irq(cpu, caller_stack, frame), "Stock RF receiver queued a duplicate packet")
+            lanes = receive_pair(cpu, caller_stack, address, priming=True)
             pending = bytearray(RECEIVE_PRIME_FRAMES * 4)
             output = send_to_fifo(cpu, tx, caller_stack, lanes, pending)
             drain_fifo(cpu, tx, pending)
             return {"decoder_peaks": [max(map(abs, lane)) for lane in lanes],
                     "fifo_peaks": [max(map(abs, lane)) for lane in zip(*struct.iter_unpack("<hh", output))],
-                    "fifo_frames": len(output) // 4, "startup_silence_frames": RECEIVE_PRIME_FRAMES}
+                    "fifo_frames": len(output) // 4, "startup_silence_frames": RECEIVE_PRIME_FRAMES,
+                    "rx_guard_controls": ["no_pending", "crc_error", "length_limit", "duplicate"]}
 
         levels = replay_startup(radio_image, "radio", inspect_application=decode)["application"]
         for peaks in (levels["decoder_peaks"], levels["fifo_peaks"]):
@@ -336,9 +364,11 @@ def main():
     radio_image = args.controller_radio_fw.read_bytes()
     encoded = replay_startup(dongle_image, "dongle", inspect_application=encode_link)["application"]
     decoded = replay_startup(radio_image, "radio", inspect_application=lambda cpu: decode_link(cpu, encoded))
-    packets = [packet for scene in encoded.values() for packet in scene]
-    report = {"encoded_pairs": len(packets), "encoded_bytes": sum(map(len, packets)),
-              "encoded_sha256": hashlib.sha256(b"".join(packets)).hexdigest(),
+    frames = [frame for scene in encoded.values() for frame in scene]
+    audio = b"".join(frame[AUDIO_OFFSET:] for frame in frames)
+    report = {"encoded_pairs": len(frames), "encoded_bytes": len(audio),
+              "encoded_sha256": hashlib.sha256(audio).hexdigest(),
+              "rf_dma_sha256": hashlib.sha256(b"".join(frames)).hexdigest(),
               "decoder_to_fifo": decoded["application"]}
     if args.dongle_usb_trace is not None:
         report["capture_worker"] = replay_capture_worker(dongle_image, radio_image, args.dongle_usb_trace,

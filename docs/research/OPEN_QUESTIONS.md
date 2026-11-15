@@ -35,9 +35,11 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   reaches it using a modeled pending bit. E-20261115-101 runs the
   controller's stock 128-byte receive copy and dispatcher with
   prepared queue slots. A slot's bit 2 selects loss on both
-  lanes. Next verify interrupt pacing and follow the pair from
-  0x8E1FD into RF packet preparation and the controller's queue
-  producer. Check the
+  lanes. E-20261115-102 follows those encoded bytes through the
+  stock TX DMA pointer and into the controller's queue with the
+  stock RX IRQ. It rejects absent IRQ, CRC error, oversize, and
+  immediate duplicates. Next verify autonomous slot selection,
+  TX completion/retransmission, and real interrupt pacing. Check the
   LPC SPI path separately from the I²S FIFO before
   connecting the controller-radio replay to the NXP.
 - Model FIFO pacing and independently validate interrupt timing.

@@ -345,3 +345,46 @@ prepares queued records, supplies the clock state used at this
 boundary and interleaves the decoded PCM for the stock resampler.
 The receiver queue producer, radio DMA and transmission protocol
 remain open.
+
+### Stock RF DMA transmit and receive
+
+The paired replay now passes its encoded payload through the real
+stock transmit and receive code. Both captured USB windows and the
+synthetic scenes use the dongle's TX selection routine at `0x2FA4`.
+Its stock code selects a 128-byte record from `0x8E170`, writes a
+length value of 77 at offset 5, writes the audio tag `0x28 | slot`
+at offset 12, and leaves the 70 codec bytes at offset 13. The stock
+write at `0x30D8` sets the channel 0 DMA source register
+`0x80100448` to that record's DMA address. The 32-bit DMA length
+word is `0x00C00014` for 79 bytes after the DMA prefix.
+[Telink TX DMA length encoding and channels](https://doc.telink-semi.cn/doc/en/software/res/sdk/driver/platform_sdk_handbook_en/#rf-dma)
+
+The host reads from that DMA source, copies the 79 bytes unchanged
+into the controller's modeled receive DMA buffer at `0x936CC`, and
+supplies the receive metadata and IRQ bit. The stock RF handler at
+`0x118A0` checks the length limit and CRC-error flag before calling
+`0x11844` and `0x11024`. The stock audio branch uses the tag's
+low three bits as an index into the eight 128-byte queue slots at
+`0x87644`, copies the 70 payload bytes and sets status byte 127
+to 1. The replay verifies the whole queue to catch changes outside
+the selected record and exercises wrap from slot 7 to slot 0.
+[Telink RX buffer metadata layout](https://doc.telink-semi.cn/doc/en/software/res/sdk/driver/driver_sdk_en/#ble-packet-format)
+
+Across the 34 transmitted synthetic frames, 33 reach the stock
+receive IRQ. For the scheduled-drop fixture, the host withholds
+one DMA delivery and invokes the stock missing-slot marker at
+`0x132A8`. It writes status 4 and the stock decoder takes the
+loss branch for both lanes. The direct left-only decoder control
+remains in the suite. The two captured USB windows also exercise
+four negative IRQ cases each. No pending bit, a CRC-error flag,
+a length above the configured limit, and an immediate duplicate
+produce no queue writes. The normal packets in those windows
+retain their prior modeled FIFO peaks of 10,757 left and 11,598
+right, with zero in the opposing lane.
+
+The fixture supplies established link state, the dongle's packet
+counter and TX completion, and the controller's arrival timestamps
+and metadata. It drives the chosen receive queue slot into stock
+copy and decode. The physical radio waveform, CRC generation, link
+negotiation, retransmission timing, and autonomous queue consumption
+remain unverified.

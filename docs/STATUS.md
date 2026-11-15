@@ -40,7 +40,12 @@ Two recorded USB windows also pass through the stock dongle timer
 handler and audio worker, with contiguous and wrapped PCM reads.
 The resulting codec bytes reach the controller's modeled FIFO with
 channel isolation.
-Live scheduling, RF queue production and the controller-to-NXP link
+The dongle's stock TX routine now points RF DMA at the same encoded
+bytes. The controller's stock RF interrupt checks modeled receive
+metadata and queues the audio in its eight-slot ring. Absent IRQ,
+CRC-error, oversize and duplicate controls leave that ring untouched.
+The replay supplies transmit completion, arrival and metadata.
+Live scheduling, the physical RF link and the controller-to-NXP link
 remain open.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
 payloads. The NXP's 198-byte receive branch copies PCM to its alternate I2S
