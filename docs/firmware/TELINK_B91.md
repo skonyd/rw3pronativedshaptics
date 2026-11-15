@@ -171,9 +171,9 @@ python -B tools/firmware/replay_telink_radio.py <Flash2FW.bin>
 
 The stock controller routine at `0x20029E3C` initializes the PCM
 history, DMA registers and linked descriptors, port-C pin functions
-and I²S format. The replay stops just after the I²S enable write, at
-`0x2002A086`. It verifies both 512-word self-linked descriptors
-against the corresponding channel registers.
+and I²S format. At the checkpoint just after I²S enable,
+`0x2002A086`, the replay verifies both 512-word self-linked
+descriptors against the corresponding channel registers.
 [Telink B91 audio registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/audio_reg.h)
 [Telink B91 DMA registers](https://github.com/telink-semi/tl_ble_sdk/blob/master/tl_ble_sdk/drivers/B91/reg_include/dma_reg.h)
 
@@ -208,3 +208,37 @@ Paired per-channel processing at `0x2002656C` precedes those
 calls. There is a separate LPC SPI initialization marker at
 `0x2002A8B0`. The active RF codec, physical I²S signal and
 controller-to-NXP link still need to be demonstrated independently.
+
+### Controller decoder and end of board setup
+
+The replay now continues from the I²S checkpoint to the normal return
+from `0x20029E3C`. It runs the stock debug-ring setup first and models
+a zero read from the board selection register at `0x801401C8`. The
+decoder initializer at `0x20025618` in isolation configures 480 samples
+per channel. The complete board routine configures **240 samples per
+channel**, consistent with a 5 ms block at 48 kHz. The production board
+register value during a live link is still unmeasured.
+
+With both contexts initialized, `0x2002656C` returns 35 for every
+tested case, including a null input pointer. The null pointer leaves
+the PCM buffer untouched. Cold packet loss writes 240 zeros without
+reading payload bytes. An all-zero packet reads 11 distinct bytes
+and writes 240 zeros. A loss after a nonzero decode can retain
+energy. The first such loss in the 200 Hz fixture has a peak of 292
+PCM counts. The replay checks reads, writes and guard words.
+
+The two independent tone inputs are the first frame of 200 Hz and
+1,000 Hz sines with 20,000-count amplitude, encoded as 35-byte, 48 kHz,
+5 ms frames with liblc3 v1.1.3 in 16-bit PCM mode. Its decoder produces
+peaks of 19,969 and 19,698. The stock emulator produces peaks of 516
+and 0 in the respective controller fixture channels. These outcomes
+do not demonstrate equivalence with the independent LC3 decoder or
+identify the active HyperSpeed payload format.
+[liblc3 v1.1.3](https://github.com/google/liblc3/tree/96a3af0beb5487aca3b98a4b992a539a1f6d80d1)
+
+The host interleaves those exact two decoded lanes for the downstream
+test. The stock stereo resampler, writer and modeled DMA feed all 240
+frames to the I²S FIFO. The writer zeroes 18 one-count samples in this
+run. The test checks this rule and preservation of the remaining
+resampled samples. Upstream scheduling and the stock channel
+interleaver remain outside this fixture.

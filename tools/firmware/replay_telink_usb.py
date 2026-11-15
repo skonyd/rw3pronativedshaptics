@@ -40,10 +40,27 @@ def saturate(value, bits):
     return min((1 << (bits - 1)) - 1, max(-(1 << (bits - 1)), value))
 
 
+def shift_saturated(value, shift, bits):
+    if shift < 0:
+        return value >> min(bits - 1, -shift)
+    return saturate(value << shift, bits)
+
+
+def pack_halves(low, high):
+    return (high << 16) | (low & 0xFFFF)
+
+
+def write_word_pair(cpu, dest, low, high):
+    even = dest & ~1
+    cpu.reg_write(UC_RISCV_REG_X0 + even, low & 0xFFFFFFFF)
+    cpu.reg_write(UC_RISCV_REG_X0 + even + 1, high & 0xFFFFFFFF)
+
+
 def andes_next(cpu, pc):
     """Execute the Andes register and memory operations reached by this replay."""
     word, = struct.unpack("<I", cpu.mem_read(pc, 4))
     opcode = word & 0x707F
+    operation = word & 0xFE00707F
     dest = field(word, 7, 5)
     left = cpu.reg_read(UC_RISCV_REG_X0 + field(word, 15, 5))
     right = cpu.reg_read(UC_RISCV_REG_X0 + field(word, 20, 5))
@@ -84,6 +101,16 @@ def andes_next(cpu, pc):
         result = left + (right << 1)
     elif word & 0xFE00707F == 0x0C00005B:  # LEA.W
         result = left + (right << 2)
+    elif operation == 0x0E00005B:  # LEA.D
+        result = left + (right << 3)
+    elif operation == 0x2000005B:  # FFB, little endian
+        index = left.to_bytes(4, "little").find(bytes([right & 0xFF]))
+        result = index - 4 if index >= 0 else 0
+    elif opcode == 0x002B:  # SHGP
+        offset = (field(word, 8, 4) << 1 | field(word, 25, 6) << 5 | field(word, 7, 1) << 11 |
+                  field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 17)
+        cpu.mem_write(cpu.reg_read(UC_RISCV_REG_GP) + offset, struct.pack("<H", right & 0xFFFF))
+        return pc + 4
     elif opcode in (0x202B, 0x402B):
         common = (field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 18)
         if opcode == 0x402B:
@@ -97,14 +124,23 @@ def andes_next(cpu, pc):
         result = cpu.reg_read(UC_RISCV_REG_X0 + dest) + left * right
     elif word & 0xFE00707F == 0xC600107F:  # MSUBR32
         result = cpu.reg_read(UC_RISCV_REG_X0 + dest) - left * right
-    elif word & 0xFE00707F == 0xF200007F:  # MAXW
-        result = max(signed_word(left), signed_word(right))
+    elif operation in (0xF000007F, 0xF200007F):  # MINW / MAXW
+        compare = min if operation == 0xF000007F else max
+        result = compare(signed_word(left), signed_word(right))
     elif word & 0xFE00707F == 0x0200007F:  # RSUB16
         lower = (signed_half(left) - signed_half(right)) >> 1
         upper = (signed_half(left >> 16) - signed_half(right >> 16)) >> 1
         result = (upper << 16) | (lower & 0xFFFF)
     elif word & 0xFE00707F == 0x0400107F:  # KADDH
         result = saturate(signed_word(left) + signed_word(right), 16)
+    elif operation == 0x0600107F:  # KSUBH
+        result = saturate(signed_word(left) - signed_word(right), 16)
+    elif operation == 0x0000107F:  # KADDW
+        result = saturate(signed_word(left) + signed_word(right), 32)
+    elif operation == 0x0200107F:  # KSUBW
+        result = saturate(signed_word(left) - signed_word(right), 32)
+    elif operation == 0x0A00107F:  # KDMBB
+        result = saturate(2 * signed_half(left) * signed_half(right), 32)
     elif word & 0xFE00707F == 0x0C00107F:  # KHMBB
         result = saturate((signed_half(left) * signed_half(right)) >> 15, 16)
     elif word & 0xFE00707F == 0x0E00107F:  # PKBB16
@@ -113,8 +149,66 @@ def andes_next(cpu, pc):
         accumulator = signed_word(cpu.reg_read(UC_RISCV_REG_X0 + dest))
         result = saturate(accumulator + signed_half(left) * signed_half(right)
                           + signed_half(left >> 16) * signed_half(right >> 16), 32)
+    elif operation == 0x5A00107F:  # KMABB
+        accumulator = signed_word(cpu.reg_read(UC_RISCV_REG_X0 + dest))
+        result = saturate(accumulator + signed_half(left) * signed_half(right), 32)
     elif word & 0xFE00707F == 0x8E00107F:  # KMMWB2
         result = saturate((signed_word(left) * signed_half(right)) >> 15, 32)
+    elif operation == 0x4400107F:  # SMMWB
+        result = (signed_word(left) * signed_half(right)) >> 16
+    elif operation == 0x4600107F:  # KMMAWB
+        accumulator = signed_word(cpu.reg_read(UC_RISCV_REG_X0 + dest))
+        result = saturate(accumulator + ((signed_word(left) * signed_half(right)) >> 16), 32)
+    elif operation == 0x6200107F:  # KWMMUL
+        result = saturate((signed_word(left) * signed_word(right)) >> 31, 32)
+    elif operation == 0xE000107F:  # MULSR64
+        product = signed_word(left) * signed_word(right)
+        write_word_pair(cpu, dest, product, product >> 32)
+        return pc + 4
+    elif operation == 0xA000007F:  # SMUL16
+        write_word_pair(cpu, dest, signed_half(left) * signed_half(right),
+                        signed_half(left >> 16) * signed_half(right >> 16))
+        return pc + 4
+    elif operation == 0x8C00107F:  # SMALDA
+        even = dest & ~1
+        accumulator = (cpu.reg_read(UC_RISCV_REG_X0 + even)
+                       | cpu.reg_read(UC_RISCV_REG_X0 + even + 1) << 32)
+        total = (accumulator + signed_half(left) * signed_half(right)
+                 + signed_half(left >> 16) * signed_half(right >> 16))
+        write_word_pair(cpu, dest, total, total >> 32)
+        return pc + 4
+    elif operation in (0x8000007F, 0x8200007F):  # SMIN16 / SMAX16
+        compare = min if operation == 0x8000007F else max
+        result = pack_halves(compare(signed_half(left), signed_half(right)),
+                             compare(signed_half(left >> 16), signed_half(right >> 16)))
+    elif word & 0xFFF0707F == 0xAE80007F:  # CLRS16
+        low, high = signed_half(left), signed_half(left >> 16)
+        result = pack_halves(15 - (low if low >= 0 else ~low).bit_length(),
+                             15 - (high if high >= 0 else ~high).bit_length())
+    elif word & 0xFFF0707F == 0xAF90007F:  # CLZ32
+        result = 32 - left.bit_length()
+    elif word & 0xFFF0707F == 0xAF80007F:  # CLRS32
+        value = signed_word(left)
+        result = 31 - (value if value >= 0 else ~value).bit_length()
+    elif word & 0xFFF0707F == 0xAD40007F:  # KABSW
+        result = min(abs(signed_word(left)), 0x7FFFFFFF)
+    elif word & 0xFFF0707F == 0xAD10007F:  # KABS16
+        result = pack_halves(min(abs(signed_half(left)), 32767), min(abs(signed_half(left >> 16)), 32767))
+    elif operation in (0x6E00107F, 0x7E00107F):  # KSLRAW / KSLRAW.U
+        shift = (right & 31) - (right & 32)
+        result = shift_saturated(signed_word(left), shift, 32)
+        if operation == 0x7E00107F and shift < 0:
+            result += field(left, min(-shift, 31) - 1, 1)
+    elif operation in (0x5600007F, 0x6400007F) or word & 0xFF00707F == 0x7500007F:
+        # KSLRA16, KSLL16 and KSLLI16
+        shift = (right & 15) - (right & 16) if operation == 0x5600007F else right & 15
+        if word & 0xFF00707F == 0x7500007F:
+            shift = field(word, 20, 4)
+        result = pack_halves(shift_saturated(signed_half(left), shift, 16),
+                             shift_saturated(signed_half(left >> 16), shift, 16))
+    elif word & 0xFF00707F == 0x7000007F:  # SRAI16
+        shift = field(word, 20, 4)
+        result = pack_halves(signed_half(left) >> shift, signed_half(left >> 16) >> shift)
     elif word & 0xFE00707F == 0xD400107F:  # SRAI.U (RV32)
         right_shift = field(word, 20, 5)
         result = (signed_word(left) * 2 + (1 << right_shift)) >> (right_shift + 1)

@@ -23,6 +23,11 @@ DMA descriptors. Its stock PCM writer sends 623 synthetic stereo frames
 to the modeled transmit FIFO in order, including a descriptor wrap.
 The preceding stock stereo resampler also reaches that FIFO using
 a test-initialized nominal ratio and 240 synthetic input frames.
+The complete controller board setup now returns in replay and configures
+240 decoder samples per channel. The stock decoder's null, loss, and
+synthetic LC3 cases are covered. The independent tone probes yielded
+weak output or silence. Host-interleaved decoder output reaches the
+modeled FIFO through the stock writer.
 The real scheduling, RF handoff, and controller-to-NXP link still need
 to be reproduced.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
