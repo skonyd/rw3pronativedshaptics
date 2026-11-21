@@ -31,6 +31,8 @@ public sealed class MainWindow : Window
     private bool _fullscreen;
     private WindowState _prevState;
     private bool _devicesOpen;
+    private WolverineMode _wolverineSeen;
+    private double _modeCheck;
 
     private static readonly (Out Flag, string Title, string Hint)[] Outputs =
     {
@@ -245,7 +247,7 @@ public sealed class MainWindow : Window
             var p = Profiles[c];
             var head = new Button
             {
-                Content = GameConfig.Label(p), Margin = new Thickness(3), Padding = new Thickness(4, 6, 4, 6), FontWeight = FontWeights.SemiBold,
+                Content = new TextBlock { Text = GameConfig.Label(p), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center }, Margin = new Thickness(3), Padding = new Thickness(4, 6, 4, 6), FontWeight = FontWeights.SemiBold,
                 Background = p == _cfg.Profile && table ? CellAccent : CellPanel, Foreground = Brushes.White, BorderThickness = new Thickness(0)
             };
             head.Click += (_, _) => SelectProfile(p);
@@ -282,6 +284,13 @@ public sealed class MainWindow : Window
             ? "Elle seçilmiş çıkışlar kullanılıyor (tablodan bir hücreye tıklayınca tabloya döner): " + outs
             : _cfg.Profile == PadProfile.Native
                 ? NativeNote() + $" · çıkışlar: {outs}"
+            : _cfg.Profile == PadProfile.Physical
+                ? GameConfig.Wolverine switch
+                {
+                    WolverineMode.Pc => "Wolverine PC modunda: Windows onu Xbox 360 kolu olarak görür, oyun XInput ile iki gövde motorunu sürer. Tetik motorları PC modunda yok (tetik satırı kapalı). RW3'ün sesten avuç titreşimi USB Sensa ile çalışır, oyun öndeyken de susmaz.",
+                    WolverineMode.Xbox => "Wolverine Xbox modunda: oyun GameInput ile gövde + tetik motorlarını sürer (Game Pass oyunları gibi) ve kolu tutar. Oyun öndeyken Windows RW3'ün avuç karelerini susturabilir: bu sütun tam olarak bunu test eder.",
+                    _ => "Wolverine bağlı değil: kolu bağla ve ↻ Yeniden tara."
+                } + $" · çıkışlar: {outs}"
                 : $"Oyun şöyle davranacak: {GameConfig.Label(_cfg.Profile)} destekli oyun · çıkışlar: {outs}";
     }
 
@@ -322,6 +331,14 @@ public sealed class MainWindow : Window
         _fb.DualSenses.Clear(); _fb.Ds4s.Clear(); _fb.XPads.Clear(); _input.Sources.Clear();
         _fb.GameInput?.Dispose(); _fb.GameInput = new GameInputHub();
         var sb = new StringBuilder();
+        GameConfig.Wolverine = GameConfig.DetectWolverine();
+        _wolverineSeen = GameConfig.Wolverine;
+        sb.AppendLine("Wolverine   " + GameConfig.Wolverine switch
+        {
+            WolverineMode.Pc => "PC modunda (1532:0A4C): Windows'ta Xbox 360 kolu, tetik motoru yok",
+            WolverineMode.Xbox => "Xbox modunda (1532:0A3F): Xbox One/Series kolu, tetik motorları var",
+            _ => "bağlı değil"
+        });
         foreach (var x in XInputPad.Present()) { _fb.XPads.Add(x); _input.Sources.Add(x); sb.AppendLine("XInput      " + x.Name); }
         if (_fb.GameInput.Open())
         {
@@ -424,7 +441,16 @@ public sealed class MainWindow : Window
         if (_input.Pressed(Btn.View) && _screen is Screen.Game or Screen.Guided) ToggleFullscreen();
         switch (_screen)
         {
-            case Screen.Setup: SetupPad(); break;
+            case Screen.Setup:
+                SetupPad();
+                // the pad can switch PC ↔ Xbox mode (☰ combo, RW3) while this screen is open
+                if ((_modeCheck += dt) > 3)
+                {
+                    _modeCheck = 0;
+                    var m = GameConfig.DetectWolverine();
+                    if (m != _wolverineSeen) { _log.Note($"Wolverine modu: {_wolverineSeen} → {m}"); ScanDevices(); }
+                }
+                break;
             case Screen.Game:
                 _game!.Update(dt, _input);
                 if ((_game.Paused || _game.Over) && _input.Pressed(Btn.B)) Enter(Screen.Setup);

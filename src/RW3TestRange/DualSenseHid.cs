@@ -251,6 +251,31 @@ internal static class Hid
         catch { return path; }
     }
 
+    [StructLayout(LayoutKind.Sequential)] private struct DevInfo { public int Size; public Guid Class; public uint DevInst; public IntPtr Reserved; }
+    [DllImport("setupapi.dll", SetLastError = true)] private static extern IntPtr SetupDiGetClassDevs(IntPtr g, IntPtr e, IntPtr w, int flags);
+    [DllImport("setupapi.dll", SetLastError = true)] private static extern bool SetupDiEnumDeviceInfo(IntPtr set, int i, ref DevInfo d);
+    [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool SetupDiGetDeviceInstanceId(IntPtr set, ref DevInfo d, char[] buf, int size, out int req);
+
+    /// <summary>Instance IDs of every present device whose ID contains <paramref name="needle"/>.</summary>
+    public static bool AnyPresent(params string[] needles)
+    {
+        IntPtr set = SetupDiGetClassDevs(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0x4 | 0x2);   // all classes, present
+        if (set == new IntPtr(-1)) return false;
+        try
+        {
+            var buf = new char[512];
+            for (int i = 0; ; i++)
+            {
+                var d = new DevInfo { Size = Marshal.SizeOf<DevInfo>() };
+                if (!SetupDiEnumDeviceInfo(set, i, ref d)) return false;
+                if (!SetupDiGetDeviceInstanceId(set, ref d, buf, buf.Length, out _)) continue;
+                string id = new string(buf).TrimEnd((char)0);
+                foreach (var n in needles) if (id.Contains(n, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+        }
+        finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
     public static SafeFileHandle Open(string path, uint access) => CreateFile(path, access, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
 
     public static IEnumerable<string> Paths()

@@ -18,6 +18,10 @@ public enum GameFeature { None = 0, Music = 1, Sfx = 2, HdHaptics = 4, Rumble = 
 /// <summary>Trigger effect intensity, as PS5 games and the PS5 system setting offer it.</summary>
 public enum TriggerIntensity { Off, Weak, Medium, Strong }
 
+/// <summary>Which protocol the Wolverine V3 Pro uses right now: PC mode 1532:0A4C (Windows sees an Xbox 360 pad, no
+/// trigger motors) or Xbox mode 1532:0A3F (an Xbox One/Series pad with trigger motors).</summary>
+public enum WolverineMode { None, Pc, Xbox }
+
 /// <summary>Game settings, saved in %LOCALAPPDATA%\RW3TestRange\config.json.</summary>
 public sealed class GameConfig
 {
@@ -57,12 +61,19 @@ public sealed class GameConfig
     }
 
     /// <summary>What a real game supporting <paramref name="p"/> can do with that pad.</summary>
+    /// <summary>Set by the start screen from the connected devices; drives the Wolverine column.</summary>
+    public static WolverineMode Wolverine = WolverineMode.None;
+
+    public static WolverineMode DetectWolverine() =>
+        Hid.AnyPresent("VID_1532&PID_0A3F") ? WolverineMode.Xbox : Hid.AnyPresent("VID_1532&PID_0A4C") ? WolverineMode.Pc : WolverineMode.None;
+
     public static bool Supports(PadProfile p, GameFeature f) => p == PadProfile.Native || f switch
     {
         GameFeature.Music or GameFeature.Sfx => true,
         GameFeature.HdHaptics => p == PadProfile.DualSense,
         GameFeature.Rumble => true,
-        GameFeature.Triggers => p is PadProfile.Physical or PadProfile.XboxSeries or PadProfile.DualSense,
+        // the Wolverine's trigger motors exist only in Xbox mode
+        GameFeature.Triggers => p == PadProfile.Physical ? Wolverine != WolverineMode.Pc : p is PadProfile.XboxSeries or PadProfile.DualSense,
         _ => false
     };
 
@@ -77,6 +88,8 @@ public sealed class GameConfig
         switch (p)
         {
             case PadProfile.Xbox360: if (f.HasFlag(GameFeature.Rumble)) o |= Out.XInput; break;
+            // Wolverine in PC mode is an Xbox 360 pad to Windows: XInput, like an Xbox 360 game
+            case PadProfile.Physical when Wolverine == WolverineMode.Pc: if (f.HasFlag(GameFeature.Rumble)) o |= Out.XInput; break;
             case PadProfile.Physical or PadProfile.XboxSeries: if (feedback) o |= Out.GameInput; break;
             case PadProfile.DualShock4: if (f.HasFlag(GameFeature.Rumble)) o |= Out.Ds4; break;
             case PadProfile.DualSense:
@@ -103,7 +116,13 @@ public sealed class GameConfig
 
     public static string Label(PadProfile p) => p switch
     {
-        PadProfile.Physical => "Xbox (kolun kendisi)", PadProfile.Xbox360 => "Xbox 360", PadProfile.XboxSeries => "Xbox Series",
+        PadProfile.Physical => Wolverine switch
+        {
+            WolverineMode.Pc => "Wolverine (kolun kendisi) · PC modu",
+            WolverineMode.Xbox => "Wolverine (kolun kendisi) · Xbox modu",
+            _ => "Wolverine (kolun kendisi)"
+        },
+        PadProfile.Xbox360 => "Xbox 360", PadProfile.XboxSeries => "Xbox Series",
         PadProfile.DualShock4 => "PS4", PadProfile.Native => "Bağlı kol (RW3'süz)", _ => "DualSense"
     };
 
