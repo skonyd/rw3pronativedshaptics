@@ -2,13 +2,7 @@
  * The caller owns the zero-initialized state and applies the two palm bands.
  * No peripheral accesses or writes to stock firmware.
  */
-#include <stdint.h>
-
-typedef struct {
-    int32_t slow[2];
-    int32_t fast[2];
-    uint32_t envelope[2][2];
-} audio_haptics_state;
+#include "audio_haptics_core.h"
 
 static uint32_t magnitude(int32_t sample)
 {

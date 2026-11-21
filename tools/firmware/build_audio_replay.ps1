@@ -15,9 +15,11 @@ $report = Join-Path $out 'build-replay.json'
 if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
 
 $compileArgs = @('cc', '-target', 'thumb-freestanding-eabi', '-mcpu=cortex_m4', '-Oz',
+    '-Wall', '-Wextra', '-Werror',
     '-ffreestanding', '-fno-builtin', '-fno-unwind-tables', '-ffunction-sections',
     '-nostdlib', '-Wl,-e,audio_haptics_step', '-T', (Join-Path $PSScriptRoot 'audio_haptics_sim.ld'),
     (Join-Path $PSScriptRoot 'audio_haptics_core.c'),
+    (Join-Path $PSScriptRoot 'audio_haptics_publish.c'),
     (Join-Path $PSScriptRoot 'audio_haptics_tap.S'), '-o', $elf)
 & $Zig @compileArgs
 if ($LASTEXITCODE -ne 0) { throw 'Cortex-M4 build failed.' }

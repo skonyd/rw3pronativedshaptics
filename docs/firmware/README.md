@@ -75,7 +75,12 @@ see the IRQ report for the corrected Unicorn CPU selection.
 The [DMA/DSP extension](DMA_DSP_PREEMPTION.md) adds original DMA/I²S/TX
 delivery during the compiled worker and nested motor IRQs without a
 host CPU-context restore. Its write-only register readback remains an
-explicit fixture; the host still assembles candidate Sensa frames.
+explicit fixture; that reference still uses host-assembled frames.
+The new [compiled publication path](COMPILED_SENSA_PUBLICATION.md) packs
+and publishes its own candidate Xbox frames with accepted-game ownership,
+protected decoding and source-age checks. The decoder-only helper now
+also explicitly selects M4. Other standalone legacy helpers are not
+claimed to have changed CPU model by this increment.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -83,9 +88,11 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-dma-preemption.json)
-preserves the 16-stage result, input/tool hashes, regression counts and
-DMA/worker results. The [FP summary](validation/20261122-fpu.json)
+The [latest 2026-11-22 validation summary](validation/20261122-publication.json)
+preserves the 17-stage result, input/source hashes, reproducible module
+hash and compiled publication results. The
+[DMA summary](validation/20261122-dma-preemption.json) retains the earlier
+16-stage result and DMA/worker results. The [FP summary](validation/20261122-fpu.json)
 retains the 15-stage result, core/FP contracts and six timer comparisons.
 The [basic IRQ summary](validation/20261121-exceptions.json)
 retains the earlier 14-stage result and its CPU-selection limitation.

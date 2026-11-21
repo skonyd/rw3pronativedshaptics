@@ -16,8 +16,8 @@ Palms: pitch in Hz (30 + p·370/127), amplitude a·520. Body parts 2/3 (249/149)
 See docs/SENSA_USB_PROTOCOL.md ("Xbox mode frame") and docs/FIRMWARE_ANALYSIS_20261110.md.
 """
 import struct, sys
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
-from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB
+from unicorn.arm_const import UC_CPU_ARM_CORTEX_M4, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0
 
 BASE, FRAME, OUT, BODY = 0x8000, 0x20020000, 0x20013530, 0x82
 DECODER = {'pc': 0x2A708, 'xbox': 0xEF50}
@@ -25,7 +25,10 @@ XBOX_MAX_HITS = (2, 2, 1, 1)   # body parts 216, 116, 249, 149
 
 
 def decode(img, entry, frame):
-    mu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+    mu = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+    mu.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M4)
+    if mu.ctl_get_cpu_model() != UC_CPU_ARM_CORTEX_M4:
+        raise RuntimeError('Decoder replay requires Cortex-M4')
     mu.mem_map(0, 0x40000); mu.mem_write(BASE, img)
     mu.mem_map(0x20000000, 0x40000)
     mu.mem_map(0x40000000, 0x10000000)          # peripherals read as 0

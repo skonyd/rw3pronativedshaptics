@@ -33,6 +33,7 @@ TX_TAIL, TAP, TAP_BUFFER = 0x2315C, DSP + 0x800, 0x20024000
 WORKER = DSP + 0x900
 MAIN_DISPATCH_CALL, FOREGROUND = 0x2F5FA, DSP + 0xA00
 BOOT_HANDOFF, CANDIDATE_BOOT, STOCK_MAIN = 0x840C, DSP + 0xB00, 0x2EF68
+PUBLISHER, FRAME_ENCODER, GAME_NOTICE, PUBLICATION = DSP + 0xC00, DSP + 0x1000, DSP + 0x1800, 0x20024200
 TAP_ENABLE, TAP_READY, TAP_SOURCE = (TAP_BUFFER + offset for offset in (192, 196, 200))
 
 
@@ -54,8 +55,8 @@ class Replay:
         self.steps = 0
         self.execution_model = None
         if dsp is not None:
-            verify(0 < len(dsp) <= 4096, "Invalid simulator DSP binary size")
-            cpu.mem_map(DSP, 4096)
+            verify(0 < len(dsp) <= 8192, "Invalid simulator DSP binary size")
+            cpu.mem_map(DSP, 8192)
             cpu.mem_write(DSP, dsp)
             cpu.hook_add(UC_HOOK_CODE, self.count_step, begin=DSP, end=DSP + len(dsp) - 1)
 
@@ -787,7 +788,7 @@ def check_application_reset(image, dsp):
     ram, bss_end = 0x20000000, 0x20013D28
     stack, entry = struct.unpack_from("<II", image)
     verify((stack, entry) == (0x20027FF8, 0x8415), "Unexpected application reset vector")
-    regions = ((STATE, 32), (LEVELS, 4), (TAP_BUFFER, 204))
+    regions = ((STATE, 32), (LEVELS, 4), (TAP_BUFFER, 204), (PUBLICATION, 128))
     stock_initialized = None
     for candidate in (False, True):
         replay = Replay(image, dsp)
@@ -864,6 +865,10 @@ def check_board_startup_boundary(image, dsp, respond_to_i2c=False):
 
         def track_stack(machine, access, address, size, value, data):
             nonlocal lowest_stack_write
+            if PUBLICATION <= address < PUBLICATION + 128:
+                verify(machine.reg_read(UC_ARM_REG_SP) > PUBLICATION + 128,
+                       "Startup stack overlaps publication state")
+                return  # explicit private data initialization, not a stack write
             lowest_stack_write = min(address, lowest_stack_write)
 
         cpu.hook_add(UC_HOOK_MEM_WRITE, track_stack, begin=TAP_BUFFER + 204, end=stack - 1)

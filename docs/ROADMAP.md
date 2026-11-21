@@ -2,11 +2,14 @@
 
 **Firmware lab, 2026-11-22:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[16-stage validation](firmware/validation/20261122-dma-preemption.json)
+[17-stage validation](firmware/validation/20261122-publication.json)
 extend the stock/candidate simulator with original DMA and nested motor
-handlers on an explicitly selected M4. Next: compile candidate Sensa
-frame construction/publication, test ownership under preemption, then
-resolve actual peripheral responses and event timing. Full-device
+handlers on an explicitly selected M4. The new
+[compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
+host packet construction for its own path and protects accepted game
+ownership. Next: real counter/loop/IRQ closure, masked timing, runtime
+controls and non-Sensa GIP feedback arbitration. Resolve actual
+peripheral responses and event timing. Full-device
 equivalence, image placement, bootloader acceptance and recovery remain open.
 
 **2026-11-11:**

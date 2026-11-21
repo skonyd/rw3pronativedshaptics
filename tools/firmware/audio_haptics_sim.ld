@@ -12,6 +12,12 @@ SECTIONS
         KEEP(*(.text.audio_haptics_foreground))
         . = 0x00100B00;
         KEEP(*(.text.audio_haptics_boot))
+        . = 0x00100C00;
+        KEEP(*(.text.audio_haptics_publish_foreground))
+        . = 0x00101000;
+        KEEP(*(.text.audio_haptics_encode_frame))
+        . = 0x00101800;
+        KEEP(*(.text.audio_haptics_game_notice))
         *(.text .text.*)
     }
 }

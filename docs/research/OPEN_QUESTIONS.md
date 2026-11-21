@@ -123,9 +123,15 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   and nested CTIMER3/CTIMER2 delivery during the compiled DSP worker.
   The new checker compares suspended registers without restoring a
   host CPU context, and deliberately corrupted stack words are rejected.
-  Next move candidate Sensa frame construction/publication into the
-  compiled module and test ownership/publication under preemption; the
-  current harness still assembles those frames. Stock reads write-only
+  E-20261122-20 moves candidate Xbox packing/publication into compiled
+  ARM code, with an accepted-class-16 notice, protected copy/decode and
+  a game-owner latch. Older host-built paths remain references. Next
+  close the real stock counter/foreground/IRQ schedule and measure the
+  masked decoder's worst-case timing; the 250-tick foreground safeguard
+  is not an independent watchdog and a busy decoder can delay its stop.
+  Add/verify real control commands and arbitrate separate normal GIP
+  rumble/trigger feedback, which is outside the class-16 ownership latch.
+  Stock reads write-only
   DMA INTENCLR at 0x12AA4/0x12FB4. Its real readback is unknown; 0,
   0x80 and 0xFFFFFFFF are explicit fixture inputs, not hardware facts.
   Resolve that readback and consequences for the other DMA channels.

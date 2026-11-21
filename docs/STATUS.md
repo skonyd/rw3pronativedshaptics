@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 16 stages passed with the local pinned images on 2026-11-22,
+All 17 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-dma-preemption.json)
+The [public validation summary](firmware/validation/20261122-publication.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -201,9 +201,22 @@ Stock reads write-only INTENCLR: readbacks 0/0x80 leave modeled enables
 0x6000, while 0xFFFFFFFF leaves 0x2000. The physical readback and channel
 14 behavior are unverified. The one-slot haptic tap skips new copies
 when busy; audio-byte preservation does not prove zero haptic loss.
-Candidate Sensa frames are still assembled by the harness. Next move
-their construction/publication into the compiled module and test its
-ownership under preemption; image placement and real timing stay open.
+That older path still uses host-built frames as a reference. A new
+[compiled publication path](firmware/COMPILED_SENSA_PUBLICATION.md) now
+packs and publishes its own Xbox Sensa frames, protects copy/stock decode
+with PRIMASK, and latches accepted class-16 game ownership until explicit
+fresh rearm. Its 8,464 byte-oracle cases, stock decoder checks, command
+hook contracts, publication corruption controls and injected IRQ/control
+races pass. Synthetic and recorded wired/dongle PCM windows each play
+96 blocks through compiled DSP/packing to original PWM code without
+host-constructed candidate frames. A stale-before-commit race was found
+and fixed; the earlier module fails the new regression. Strict typed
+builds from separate output/cache directories are byte-identical.
+The foreground safeguard uses 250 stock-counter ticks, not measured ms;
+a blocked decoder can delay a stop. Masked instruction observations are
+not physical latency/WCET. Real control commands, clock/loop closure,
+separate GIP rumble/trigger arbitration, image placement, bootloader
+acceptance and recovery remain open. No loadable-image claim follows.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen

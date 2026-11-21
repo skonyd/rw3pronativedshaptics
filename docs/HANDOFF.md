@@ -109,20 +109,40 @@ the original Sensa timers nest inside that IRQ. Comparisons use real
 stack restoration, with register snapshots only as assertions. The DMA
 status model handles enable aliases, W1C and a level source. INTENCLR
 readback is explicitly supplied because stock reads that write-only
-register; its physical value remains unknown. Next move candidate
-Sensa frame construction and publication from the harness into the
-compiled module, then test publication/ownership under preemption.
+register; its physical value remains unknown. Moving candidate Sensa
+construction/publication from the harness into compiled code is now
+implemented in the separate path below.
 System exceptions, general FPU-control changes, actual second-peer
 replies and physical event timing remain open; do not replace them
 with invented success values. Earlier
 12/13/14-stage summaries remain historical evidence.
-The [latest full-suite summary](firmware/validation/20261122-dma-preemption.json)
+The [DMA full-suite summary](firmware/validation/20261122-dma-preemption.json)
 records 16/16 stages (E-20261122-07). New DMA coverage has seven register
 checks, six continuous stock/candidate cases and 12 worker cases, with
 6,056 checked returns in those main scenarios. Stack corruption and an
 uncleared IRQ level fail deliberately. Do not claim lossless haptic
 input: the one-slot tap skips a new copy while busy. INTENCLR setup
 fixtures change channel 14's enable even when the covered TX path passes.
+
+Compiled publication (E-20261122-20/21): read
+[COMPILED_SENSA_PUBLICATION.md](firmware/COMPILED_SENSA_PUBLICATION.md).
+New C/assembly owns packing, staging, protected copy/stock decode and
+accepted-game priority in an opt-in simulator path. Game ownership is
+latched until explicit rearm with fresh PCM. The original command handler
+still handles the synthetic command; a fixture IRQ shim is not an actual
+USB/game input. Full-buffer oracles retain the original short-copy tail.
+Default cadence and source timeout are 12/250 stock-counter ticks; busy
+can defer stops. A stale-before-commit check fixes a race found while
+testing. Strict shared C types/state-size assertions build cleanly, and
+three separate output/cache directories produce identical module bytes.
+The [latest validation](firmware/validation/20261122-publication.json)
+records all 17 stages with module SHA256 starting `f2c5f153`, 8,464 encoder
+cases and three compiled continuous streams (synthetic/wired/dongle).
+The old host-built routes stay as references. Module text is mapped in
+an 8 KiB simulator region; neither that nor private RAM is a validated
+device allocation. Next close the real counter/foreground/IRQ schedule,
+check masked worst-case timing, implement actual runtime controls and
+arbitrate non-Sensa GIP rumble/trigger feedback. No firmware was flashed.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

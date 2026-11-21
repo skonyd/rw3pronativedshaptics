@@ -228,7 +228,7 @@ def run_startup(image, dsp, *, candidate=False, identity=0x53, second_bytes=b"\x
     if until_second:
         verify(cpu.reg_read(UC_ARM_REG_R0) == 4 and cpu.mem_read(0x2000A3FF, 4) == second_bytes,
                "Second stock I2C read did not preserve the supplied four bytes")
-    for address, length in ((STATE, 32), (LEVELS, 4), (TAP_BUFFER, 204)):
+    for address, length in ((STATE, 32), (LEVELS, 4), (TAP_BUFFER, 204), (0x20024200, 128)):
         verify(cpu.mem_read(address, length) == (b"\0" if candidate else b"\xA5") * length,
                "Startup modified private candidate guards or failed to initialize them")
     report = {"checkpoint": hex(target), "synthetic_identity": identity,

@@ -69,6 +69,9 @@ def main():
     config = ("--usb-address", args.dongle_usb_address)
     capture = ("--dongle-usb-trace", args.dongle_capture, *config)
     excerpt = () if args.active_stereo_excerpt is None else ("--active-stereo-excerpt", args.active_stereo_excerpt)
+    publication_captures = () if args.active_stereo_excerpt is None else (
+        "--wired-pcm-trace", wired_pcm, "--dongle-pcm-trace", dongle_pcm,
+        "--captured-excerpt-start", args.active_stereo_excerpt)
     stages = (
         ("telink-startup", "replay_telink_startup.py", (dongle, radio, *capture)),
         ("dongle-usb", "replay_telink_usb.py", (dongle, args.dongle_capture, *config)),
@@ -84,6 +87,7 @@ def main():
         ("nxp-exceptions", "replay_nxp_exceptions.py", (nxp, args.dsp)),
         ("nxp-fpu-exceptions", "replay_nxp_fpu.py", (nxp, args.dsp)),
         ("nxp-dma-preemption", "replay_nxp_dma_preemption.py", (nxp, args.dsp)),
+        ("nxp-publication", "replay_nxp_publication.py", (nxp, args.dsp, *publication_captures)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )
