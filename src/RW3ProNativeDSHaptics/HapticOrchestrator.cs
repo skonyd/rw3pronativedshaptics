@@ -54,7 +54,14 @@ public sealed class HapticOrchestrator
 
     /// <summary>A virtual Xbox 360 / Series / PS4 pad is selected: the game sees it, not the Wolverine.</summary>
     public bool UseXboxGameBridge => Plan().VirtualProfile != null;
-    private bool _virtualPalms;
+    private bool _virtualPalms, _restartingPalms;
+
+    private async Task RestartPalmsAsync()
+    {
+        try { await _bridge.StartAudioToSensaAsync(profile: EffectiveProfile); }
+        catch (Exception ex) { DiagnosticsService.Info("Virtual pad: palm audio restart failed: " + ex.Message); await Task.Delay(2000); }
+        finally { _restartingPalms = false; }
+    }
 
     // Games that had the real pad open before a virtual pad appeared (PadHolders): they keep it until restarted.
     private volatile List<(int Pid, string Name)> _padHolders = new();
@@ -317,9 +324,19 @@ public sealed class HapticOrchestrator
                 DiagnosticsService.Info(LastError);
             }
         }
+        // Virtual pad + palms: a palm audio capture that stops (the foreground app changes, a headset reconnects) is
+        // restarted alone. Until 2026-11-22 it stopped the whole bridge, which undid the hide and handed the game the
+        // real pad mid-session (E-20261122-03).
+        if (Run == RunState.Audio && CombinedXbox is { IsRunning: true } && _virtualPalms && !_bridge.IsAudioToSensaRunning && !_restartingPalms)
+        {
+            _restartingPalms = true;
+            DiagnosticsService.Info("Virtual pad: palm audio stopped (" + (_bridge.AudioFailure ?? "?") + "); restarting it, the pad keeps running.");
+            _ = RestartPalmsAsync();
+        }
         bool audioAlive = AudioRoute switch
         {
-            WolverineMode.Xbox or WolverineMode.Pc when CombinedXbox is { } c => c.IsRunning && (!_virtualPalms || _bridge.IsAudioToSensaRunning),
+            // the virtual pad is alive as long as its bridge runs; a dropped palm audio capture is restarted on its own below
+            WolverineMode.Xbox or WolverineMode.Pc when CombinedXbox is { } c => c.IsRunning,
             WolverineMode.Pc => _bridge.IsAudioToSensaRunning,
             WolverineMode.Xbox => XboxAudio?.IsCapturing ?? _bridge.IsAudioToSensaRunning,
             _ => XboxAudio?.IsCapturing ?? _rumble.Snapshot().IsCapturing
