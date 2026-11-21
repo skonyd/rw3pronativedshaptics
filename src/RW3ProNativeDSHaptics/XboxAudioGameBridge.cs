@@ -46,6 +46,12 @@ public sealed class XboxAudioGameBridge : IDisposable
     private int _xinputSlot = -1;
     /// <summary>Virtual Xbox/PS4 pads of this process that currently own a HidHide state.</summary>
     private static int s_hidersAlive;
+    /// <summary>A virtual Xbox / PS4 pad of this process currently owns the HidHide state (others must not restore it).</summary>
+    public static bool OwnsHide => Volatile.Read(ref s_hidersAlive) > 0;
+    // XInput slots and GameInput devices present before our virtual pad was created: what appears after it is ours. A real
+    // Bluetooth Xbox Series pad has the same 045E:0B13 as the virtual one, so VID/PID alone cannot tell them apart.
+    private int _slotsBefore = -1;
+    private HashSet<string>? _gameInputBefore;
     /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
     public Func<string>? EngineProbe { get; init; }
     private double _maxGameBody, _maxGameTrig;
@@ -210,6 +216,12 @@ public sealed class XboxAudioGameBridge : IDisposable
                 string profileId = Strict ? VirtualProfile : "xbox-series-xs-bt";
                 var model = _context.GetProfile(profileId) ??
                     throw new InvalidOperationException("Sanal kol profili bulunamadı: " + profileId + ".");
+                if (Strict)
+                {
+                    _slotsBefore = 0;
+                    for (int i = 0; i < 4; i++) if (XInput.GetState((uint)i, out _) == 0) _slotsBefore |= 1 << i;
+                    try { _gameInputBefore = VirtualPadInputProbe.DeviceIds(); } catch { }
+                }
                 _controller = _context.CreateController(model, "rw3-xbox-audio");
                 _controller.OutputReceived += OnOutput;
                 _hideOwned = true;
@@ -321,7 +333,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             {
                 // Own thread: GameInput's first enumeration blocks for a while, and the motor watchdog stops the bridge
                 // when this loop pauses > 250 ms (2026-11-15).
-                _inputProbe = new VirtualPadInputProbe();
+                _inputProbe = new VirtualPadInputProbe { Exclude = _gameInputBefore };
                 _probeThread = new Thread(() =>
                 {
                     while (_running) { try { _inputProbe.Poll(); } catch { } Thread.Sleep(64); }
@@ -409,7 +421,7 @@ public sealed class XboxAudioGameBridge : IDisposable
         {
             _virtualXSlot = -1;
             for (int i = 0; i < 4; i++)
-                if (i != _xinputSlot && IsVirtualPad(i) && XInput.GetState((uint)i, out var st) == 0) { _virtualXSlot = i; _virtualXPacket0 = st.dwPacketNumber; break; }
+                if (i != _xinputSlot && IsOurs(i) && XInput.GetState((uint)i, out var st) == 0) { _virtualXSlot = i; _virtualXPacket0 = st.dwPacketNumber; break; }
         }
         if (_virtualXSlot < 0) return "yok";
         return XInput.GetState((uint)_virtualXSlot, out var s) == 0 ? $"slot {_virtualXSlot} packets +{s.dwPacketNumber - _virtualXPacket0}" : $"slot {_virtualXSlot} gone";
@@ -428,6 +440,17 @@ public sealed class XboxAudioGameBridge : IDisposable
         catch { return false; }
     }
 
+    /// <summary>Our own virtual pad's XInput slot: it appeared after the pad was created (else, before that is known, the
+    /// HIDMaestro VID/PID).</summary>
+    private bool IsOurs(int slot) => _virtualXSlot >= 0 ? slot == _virtualXSlot
+        : _slotsBefore >= 0 && _running ? (_slotsBefore & (1 << slot)) == 0 && slot != _lastGoodSlot
+        : IsVirtualPad(slot);
+
+    private static int VidOf(int slot)
+    {
+        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 ? c.Vid : -1; } catch { return -1; }
+    }
+
     private bool TryReadXInput(out XInputPad pad)
     {
         pad = default;
@@ -437,10 +460,17 @@ public sealed class XboxAudioGameBridge : IDisposable
             // The pad's earlier slot first (after a replug Windows usually gives it back, and the virtual Xbox pad may now
             // also be on XInput); otherwise a single connected slot. Two unknown pads: keep waiting, never guess.
             // Our own virtual pad is on XInput too: never read it back (checked only when a slot is chosen, not per loop).
-            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0 && !IsVirtualPad(_lastGoodSlot)) slot = _lastGoodSlot;
+            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0 && !IsOurs(_lastGoodSlot)) slot = _lastGoodSlot;
             else
-                for (int i = 0; i < 4; i++)
-                    if (XInput.GetState((uint)i, out _) == 0 && !IsVirtualPad(i)) { if (slot >= 0) return false; slot = i; }
+            {
+                var candidates = new List<int>();
+                for (int i = 0; i < 4; i++) if (XInput.GetState((uint)i, out _) == 0 && !IsOurs(i)) candidates.Add(i);
+                // another pad too (e.g. a Bluetooth Xbox controller): the Razer one wins, else anything that is not 045E:0B13/028E
+                if (candidates.Count > 1) { var razer = candidates.FindAll(i => VidOf(i) == 0x1532); if (razer.Count == 1) candidates = razer; }
+                if (candidates.Count > 1) candidates = candidates.FindAll(i => !IsVirtualPad(i));
+                if (candidates.Count != 1) return false;
+                slot = candidates[0];
+            }
         }
         if (slot < 0 || XInput.GetState((uint)slot, out var s) != 0) { _xinputSlot = -1; return false; }
         _lastGoodSlot = slot;

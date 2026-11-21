@@ -33,6 +33,28 @@ public sealed class VirtualPadInputProbe : IDisposable
     public long Changes { get; private set; }
     public string Device { get; private set; } = "yok";
     public string LastError { get; private set; } = "";
+    /// <summary>GameInput device ids present before our virtual pad was created (a real Bluetooth Xbox pad looks the same).</summary>
+    public HashSet<string>? Exclude { get; init; }
+
+    private static string IdOf(IntPtr info)
+    {
+        var b = new byte[32]; Marshal.Copy(info + 32, b, 0, 32); return Convert.ToHexString(b);
+    }
+
+    /// <summary>Ids of the gamepads GameInput lists right now.</summary>
+    public static HashSet<string> DeviceIds()
+    {
+        var ids = new HashSet<string>();
+        if (GameInputCreate(out var gi) < 0 || gi == IntPtr.Zero) return ids;
+        try
+        {
+            DeviceCallback cb = (_, _, d, _, cur, _) => { try { if ((cur & 1) != 0) lock (ids) ids.Add(IdOf(Slot<InfoFn>(d, 3)(d))); } catch { } };
+            if (Slot<RegisterFn>(gi, 9)(gi, IntPtr.Zero, KindGamepad, 1, 2, IntPtr.Zero, cb, out ulong token) >= 0) Slot<UnregisterFn>(gi, 13)(gi, token, ulong.MaxValue);
+            GC.KeepAlive(cb);
+        }
+        finally { Slot<RefFn>(gi, 2)(gi); }
+        return ids;
+    }
 
     /// <summary>Finds a gamepad that is not the Wolverine (1532:*) and not a Sony pad: our virtual Xbox pad.</summary>
     public bool TryOpen()
@@ -50,6 +72,7 @@ public sealed class VirtualPadInputProbe : IDisposable
                     IntPtr info = Slot<InfoFn>(d, 3)(d);
                     ushort vid = (ushort)Marshal.ReadInt16(info, 4), pid = (ushort)Marshal.ReadInt16(info, 6);
                     if (vid == 0x1532 || vid == 0x054C) return;
+                    if (Exclude != null && Exclude.Contains(IdOf(info))) return;   // was there before our pad: not ours
                     Slot<RefFn>(d, 1)(d); pick = d; name = $"{vid:X4}:{pid:X4} family {Marshal.ReadInt32(info, 96)}";
                 }
                 catch { }

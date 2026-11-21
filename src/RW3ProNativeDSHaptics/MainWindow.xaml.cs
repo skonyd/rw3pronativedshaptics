@@ -188,6 +188,7 @@ public partial class MainWindow : Window
             ? _settings.PreferredXInputSlot + 1 : 0;
         AutostartCheckbox.IsChecked = StartupService.IsEnabled;
         VersionText.Text = "v" + UpdateService.InstalledVersion;
+        InitializeRgbUi();
         InitializeTray();
 
         var startupArgs = Environment.GetCommandLineArgs();
@@ -261,6 +262,7 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         await RefreshChecksAsync();
+        await RefreshBatteryAsync();
         try
         {
             await RefreshChannelEndpointsAsync();
@@ -325,9 +327,15 @@ public partial class MainWindow : Window
     {
         if (GeneralPage == null) return;
         GeneralPage.Visibility = TabGeneral.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        RgbPage.Visibility = TabRgb.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TestPage.Visibility = TabTest.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = TabSettings.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (TabGeneral.IsChecked == true && _initialized) await RefreshChecksAsync();
+        if (TabRgb.IsChecked == true && _initialized)
+        {
+            GipSensaTransport.Shared.TryOpen();
+            UpdateRgbPreviewUi();
+        }
         if (TabSettings.IsChecked == true && _initialized) await RefreshVirtualControllerAsync();
     }
 
@@ -775,7 +783,9 @@ public partial class MainWindow : Window
     private async Task RefreshHidHideAsync()
     {
         var h = await Task.Run(HidHideControl.Query);
-        bool running = _bridge.IsVirtualDualSenseRunning;
+        // A running virtual Xbox / PS4 pad owns the hide too (2026-11-22: this check restored it mid-game and the game
+        // saw the real Wolverine again).
+        bool running = _bridge.IsVirtualDualSenseRunning || XboxAudioGameBridge.OwnsHide;
         // Left over from a crash: undo it now when we can (elevated), else offer the button.
         if (h.RestorePending && !running && VirtualDualSenseBridge.IsElevated)
         {
@@ -1286,6 +1296,7 @@ public partial class MainWindow : Window
             _orch.Tick(_performance, _tickCount);   // CPU guard, liveness watchdog, auto-run
             // The mode can change by key combo at any time; recheck every 3 s while audio mode is shown.
             if (_tickCount % 12 == 0 && SelectedMode == HapticMode.Audio && !_padModeBusy) _ = RefreshPadOptionsAsync();
+            if (_tickCount % 20 == 0) _ = RefreshBatteryAsync();   // every 5 s
             if (TabSettings.IsChecked == true && _bridge.IsVirtualDualSenseRunning) UpdateBridgeStatus();
             RefreshStatus();
         }
@@ -2074,11 +2085,11 @@ public partial class MainWindow : Window
     }
 
     private FrameworkElement CurrentPage =>
-        TabTest.IsChecked == true ? TestPage : TabSettings.IsChecked == true ? SettingsPage : GeneralPage;
+        TabRgb.IsChecked == true ? RgbPage : TabTest.IsChecked == true ? TestPage : TabSettings.IsChecked == true ? SettingsPage : GeneralPage;
 
     private void SwitchTab(int delta)
     {
-        var tabs = new[] { TabGeneral, TabTest, TabSettings };
+        var tabs = new[] { TabGeneral, TabRgb, TabTest, TabSettings };
         int current = Array.FindIndex(tabs, t => t.IsChecked == true);
         int next = (current + delta + tabs.Length) % tabs.Length;
         tabs[next].IsChecked = true;
@@ -2110,7 +2121,7 @@ public partial class MainWindow : Window
     }
 
     private bool IsTabButton(object element) =>
-        ReferenceEquals(element, TabGeneral) || ReferenceEquals(element, TabTest) || ReferenceEquals(element, TabSettings);
+        ReferenceEquals(element, TabGeneral) || ReferenceEquals(element, TabRgb) || ReferenceEquals(element, TabTest) || ReferenceEquals(element, TabSettings);
 
     private static void ActivateFocused()
     {
@@ -2630,5 +2641,217 @@ public partial class MainWindow : Window
     {
         _lastErrorNoted = where + ": " + ex.Message;
         DiagnosticsService.Error(where, ex);
+    }
+
+    // ───────────────────────── RGB (Chroma Class 0x0F) & Battery (Class 0x07) ─────────────────────────
+
+    private bool _rgbUpdating;
+    private bool _batteryQuerying;
+
+    private async Task RefreshBatteryAsync()
+    {
+        if (_batteryQuerying || BatteryBadgeText == null) return;
+        _batteryQuerying = true;
+        try
+        {
+            int slot = _settings.PreferredXInputSlot;
+            var status = await Task.Run(() => WolverineLightingAndBattery.QueryBattery(slot));
+            BatteryBadgeText.Text = status.Label;
+            BatteryBadge.ToolTip = status.Available
+                ? $"Kaynak: {status.Source} • Seviye: %{status.Percent}" + (status.IsCharging ? " (Şarj oluyor / Kablolu)" : "")
+                : "Kol bağlı değil";
+            BatteryBadgeDot.Fill = !status.Available ? MutedBrush
+                : status.IsCharging || status.Percent >= 40 ? GoodBrush
+                : status.Percent >= 20 ? WarnBrush : BadBrush;
+        }
+        catch { }
+        finally { _batteryQuerying = false; }
+    }
+
+    private static (byte R, byte G, byte B) ParseHexColor(string? hex, (byte R, byte G, byte B) fallback)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return fallback;
+        string s = hex.Trim().TrimStart('#');
+        if (s.Length == 6 &&
+            byte.TryParse(s[..2], System.Globalization.NumberStyles.HexNumber, null, out byte r) &&
+            byte.TryParse(s[2..4], System.Globalization.NumberStyles.HexNumber, null, out byte g) &&
+            byte.TryParse(s[4..6], System.Globalization.NumberStyles.HexNumber, null, out byte b))
+            return (r, g, b);
+        return fallback;
+    }
+
+    private void InitializeRgbUi()
+    {
+        _rgbUpdating = true;
+        try
+        {
+            RgbBrightnessSlider.Value = Math.Clamp(_settings.RgbBrightnessPercent, 0, 100);
+            var (r1, g1, b1) = ParseHexColor(_settings.RgbColor1Hex, (0, 255, 0));
+            var (r2, g2, b2) = ParseHexColor(_settings.RgbColor2Hex, (0, 162, 255));
+            RgbR1Slider.Value = r1; RgbG1Slider.Value = g1; RgbB1Slider.Value = b1;
+            RgbR2Slider.Value = r2; RgbG2Slider.Value = g2; RgbB2Slider.Value = b2;
+            (_settings.RgbBreathingMode switch { 0 => RgbModeRandom, 2 => RgbMode2Color, _ => RgbMode1Color }).IsChecked = true;
+            (_settings.RgbWaveDirection == 2 ? RgbDirRightLeft : RgbDirLeftRight).IsChecked = true;
+            (_settings.RgbSpeed switch { 1 => RgbSpeedFast, 3 => RgbSpeedSlow, _ => RgbSpeedMedium }).IsChecked = true;
+            (_settings.RgbEffect switch
+            {
+                ChromaEffect.Off => RgbEffOff,
+                ChromaEffect.Static => RgbEffStatic,
+                ChromaEffect.Wave => RgbEffWave,
+                ChromaEffect.Breathing => RgbEffBreathing,
+                ChromaEffect.Reactive => RgbEffReactive,
+                ChromaEffect.Starlight => RgbEffStarlight,
+                _ => RgbEffSpectrum
+            }).IsChecked = true;
+            UpdateRgbPreviewUi();
+        }
+        finally { _rgbUpdating = false; }
+    }
+
+    private void UpdateRgbPreviewUi()
+    {
+        if (RgbPreviewGlow == null) return;
+        var eff = _settings.RgbEffect;
+        int br = _settings.RgbBrightnessPercent;
+        var (r1, g1, b1) = ((byte)RgbR1Slider.Value, (byte)RgbG1Slider.Value, (byte)RgbB1Slider.Value);
+        var (r2, g2, b2) = ((byte)RgbR2Slider.Value, (byte)RgbG2Slider.Value, (byte)RgbB2Slider.Value);
+        RgbColor1Swatch.Background = new SolidColorBrush(Color.FromRgb(r1, g1, b1));
+        RgbColor2Swatch.Background = new SolidColorBrush(Color.FromRgb(r2, g2, b2));
+
+        bool hasColorMode = eff is ChromaEffect.Breathing or ChromaEffect.Starlight;
+        RgbColorModePanel.Visibility = hasColorMode ? Visibility.Visible : Visibility.Collapsed;
+        RgbDirectionPanel.Visibility = eff == ChromaEffect.Wave ? Visibility.Visible : Visibility.Collapsed;
+        RgbSpeedPanel.Visibility = eff is ChromaEffect.Reactive or ChromaEffect.Starlight ? Visibility.Visible : Visibility.Collapsed;
+
+        bool needsColor1 = eff is ChromaEffect.Static or ChromaEffect.Reactive ||
+                           (hasColorMode && _settings.RgbBreathingMode is 1 or 2);
+        bool needsColor2 = hasColorMode && _settings.RgbBreathingMode == 2;
+        RgbColorsPanel.Visibility = needsColor1 ? Visibility.Visible : Visibility.Collapsed;
+        RgbColor2Box.Visibility = needsColor2 ? Visibility.Visible : Visibility.Collapsed;
+
+        Color previewColor = eff switch
+        {
+            ChromaEffect.Off => Color.FromRgb(0x1A, 0x22, 0x34),
+            ChromaEffect.Spectrum or ChromaEffect.Wave => Color.FromRgb(0x00, 0xE5, 0xFF),
+            _ when hasColorMode && _settings.RgbBreathingMode == 0 => Color.FromRgb(0xA8, 0x00, 0xFF),
+            _ => Color.FromRgb(r1, g1, b1)
+        };
+        RgbPreviewGlow.Background = new SolidColorBrush(previewColor);
+        RgbPreviewGlow.Opacity = eff == ChromaEffect.Off ? 0.35 : Math.Max(0.25, br / 100.0);
+
+        string effName = eff switch
+        {
+            ChromaEffect.Off => "Kapalı (Off)",
+            ChromaEffect.Static => "Sabit (Static)",
+            ChromaEffect.Spectrum => "Spektrum Döngüsü",
+            ChromaEffect.Wave => _settings.RgbWaveDirection == 2 ? "Dalga (Sağ → Sol)" : "Dalga (Sol → Sağ)",
+            ChromaEffect.Breathing => _settings.RgbBreathingMode switch { 0 => "Nefes Alma (Rastgele)", 2 => "Nefes Alma (İki Renk)", _ => "Nefes Alma (Tek Renk)" },
+            ChromaEffect.Reactive => "Tepkisel (Reactive)",
+            ChromaEffect.Starlight => "Yıldız Işığı (Starlight)",
+            _ => eff.ToString()
+        };
+        RgbPreviewTitle.Text = $"{effName} • Parlaklık %{br}";
+        RgbQuickOffBtn.Content = eff == ChromaEffect.Off ? "☀  Işıkları Aç" : "⏻  Işıkları Kapat";
+        RgbQuickOffBtn.Background = new SolidColorBrush(eff == ChromaEffect.Off ? Color.FromRgb(0x1D, 0x4D, 0x38) : Color.FromRgb(0x4D, 0x1D, 0x24));
+    }
+
+    private ChromaEffect _lastNonOffRgbEffect = ChromaEffect.Spectrum;
+
+    private void RgbQuickOff_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings.RgbEffect != ChromaEffect.Off)
+        {
+            _lastNonOffRgbEffect = _settings.RgbEffect;
+            RgbEffOff.IsChecked = true;
+        }
+        else
+        {
+            var restore = _lastNonOffRgbEffect == ChromaEffect.Off ? ChromaEffect.Spectrum : _lastNonOffRgbEffect;
+            (restore switch
+            {
+                ChromaEffect.Static => RgbEffStatic,
+                ChromaEffect.Wave => RgbEffWave,
+                ChromaEffect.Breathing => RgbEffBreathing,
+                ChromaEffect.Reactive => RgbEffReactive,
+                ChromaEffect.Starlight => RgbEffStarlight,
+                _ => RgbEffSpectrum
+            }).IsChecked = true;
+        }
+    }
+
+    private void RgbEffect_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _rgbUpdating || sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out ChromaEffect eff)) return;
+        if (eff != ChromaEffect.Off) _lastNonOffRgbEffect = eff;
+        _settings.RgbEffect = eff;
+        SaveAndApplyRgb();
+    }
+
+    private void RgbBrightness_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized || _rgbUpdating) return;
+        _settings.RgbBrightnessPercent = (int)e.NewValue;
+        SaveAndApplyRgb();
+    }
+
+    private void RgbOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _rgbUpdating) return;
+        _settings.RgbBreathingMode = RgbModeRandom.IsChecked == true ? 0 : RgbMode2Color.IsChecked == true ? 2 : 1;
+        _settings.RgbWaveDirection = RgbDirRightLeft.IsChecked == true ? 2 : 1;
+        _settings.RgbSpeed = RgbSpeedFast.IsChecked == true ? 1 : RgbSpeedSlow.IsChecked == true ? 3 : 2;
+        SaveAndApplyRgb();
+    }
+
+    private void RgbSwatch1_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string hex }) return;
+        var (r, g, b) = ParseHexColor(hex, (0, 255, 0));
+        _rgbUpdating = true;
+        try { RgbR1Slider.Value = r; RgbG1Slider.Value = g; RgbB1Slider.Value = b; }
+        finally { _rgbUpdating = false; }
+        if (_settings.RgbEffect is ChromaEffect.Off or ChromaEffect.Spectrum or ChromaEffect.Wave)
+        {
+            _rgbUpdating = true;
+            try { RgbEffStatic.IsChecked = true; _settings.RgbEffect = ChromaEffect.Static; }
+            finally { _rgbUpdating = false; }
+        }
+        SaveAndApplyRgb();
+    }
+
+    private void RgbSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized || _rgbUpdating) return;
+        SaveAndApplyRgb();
+    }
+
+    private void RgbApply_Click(object sender, RoutedEventArgs e) => SaveAndApplyRgb();
+
+    private void SaveAndApplyRgb()
+    {
+        var c1 = ((byte)RgbR1Slider.Value, (byte)RgbG1Slider.Value, (byte)RgbB1Slider.Value);
+        var c2 = ((byte)RgbR2Slider.Value, (byte)RgbG2Slider.Value, (byte)RgbB2Slider.Value);
+        _settings.RgbColor1Hex = $"#{c1.Item1:X2}{c1.Item2:X2}{c1.Item3:X2}";
+        _settings.RgbColor2Hex = $"#{c2.Item1:X2}{c2.Item2:X2}{c2.Item3:X2}";
+        UpdateRgbPreviewUi();
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("RGB ayar kaydı", ex); }
+
+        byte profileSlot = RgbSaveToProfileCheck?.IsChecked == true ? (byte)1 : (byte)0;
+        var eff = _settings.RgbEffect;
+        int br = _settings.RgbBrightnessPercent;
+        int bMode = _settings.RgbBreathingMode, wDir = _settings.RgbWaveDirection, spd = _settings.RgbSpeed;
+
+        Task.Run(() =>
+        {
+            var (ok, msg) = WolverineLightingAndBattery.ApplyLighting(eff, br, c1, c2, bMode, wDir, spd, profileSlot);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (RgbStatusText != null)
+                {
+                    RgbStatusText.Text = (ok ? "✓ " : "⚠ ") + msg;
+                    RgbStatusText.Foreground = ok ? GoodBrush : WarnBrush;
+                }
+            });
+        });
     }
 }

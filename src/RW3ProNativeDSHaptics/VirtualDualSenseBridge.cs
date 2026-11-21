@@ -664,7 +664,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
 #endif
         _modeTimer?.Dispose(); _modeTimer = null;
         _readback?.Dispose(); _readback = null;
-        if (IsElevated && HidHideControl.RestorePending)
+        if (IsElevated && HidHideControl.RestorePending && !XboxAudioGameBridge.OwnsHide)   // never undo a virtual Xbox pad's hide
         {
             try { HidHideNote = HidHideControl.Restore(); DiagnosticsService.Info("Virtual DualSense: " + HidHideNote); }
             catch (Exception ex) { HidHideNote = "HidHide geri alınamadı: " + ex.Message; DiagnosticsService.Error("HidHide restore", ex); }
