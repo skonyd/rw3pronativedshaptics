@@ -26,7 +26,7 @@ public sealed class MusicGenerator
 
     private readonly List<(float[] Data, int Pos, float Gain, float Pan, float Send)> _hits = new();
     private readonly float[] _kick, _snare, _hat, _openHat;
-    private readonly Reverb _room = new(1.1) { Feedback = .8f, Damp = .45f };
+    private readonly Reverb _room = new(1.1) { Feedback = .7f, Damp = .5f };   // .8 rang on as a tone
     private readonly float[] _delayL = new float[(int)(Rate * .45)], _delayR = new float[(int)(Rate * .45)];
     private int _delayPos;
     private long _n;
@@ -35,8 +35,8 @@ public sealed class MusicGenerator
     // bass voice
     private double _bassPh, _bassHz = 55, _bassEnv, _bassAmp; private bool _bassGate;
     private readonly Biquad _bassLp = Biquad.LowPass(400, 1.1);
-    // pad: 3 notes × 2 detuned saws, crossfading envelope
-    private readonly double[] _padPh = new double[6]; private double[] _padHz = new double[3]; private double _padEnv;
+    // pad: 3 notes × 2 detuned saws, a swell at each chord change that dies away (no sustain)
+    private readonly double[] _padPh = new double[6]; private double[] _padHz = new double[3]; private double _padEnv; private bool _padAttack;
     private readonly Biquad _padLpL = Biquad.LowPass(850), _padLpR = Biquad.LowPass(850);
     // lead
     private double _leadPh, _leadHz = 440, _leadTarget = 440, _leadEnv, _vib; private bool _leadOn;
@@ -81,7 +81,7 @@ public sealed class MusicGenerator
         int b = BassSteps[s];
         // a rest closes the note (the bass kept sounding at 35 % between notes = a drone)
         if (b >= 0) { _bassHz = Midi(Roots[chord] + b); _bassEnv = 1; _bassGate = true; } else _bassGate = false;
-        if (s == 0) _padEnv = Math.Min(_padEnv, .25);   // the pad breathes: re-swells at every bar
+        if (s == 0) _padAttack = true;   // the pad swells at every bar, then fades out before the next one
         // pad follows the chord each bar
         if (s == 0) _padHz = Chords[chord].Select(Midi).ToArray();
         // lead in bars 2-3 and 6-7
@@ -121,17 +121,17 @@ public sealed class MusicGenerator
             float bass = _bassLp.Process(Saw(ref _bassPh, _bassHz)) * (float)_bassAmp * .45f;
             l += bass; r += bass;
 
-            // pad: slow swell each bar, slightly detuned pairs spread left/right
-            int stepInBar = step % 16;
-            double target = stepInBar < 8 ? 1 : .45;     // swell, then settle: a pad that moves, not a held tone
-            _padEnv += (target - _padEnv) * .00005;
+            // pad: swell (~0.15 s), then fade (time constant ~0.6 s), silent before the next bar. Until 2026-11-22 it
+            // settled at 45 % and never stopped: users heard it as one constant, annoying tone under everything.
+            if (_padAttack) { _padEnv += (1 - _padEnv) * .0004; if (_padEnv > .95) _padAttack = false; }
+            else _padEnv *= .999965;
             float pl = 0, pr = 0;
             for (int k = 0; k < 3; k++)
             {
                 pl += Saw(ref _padPh[2 * k], _padHz[k] * .997);
                 pr += Saw(ref _padPh[2 * k + 1], _padHz[k] * 1.003);
             }
-            pl = _padLpL.Process(pl) * (float)_padEnv * .032f; pr = _padLpR.Process(pr) * (float)_padEnv * .032f;
+            pl = _padLpL.Process(pl) * (float)_padEnv * .022f; pr = _padLpR.Process(pr) * (float)_padEnv * .022f;
             l += pl; r += pr; send += (pl + pr) * .6f;
 
             // lead: glide + vibrato, decaying notes, ping-pong delay
