@@ -600,7 +600,25 @@
           <TextBlock/>
         </DockPanel>
       </Border>
-      <Border Grid.Row="2" Grid.ColumnSpan="3" Style="{StaticResource CardBorder}" VerticalAlignment="Top">
+      <ScrollViewer Grid.Row="2" Grid.ColumnSpan="3" VerticalScrollBarVisibility="Auto" Focusable="False">
+      <StackPanel>
+      <!-- 3. Test game: drives the pad like a real game, logs everything -->
+      <Border Style="{StaticResource CardBorder}" VerticalAlignment="Top">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0">
+            <Button x:Name="TestGameBtn" Content="▶  Test oyununu aç" Style="{StaticResource PrimaryBtn}" Click="TestGame_Click" Margin="0,0,0,8"/>
+            <Button Content="📄  Son test raporunu aç" Style="{StaticResource SmallBtn}" HorizontalAlignment="Stretch" Click="TestGameReport_Click"/>
+          </StackPanel>
+          <StackPanel>
+            <TextBlock Text="3 · Test oyunu: Şişe Atışı" Style="{StaticResource CardTitle}"/>
+            <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
+                       Text="Kolu gerçek bir oyun gibi süren küçük bir atış oyunu: Xbox (XInput / GameInput, tetik motorları), PS4 ve DualSense (adaptif tetik, HD haptik, ışık) desteği, müzik ve efektler. Silahlar: tabanca, tüfek, pompalı, yay, arbalet. Tuş testi, 22 adımlı rehberli geri bildirim testi; her gönderim ve aynı dakikalardaki RW3 kaydı rapora yazılır."/>
+            <TextBlock x:Name="TestGameHint" Style="{StaticResource Hint}" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Text="Oyunda '⇄ RW3'teki seçimi kullan' ile buradaki 'Oyuna görünen kol' seçimini eşle."/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <Border Style="{StaticResource CardBorder}" VerticalAlignment="Top" Margin="0,18,0,0">
         <Expander Header="Geliştirici araçları · DualSense → W3 Pro kanal laboratuvarı" Foreground="#EEF3FF">
         <StackPanel Margin="0,8,0,0">
           <TextBlock Text="Aynı değişmez 4ch/48k PCM: kanal 3 sol, kanal 4 sağ. PCM tekrarı ayrıştırıcıyı, Windows uç nokta testi ayrı oynatıcı + gerçek WASAPI yakalamayı sınar. Oyun kaydı değildir." Style="{StaticResource Hint}" Margin="0,0,0,8"/>
@@ -630,6 +648,8 @@
         </StackPanel>
         </Expander>
       </Border>
+      </StackPanel>
+      </ScrollViewer>
     </Grid>
 
     <!-- ===================== AYARLAR ===================== -->

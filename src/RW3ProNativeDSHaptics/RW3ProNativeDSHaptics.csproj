@@ -34,4 +34,14 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
+  <!-- The test game ("Şişe Atışı", src/RW3TestRange) ships with RW3 in TestRange\ so the Test tab can start it. -->
+  <Target Name="PublishTestRange" AfterTargets="Publish" Condition="Exists('$(MSBuildThisFileDirectory)..\RW3TestRange\RW3TestRange.csproj')">
+    <PropertyGroup>
+      <TestRangeDir>$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(PublishDir)))TestRange\</TestRangeDir>
+    </PropertyGroup>
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\RW3TestRange\RW3TestRange.csproj" Targets="Restore"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);_TestRangeRestore=1" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\RW3TestRange\RW3TestRange.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false;PublishDir=$(TestRangeDir)" />
+  </Target>
 </Project>

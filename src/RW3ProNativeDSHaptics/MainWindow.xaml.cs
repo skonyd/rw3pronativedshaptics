@@ -914,6 +914,44 @@ public partial class MainWindow : Window
             (_bridge.VirtualDualSenseHidHideNote.Length > 0 ? "\n" + _bridge.VirtualDualSenseHidHideNote : "") : "");
     }
 
+    // ───────────────────────── Test: the test game ─────────────────────────
+
+    /// <summary>The installed copy (publish puts it in TestRange\), else a developer build next to the sources.</summary>
+    private static string? FindTestGame()
+    {
+        string installed = Path.Combine(AppContext.BaseDirectory, "TestRange", "RW3TestRange.exe");
+        if (File.Exists(installed)) return installed;
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            string dev = Path.Combine(dir.FullName, "src", "RW3TestRange", "bin", "Release", "net10.0-windows", "RW3TestRange.exe");
+            if (File.Exists(dev)) return dev;
+        }
+        return null;
+    }
+
+    private void TestGame_Click(object sender, RoutedEventArgs e)
+    {
+        string? exe = FindTestGame();
+        if (exe == null) { TestGameHint.Text = "Test oyunu bulunamadı (RW3'ü yeniden kur ya da tools\run-test-range.cmd)."; return; }
+        try
+        {
+            // Through explorer: the game runs as the normal user even when RW3 is elevated, like a game the user starts.
+            Process.Start(new ProcessStartInfo("explorer.exe", "\"" + exe + "\"") { UseShellExecute = true });
+            TestGameHint.Text = "Test oyunu açılıyor. Oyunda '⇄ RW3'teki seçimi kullan' ile buradaki 'Oyuna görünen kol' seçimini eşle.";
+            DiagnosticsService.Info("Test game started: " + exe);
+        }
+        catch (Exception ex) { NoteError("Test oyunu", ex); }
+    }
+
+    private void TestGameReport_Click(object sender, RoutedEventArgs e)
+    {
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3TestRange", "logs");
+        var last = Directory.Exists(dir) ? new DirectoryInfo(dir).GetFiles("session-*.txt").OrderByDescending(f => f.LastWriteTime).FirstOrDefault() : null;
+        if (last == null) { TestGameHint.Text = "Henüz test raporu yok: oyunu oyna, kapatınca rapor yazılır."; return; }
+        try { Process.Start(new ProcessStartInfo("explorer.exe", "\"" + last.FullName + "\"") { UseShellExecute = true }); }
+        catch (Exception ex) { NoteError("Test raporu", ex); }
+    }
+
     private async void VcSelfTest_Click(object sender, RoutedEventArgs e) =>
         await RunVirtualControllerStepAsync(VirtualControllerSetup.SelfTestArg, "Sanal DualSense oluşturulup kontrol ediliyor");
 
