@@ -60,6 +60,11 @@ and full local reports remain under ignored `TestResults/`.
 
 The suite covers currently modeled paths, including the stock and
 candidate NXP runs, Telink boot and audio, RF retry, controller SPI,
-I²S and the ADC-to-USB descriptor and completion path. The physical inter-chip audio route,
+I²S, the voice encoder/RF/decoder/USB IN path, captured voice framing
+with malformed controls, and the ADC-to-USB descriptor and completion
+path. Voice framing is checked against every captured endpoint-0x87
+packet, including host grouping and sequence wrap; its background-level
+PCM is not a reference for the synthetic microphone tone.
+The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.

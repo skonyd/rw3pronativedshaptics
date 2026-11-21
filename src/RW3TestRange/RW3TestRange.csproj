@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Small test game ("Şişe Atışı"): drives controllers the way real games do (XInput, GameInput with impulse
+       triggers, DualSense HID output report 0x02, DualSense HD haptics on the 4-channel audio endpoint) and logs
+       every feedback it sends, to test RW3 end to end. Independent of RW3's code on purpose. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>RW3TestRange</RootNamespace>
+    <AssemblyName>RW3TestRange</AssemblyName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+</Project>

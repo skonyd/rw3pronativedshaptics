@@ -532,7 +532,7 @@ classic I²S and 16-bit samples. The stock NXP setup leaves
 `CFG1=0x000F0031` on FLEXCOMM6 and `CFG1=0x000F0001` on
 FLEXCOMM7, with `CFG2=0x1F` on both. FLEXCOMM6 is master and
 FLEXCOMM7 is slave. Both NXP ports use 16-bit samples and 32
-clock edges per stereo frame. These initializations alone
+SCK cycles per stereo frame. These initializations alone
 cannot establish a shared PCB clock net or who drives it in
 each active mode.
 [NXP register definitions](https://github.com/nxp-mcuxpresso/mcux-sdk/blob/master/devices/LPC54605/LPC54605.h)
@@ -550,6 +550,82 @@ leaves the output byte-identical. Zeroing the low lane while
 retaining the high lane yields silence. FIFO words and DMA
 progress are modeled, and this test leaves their physical
 source open.
+
+### Controller voice uplink
+
+```powershell
+python -B tools/firmware/replay_telink_uplink.py <Flash2FW.bin> <Dev1FW.bin>
+# Optional independent comparison with a local original dongle capture:
+python -B tools/firmware/replay_telink_uplink.py <Flash2FW.bin> <Dev1FW.bin> --dongle-usb-trace <dongle.pcap> --usb-address 9
+python -B tools/firmware/usb_voice_trace.py <dongle.pcap> 9
+```
+
+The stock worker at `0x12348` stays out of the voice queue while
+the microphone mode bit is clear. Applying the open state runs its
+priming path. The fixture then advances the initial queue read cursor
+and models 250 FIFO words through the stock RX DMA descriptor. Stock
+produces a 240-sample mono input and a 40-byte codec output. All 40
+bytes match between the encoder, the queue at `0x852B4` and the RF
+DMA frame produced by `0x10A40` with tag `0x38`. A 950 Hz tone in
+the low half-word changes the encoded bytes. Putting the same tone
+in the high half-word is byte-identical to silence at the encoder
+input, codec output and RF frame.
+
+The dongle receives the same frame through stock RF IRQ `0x3B08`.
+The parser writes a 64-byte audio slot in the eight-slot buffer at
+`0x8E570`, then also copies the record to its control queue at `0x800B4`.
+An absent IRQ or modeled CRC error leaves both destinations untouched.
+The metadata threshold `0x38` affects the control-queue copy. The
+audio slot is populated at that boundary. The physical meaning of
+this metadata byte remains open.
+
+The stock mono resampler setup at `0x1AD84` and decoder initializer
+`0x26CCC` prepare the dongle voice worker `0x54C8`. The test invokes
+the stock audio-timer handler `0x3CDC` in its modeled voice phase,
+with a fixture clock and RF epoch. An absent timer pending bit leaves
+the slot untouched. With the pending bit set, the handler selects
+the voice branch, acknowledges and rearms the timer, and calls the
+worker. The worker selects the audio slot, passes
+the original 40 codec bytes to `0x26DEC`, clears the slot and writes
+240 resampled mono samples into the 1024-sample ring at `0x90A54`.
+The fixture starts four samples before wrap and checks every output
+sample. For the 950 Hz case the decoder peak is 23,916 and the
+resampled peak is 23,919 PCM counts. The same route produces silence
+with only the high FIFO half-word active.
+
+The stock USB dispatcher `0x3C60` calls the Xbox-mode USB producer
+at `0x4F3C` when the endpoint-7 event bit is set, and acknowledges
+that bit. Without it the PCM cursor and FIFO stay untouched.
+The producer consumes 48 mono samples per
+call and writes every second one, in order, to the modeled endpoint
+`0x87` FIFO. Five calls drain that 240-sample block into five 54-byte
+GIP audio packets. The next call sends a silent packet and keeps the
+read cursor fixed. Sequence bytes advance from 254 through 255 to 1,
+skipping zero, and the endpoint is armed once per packet. The Xbox mode,
+enabled stream, initial sequence and host consumption are fixture inputs.
+
+The optional capture check independently validates all 784 successful
+endpoint-`0x87` completions in the original dongle trace, each grouping
+eight 54-byte packets. All 6,272 packets have the same header format
+`60 23 <sequence> 32 C0 00` and 24 mono PCM16 samples. All 25 sequence
+wraps skip zero, agreeing with stock replay. Nine mutations of one
+recorded completion check rejection of truncation, failed URB/slot,
+bad descriptors, zero sequence and wrong GIP length. The captured PCM
+peak is 43 counts, so it is a framing reference, not the synthetic
+950 Hz voice source or a waveform fidelity measurement. The USB host
+groups packets in the capture; the replay still supplies each endpoint
+event rather than implementing the host's polling schedule.
+
+Two subsequent empty-slot worker calls take the stock silence branch.
+The first retains a filter tail (peak 23,892 in the tone case), and the
+second is silent. Repeating the old RF response leaves the consumed
+slot empty. For recovery, the fixture toggles the reply-sequence bit
+used by stock controller instruction `0x10B30`, retaining the original
+codec bytes. The dongle accepts the new response and decodes again.
+
+The fixture supplies link state, controller input FIFO words and
+peer retirement of the priming frame. Physical transfer timing,
+RF synchronization and a complete USB host schedule remain open.
 
 ### Stock dongle retry and controller reply
 

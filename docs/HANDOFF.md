@@ -1,6 +1,6 @@
 # Handoff: where the work stands (for any AI tool)
 
-Updated 2026-11-14. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
+Updated 2026-11-21. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
 Cursor…). This page says **what was done, where it lives, what phase we are in and what comes next**. Rules stay
 in [AGENTS.md](../AGENTS.md); behaviour facts in [STATUS.md](STATUS.md); every test and its result in
 [research/EXPERIMENTS.md](research/EXPERIMENTS.md). Update this page when the phase changes.
@@ -54,6 +54,19 @@ explorer.exe TestResults\install-when-closed.cmd    # waits for RW3 to close, co
 - Never commit Razer/Sony binaries or firmware images; only our maps, notes and tools.
 
 ## 3. What has been done (chronological, newest last)
+
+Firmware continuation: the offline suite now includes controller I²S
+voice input → stock encoder → RF reply → stock dongle IRQ → audio timer
+→ decoder/resampler → USB endpoint dispatcher and IN FIFO. It checks
+lane isolation, ring wrap, missing input, duplicate response, recovery,
+underrun and sequence wrap skipping zero. A separate parser checks
+all 6,272 recorded IN packets and nine damaged-capture controls.
+Run [the suite](firmware/README.md#run-the-offline-replay-suite) from the
+local pinned images/captures; reports stay under ignored `TestResults/`.
+See E-20261121-02/03. Next: actual RF synchronization and scheduling,
+physical inter-chip I²S routing and whole-board GPIO/interrupt behavior.
+Full-system equivalence and a flashable candidate remain unverified;
+resident bootloader and recovery are still unavailable. No flashing.
 
 | Period | Result | Where |
 | --- | --- | --- |

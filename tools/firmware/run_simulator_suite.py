@@ -75,6 +75,8 @@ def main():
         ("telink-radio-audio", "replay_telink_radio.py", (radio,)),
         ("telink-dongle-to-radio", "replay_telink_link.py", (dongle, radio, *capture)),
         ("telink-duplex-retry", "replay_telink_duplex.py", (dongle, radio)),
+        ("voice-usb-capture", "usb_voice_trace.py", (args.dongle_capture, args.dongle_usb_address)),
+        ("telink-voice-uplink", "replay_telink_uplink.py", (radio, dongle, *capture)),
         ("controller-spi", "replay_controller_spi.py", (radio, nxp)),
         ("controller-i2s", "replay_controller_i2s.py", (radio, nxp)),
         ("nxp-analog", "replay_nxp_analog.py", (nxp,)),

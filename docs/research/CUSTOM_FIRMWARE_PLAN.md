@@ -6,7 +6,9 @@ stream) into Sensa palm haptics, the way RW3's "Sesten titreşim" does on a PC.
 **Why firmware:**
 - The stock firmware does not do this (E-20261111-08/09).
 - No third-party code runs on the console.
-- The images are protected only by checksums, not signatures (E-20261111-10, FIRMWARE_ANALYSIS finding 5).
+- The updater package exposes checksums (E-20261111-10, FIRMWARE_ANALYSIS finding 5).
+  The absent resident bootloader leaves its acceptance rules, including any
+  additional checks on a custom image, unverified.
 
 **Owner's decision (2026-11-11):** start the work with complete analysis, step by step. Every flash needs a separate,
 explicit go from the user.
@@ -66,7 +68,7 @@ Findings go to [EXPERIMENTS.md](EXPERIMENTS.md) as usual. This page keeps the pl
 | --- | --- | --- |
 | 2026-11-11 | Plan written | — |
 | 2026-11-11 | Phase 0: updater decompiled (ILSpy, `WolverineV3ProCFU.exe`) | See the findings below. |
-| 2026-11-11 | G0: native updater disassembled; brick reports read | Bootloader 1532:110E, erase 0x8000–0x37800, no recovery without a booting app → hardware (SWD) recovery needed |
+| 2026-11-11 | G0: native updater disassembled; failure reports read | Bootloader 1532:110E, updater erase request 0x8000–0x37800. The observed entry route needs a running app. Recovery after app failure remains unknown; no SWD restore has been verified |
 | 2026-11-14 | Phase 2: candidate TX tap and ARM worker | Offline-only branch substitution at 0x2315C. Stock PCM and sequential game ownership coexist in replay. Disable and source underrun restore stock PWM. [Trace and evidence](../firmware/AUDIO_HAPTICS_REPLAY.md#arm-tx-tap-and-scheduled-dsp) |
 
 ### Remaining work before an image candidate
@@ -97,8 +99,13 @@ test to the real loop cadence, runtime toggle, stale mailbox behavior and
 concurrent ownership with stock rumble/Sensa commands.
 Stress missing completions and simultaneous timer/DMA events, and validate
 timing and output on a stock trace. Keep the wired NXP path as the first
-integration boundary. The dongle capture currently supplies host-side PCM for
-replay while its radio path remains open.
+integration boundary. The dongle's stock USB-to-codec-to-radio-to-I²S
+replay and controller-to-dongle voice-to-USB replay now run with
+modeled interrupts. The physical inter-chip PCM wiring and full RF
+acquisition and clock behavior remain open. Use the executable
+[offline suite](../firmware/README.md#run-the-offline-replay-suite)
+for stock and candidate comparisons, and the experiment log for its
+explicit fixture boundaries.
 
 G2 remains open until a bounded application image is assembled and verified.
 The package-level checksum evidence leaves resident bootloader acceptance and
@@ -123,8 +130,10 @@ recovery after application failure open.
 - **Safety design proposal (for phase 2): a dormant patch.**
   - The new code only hooks in after the stock firmware has booted and enumerated.
   - It stays off until it is switched on at run time (a Razer command or a button combo).
-  - A bug in it then only triggers after an explicit switch-on, and a power cycle brings back the stock behaviour,
-    so the normal update path stays usable for a reflash.
+  - The intended runtime default is off after reset. Offline reset and switch
+    checks do not prove that an installed candidate will boot or leave the
+    update path usable. Startup hooks, memory placement and persistent state
+    can fail before the switch is enabled; a power cycle is not proven recovery.
 - **Audio path hint:** the NXP GIP metadata declares the headset interface with audio messages 0x60. In wired mode
   the console's headset audio therefore passes through the NXP MCU, the same chip that drives Sensa, so a
   wired-only first version may need just one chip patched. To be confirmed in phase 1.
@@ -136,28 +145,33 @@ From `Controller_Update_Lib.dll` (x86 disassembly, `upgrade_firmware_process` �
   - The updater sends the Razer packet **class 0x00, cmd 0x04, arg [0x01]** over WinUSB raw GIP, in the same 0x0F
     tunnel and XOR format as Razer Controller Setup for Xbox.
   - It waits 1 s, then opens the **bootloader as 1532:110E**: HID, 91-byte reports.
-  - This PC already has the WinUSB 0A3F interface of this controller registered (an earlier official update), so
-    the tooling works here.
+  - This PC has the WinUSB 0A3F interface registered. That alone does not
+    verify bootloader entry, programming or recovery in the current lab.
 - **Erase range:** class **0x10 cmd 0x01** with [start, end] taken from the HEX file: start = the first data
   record, end = the last record's end. For `Dev2FW` that is **0x8000–0x37800**. The bootloader (0x0000–0x7FFF) is
-  never erased by the official tool. Programming and verification follow in 0x10-class packets.
+  outside this updater erase request. The resident handler is unavailable,
+  so its actual enforcement is not established. Programming and verification
+  follow in 0x10-class packets in the updater flow.
 - **Recovery when the app does not run: none known.**
   - Razer Insider reports controllers that stayed dead after a controller update failed at ~50 %: no response on
     Xbox, Windows or macOS, and no recovery posted.
-  - That is the state of a half-written app region. So the bootloader evidently does not come up by itself when
-    the app is invalid, or not in a way users or the updater can use.
-  - No documented button combo enters it.
+  - Those reports do not identify the failed region or prove the resident
+    bootloader's behavior. A failed application, power state or another
+    component has not been distinguished by a device readback.
+  - A hardware boot-entry procedure has not been verified in this project.
 - **Consequence for the plan:**
-  - Any custom image that fails to boot, or any interrupted flash, very likely **bricks the controller with no
-    software way back**.
+  - A failed custom boot or interrupted flash can leave the observed
+    application-dependent update entry unavailable. Its probability and
+    alternative recovery paths are unknown.
   - The dormant-patch design limits *run-time* bugs, but not a boot-time mistake or a power loss during the flash.
-  - A real rollback needs **hardware access**. The NXP MCU has an SWD debug port: open the controller, find the
-    SWD pads, and connect a probe (MCU-Link / J-Link). The CMPA/debug-lock state is unknown until tried. Or accept
-    the risk with a spare controller.
+  - Hardware debug/readback is a candidate recovery investigation, not a
+    proven restore path. Board pads, debug access, protection state and
+    successful restoration on separate hardware remain unverified.
 
-**G0 status: passed for knowledge, failed for safety.** Software rollback exists only while the stock app boots. G1
-and G3 must not proceed without a hardware recovery path (SWD verified, flash backup read out) or the user's explicit
-acceptance of a likely brick.
+**G0 status: partial, recovery unverified.** The updater's visible flow is
+mapped; resident bootloader acceptance and behavior after an invalid
+application are unknown. A successful simulator run does not close G0 or
+authorize G1/G3. No controller flash is part of the current work.
 
 Sources:
 - https://insider.razer.com/razer-support-45/issue-with-razer-wolverine-pro-v3-firmware-update-75788

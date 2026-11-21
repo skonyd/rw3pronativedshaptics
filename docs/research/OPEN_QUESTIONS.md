@@ -54,7 +54,18 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   reads the stock I²S clock configuration on both MCUs and runs the
   Telink mono receive reader through a modeled DMA wrap. Resolve the
   pin routing and mode-dependent clock ownership before connecting
-  the PCM paths. Then follow the Telink mono block into RF and USB.
+  the PCM paths. E-20261115-112 follows the Telink mono block through
+  the stock encoder, controller RF DMA and dongle IRQ to the
+  stock voice queue. E-20261121-02 follows the separate audio slots
+  through stock decode, mono resampling, ring wrap and the USB 0x87
+  producer with underrun and loss/recovery. The stock audio-timer
+  handler and USB dispatcher also invoke those workers under
+  modeled pending bits. Next derive their invocation times and RF
+  acquisition from the full stock scheduling flow. E-20261121-03 validates
+  all 6,272 captured USB IN packets, their eight-packet host grouping and
+  the nonzero sequence wrap. Derive actual host polling/interrupt pacing;
+  the background-level captured microphone data cannot validate the
+  synthetic uplink waveform.
 - E-20261115-109 exercises six NXP ADC channels and reaches the stock
   GIP input queue with two analog trigger fields. E-20261115-111
   reaches the stock USB0 descriptor and completion on endpoint 0x81.
@@ -99,7 +110,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.
   Verify a spare-unit restore before any hardware candidate. Bootloader
-  behavior remains unknown with only the update package.
+  behavior remains unknown with only the update package. E-20261121-04
+  corrects earlier statements that implied bootloader acceptance or
+  power-cycle recovery was proved; G0 remains partial.
 
 ## Q1. Palms + trigger motors together (Xbox-mode 4-zone stream)
 

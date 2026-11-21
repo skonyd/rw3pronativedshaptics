@@ -118,6 +118,10 @@ def andes_next(cpu, pc):
                   field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 17)
         cpu.mem_write(cpu.reg_read(UC_RISCV_REG_GP) + offset, struct.pack("<H", right & 0xFFFF))
         return pc + 4
+    elif opcode == 0x502B:  # LHUGP
+        offset = (field(word, 21, 10) << 1 | field(word, 20, 1) << 11 |
+                  field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 17)
+        result, = struct.unpack("<H", cpu.mem_read(cpu.reg_read(UC_RISCV_REG_GP) + offset, 2))
     elif opcode in (0x202B, 0x402B):
         common = (field(word, 17, 3) << 12 | field(word, 15, 2) << 15) - (field(word, 31, 1) << 18)
         if opcode == 0x402B:

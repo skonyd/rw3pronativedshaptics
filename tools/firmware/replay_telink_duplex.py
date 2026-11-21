@@ -20,12 +20,13 @@ DONGLE_RF_IRQ, IRQ_STATUS, REPLY_BUFFER_INSN = 0x3B08, 0x80170220, 0x3B70
 CONTROLLER_REPLY_TX = 0x10A40
 
 
-def deliver_reply(cpu, reply, pending=1, *, crc_error=False):
+def deliver_reply(cpu, reply, pending=1, *, crc_error=False, receive_quality=0):
     """Feed a controller reply through the dongle's stock interrupt routine."""
     # Stock sets s0 to the controller-response DMA buffer with ADDIGP.
     andes_next(cpu, REPLY_BUFFER_INSN)
     buffer = cpu.reg_read(UC_RISCV_REG_S0)
-    cpu.mem_write(buffer, struct.pack("<I", reply[5] + 13) + reply[4:] + bytes(10) + bytes([int(crc_error)]))
+    cpu.mem_write(buffer, struct.pack("<I", reply[5] + 13) + reply[4:] + bytes(9) +
+                  bytes([receive_quality, int(crc_error)]))
     writes = []
 
     def read_status(machine, access, address, size, value, data):

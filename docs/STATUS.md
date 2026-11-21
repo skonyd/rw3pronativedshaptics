@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-15. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-21. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Firmware lab
@@ -68,6 +68,23 @@ NXP FLEXCOMM7 selects slave. The stock Telink receive reader consumes
 mono samples. An empty ring, 241 pending words and changes confined
 to the high half-word are covered. The PCB clock and data routing
 are still open.
+The Telink voice replay feeds that receive lane into the stock
+encoder and verifies all 40 encoded bytes in its queue and RF DMA
+reply. A tone in the high lane yields the same reply as silence.
+The dongle's stock RF IRQ writes both its control queue and voice
+decode slots. Its stock worker decodes and resamples 240 mono samples,
+wraps the mono ring and sends the expected sample bytes to USB endpoint
+0x87. The exercised Xbox branch takes every second sample in a
+48-sample chunk, sending a 54-byte GIP packet. Silence, opposite-lane
+isolation, USB underrun, missing slots, duplicate responses and recovery
+with a modeled new response sequence are covered. Hardware scheduling,
+clock synchronization and the physical inter-chip audio route remain open.
+The stock voice worker and USB producer also run through the stock
+timer handler and endpoint dispatcher, with no consumption when pending
+bits are absent. All 6,272 original dongle USB IN packets independently
+agree with the replay's header, 54-byte size and nonzero sequence wrap.
+The capture groups eight packets per URB. Its background-level microphone
+input is not a waveform reference for the synthetic replay tone.
 The stock NXP analog replay scans six modeled ADC channels, retries a
 delayed conversion and verifies startup calibration and the foreground
 ten-sample moving average. With fixture calibration it follows both
@@ -76,8 +93,10 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All ten stages passed with the lab inputs, including active stereo
-excerpts from wired and dongle captures in the PWM model. Its JSON
+All 12 stages passed with the local pinned images on 2026-11-21,
+including active stereo excerpts from wired and dongle captures in the
+PWM model. This is the modeled replay scope, not whole-device equivalence.
+Its JSON
 reports record input hashes and individual stage outcomes.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.

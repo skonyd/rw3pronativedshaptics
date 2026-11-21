@@ -1,0 +1,302 @@
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+namespace RW3TestRange;
+
+/// <summary>DualSense adaptive-trigger effect: mode + 10 parameter bytes, as games write it (report 0x02 bytes 10/21).</summary>
+public readonly record struct TriggerFx(byte Mode, byte[] P)
+{
+    public static readonly TriggerFx Off = new(0x05, new byte[10]);
+
+    private static (byte, byte, ulong) Zones(int from, int to, Func<int, int> strength)
+    {
+        int mask = 0; ulong packed = 0;
+        for (int z = from; z <= to; z++) { mask |= 1 << z; packed |= (ulong)Math.Clamp(strength(z) - 1, 0, 7) << (3 * z); }
+        return ((byte)mask, (byte)(mask >> 8), packed);
+    }
+
+    /// <summary>Continuous resistance from zone <paramref name="from"/> (0..9), strength 1..8.</summary>
+    public static TriggerFx Feedback(int from, int strength)
+    {
+        var (m0, m1, p) = Zones(from, 9, _ => strength);
+        return new(0x21, new byte[] { m0, m1, (byte)p, (byte)(p >> 8), (byte)(p >> 16), (byte)(p >> 24), 0, 0, 0, 0 });
+    }
+
+    /// <summary>Resistance rising from <paramref name="from"/> to the end (bow string / heavy pull).</summary>
+    public static TriggerFx Ramp(int from, int s0, int s1)
+    {
+        var (m0, m1, p) = Zones(from, 9, z => s0 + (s1 - s0) * (z - from) / Math.Max(1, 9 - from));
+        return new(0x21, new byte[] { m0, m1, (byte)p, (byte)(p >> 8), (byte)(p >> 16), (byte)(p >> 24), 0, 0, 0, 0 });
+    }
+
+    /// <summary>Weapon: resistance between zones start..end, then a break (click), strength 1..8.</summary>
+    public static TriggerFx Weapon(int start, int end, int strength)
+    {
+        int mask = (1 << start) | (1 << end);
+        return new(0x25, new byte[] { (byte)mask, (byte)(mask >> 8), (byte)Math.Clamp(strength - 1, 0, 7), 0, 0, 0, 0, 0, 0, 0 });
+    }
+
+    /// <summary>Vibration from zone <paramref name="from"/> with amplitude 1..8 at <paramref name="hz"/>.</summary>
+    public static TriggerFx Vibration(int from, int amplitude, int hz)
+    {
+        var (m0, m1, p) = Zones(from, 9, _ => amplitude);
+        return new(0x26, new byte[] { m0, m1, (byte)p, (byte)(p >> 8), (byte)(p >> 16), (byte)(p >> 24), 0, 0, (byte)hz, 0 });
+    }
+
+    /// <summary>Bow: resistance from start to end zone, snap-back strength when released past the end.</summary>
+    public static TriggerFx Bow(int start, int end, int strength, int snap)
+    {
+        int mask = (1 << start) | (1 << end);
+        return new(0x22, new byte[] { (byte)mask, (byte)(mask >> 8), (byte)((Math.Clamp(strength - 1, 0, 7)) | (Math.Clamp(snap - 1, 0, 7) << 3)), 0, 0, 0, 0, 0, 0, 0 });
+    }
+
+    /// <summary>Machine (automatic weapon): vibration with two alternating amplitudes, carrier hz, period in 0.1 s.</summary>
+    public static TriggerFx Machine(int start, int end, int a, int b, int hz, int period)
+    {
+        int mask = (1 << start) | (1 << end);
+        return new(0x27, new byte[] { (byte)mask, (byte)(mask >> 8), (byte)((a & 7) | ((b & 7) << 3)), (byte)hz, (byte)period, 0, 0, 0, 0, 0 });
+    }
+
+    /// <summary>Galloping (horse feet): two foot positions in an eight-part cycle, cycles per second.</summary>
+    public static TriggerFx Galloping(int start, int end, int first, int second, int hz)
+    {
+        int mask = (1 << start) | (1 << end);
+        return new(0x23, new byte[] { (byte)mask, (byte)(mask >> 8), (byte)((second & 7) | ((first & 7) << 3)), (byte)hz, 0, 0, 0, 0, 0, 0 });
+    }
+
+    public override string ToString() => $"0x{Mode:X2}[{Convert.ToHexString(P)}]";
+}
+
+/// <summary>
+/// A DualSense on USB HID (real, or RW3's virtual one: 054C:0CE6). Input report 0x01 (also Bluetooth 0x31 for reading),
+/// output report 0x02: compatible rumble, adaptive triggers, lightbar, player LEDs, mic LED. Bluetooth output (0x31 + CRC)
+/// is not written.
+/// </summary>
+public sealed class DualSenseHid : IPadSource
+{
+    public string Path { get; }
+    public bool Virtual { get; }
+    private SafeFileHandle? _read, _write;
+    private Thread? _thread;
+    private volatile bool _stop;
+    private PadState _state;
+    private long _lastInputTick;
+    private readonly object _gate = new();
+    private int _outLen = 48;
+    public bool Bluetooth { get; private set; }
+    public string ParentIds { get; private init; } = "";
+    public long InputReports { get; private set; }
+    public long OutputReports { get; private set; }
+    public string? Error { get; private set; }
+
+    // output state, sent whole on each change (games resend their full state)
+    public TriggerFx LeftTrigger = TriggerFx.Off, RightTrigger = TriggerFx.Off;
+    public byte RumbleLeft, RumbleRight, Red = 0, Green = 60, Blue = 255, PlayerLeds = 0b00100, MicLed;
+
+    private DualSenseHid(string path, bool isVirtual) { Path = path; Virtual = isVirtual; }
+
+    public string Name => (Virtual ? "DualSense (sanal, RW3)" : "DualSense") + (Bluetooth ? " Bluetooth" : " USB");
+    public string Kind => "dualsense";
+    public bool Sony => true;
+    public bool Connected => _read != null && !_read.IsInvalid && Error == null;
+
+    public static List<DualSenseHid> FindAll()
+    {
+        var list = new List<DualSenseHid>();
+        foreach (var path in Hid.Paths())
+        {
+            using var h = Hid.Open(path, 0);
+            if (h.IsInvalid) continue;
+            if (!Hid.Attributes(h, out ushort vid, out ushort pid) || vid != 0x054C || pid is not (0x0CE6 or 0x0DF2)) continue;
+            if (!Hid.Caps(h, out ushort usagePage, out ushort usage, out _, out _) || usagePage != 1 || usage != 5) continue;
+            // HIDMaestro's virtual DualSense hangs off a software bus; a real one off USB or Bluetooth.
+            string parent = Hid.ParentChain(path);
+            bool virt = !parent.Contains("USB\\", StringComparison.OrdinalIgnoreCase) && !parent.Contains("BTH", StringComparison.OrdinalIgnoreCase);
+            list.Add(new DualSenseHid(path, virt) { ParentIds = parent });
+        }
+        return list;
+    }
+
+    public bool Open()
+    {
+        _read = Hid.Open(Path, Hid.GenericRead | Hid.GenericWrite);
+        _write = Hid.Open(Path, Hid.GenericRead | Hid.GenericWrite);
+        if (_read.IsInvalid || _write.IsInvalid) { Error = "HID açılamadı (" + Marshal.GetLastWin32Error() + ")"; return false; }
+        if (Hid.Caps(_write, out _, out _, out ushort inLen, out ushort outLen)) { _outLen = Math.Max(48, (int)outLen); Bluetooth = inLen > 64 && inLen != 64; }
+        _thread = new Thread(ReadLoop) { IsBackground = true, Name = "DualSense input" };
+        _thread.Start();
+        return true;
+    }
+
+    private void ReadLoop()
+    {
+        var buf = new byte[128];
+        while (!_stop)
+        {
+            if (!Hid.ReadFile(_read!, buf, buf.Length, out int n, IntPtr.Zero) || n <= 0) { if (!_stop) { Error = "okuma kesildi (" + Marshal.GetLastWin32Error() + ")"; } return; }
+            int o = buf[0] == 0x01 ? 1 : buf[0] == 0x31 ? 2 : -1;
+            if (o < 0 || n < o + 40) continue;
+            if (buf[0] == 0x31) Bluetooth = true;
+            var s = new PadState
+            {
+                LX = (buf[o] - 128) / 127f, LY = -(buf[o + 1] - 128) / 127f, RX = (buf[o + 2] - 128) / 127f, RY = -(buf[o + 3] - 128) / 127f,
+                LT = buf[o + 4] / 255f, RT = buf[o + 5] / 255f
+            };
+            byte b0 = buf[o + 7], b1 = buf[o + 8], b2 = buf[o + 9];
+            Btn b = (b0 & 0x0F) switch
+            {
+                0 => Btn.Up, 1 => Btn.Up | Btn.Right, 2 => Btn.Right, 3 => Btn.Right | Btn.Down, 4 => Btn.Down,
+                5 => Btn.Down | Btn.Left, 6 => Btn.Left, 7 => Btn.Left | Btn.Up, _ => Btn.None
+            };
+            if ((b0 & 0x10) != 0) b |= Btn.X; if ((b0 & 0x20) != 0) b |= Btn.A; if ((b0 & 0x40) != 0) b |= Btn.B; if ((b0 & 0x80) != 0) b |= Btn.Y;
+            if ((b1 & 0x01) != 0) b |= Btn.LB; if ((b1 & 0x02) != 0) b |= Btn.RB; if ((b1 & 0x10) != 0) b |= Btn.View; if ((b1 & 0x20) != 0) b |= Btn.Menu;
+            if ((b1 & 0x40) != 0) b |= Btn.LS; if ((b1 & 0x80) != 0) b |= Btn.RS;
+            if ((b2 & 0x01) != 0) b |= Btn.Guide; if ((b2 & 0x02) != 0) b |= Btn.Touchpad; if ((b2 & 0x04) != 0) b |= Btn.Mute;
+            s.Buttons = b;
+            s.DeriveTriggerButtons();
+            if (n >= o + 27)
+            {
+                s.HasMotion = true;
+                s.GyroX = BitConverter.ToInt16(buf, o + 15) / 1024f; s.GyroY = BitConverter.ToInt16(buf, o + 17) / 1024f; s.GyroZ = BitConverter.ToInt16(buf, o + 19) / 1024f;
+                s.AccX = BitConverter.ToInt16(buf, o + 21) / 8192f; s.AccY = BitConverter.ToInt16(buf, o + 23) / 8192f; s.AccZ = BitConverter.ToInt16(buf, o + 25) / 8192f;
+            }
+            if (n >= o + 36)
+            {
+                byte c = buf[o + 32];
+                s.Touching = (c & 0x80) == 0;
+                int x = buf[o + 33] | ((buf[o + 34] & 0x0F) << 8), y = (buf[o + 34] >> 4) | (buf[o + 35] << 4);
+                s.TouchX = x / 1919f; s.TouchY = y / 1079f;
+            }
+            lock (_gate) { _state = s; _lastInputTick = Environment.TickCount64; InputReports++; }
+        }
+    }
+
+    public bool TryRead(out PadState s)
+    {
+        lock (_gate) { s = _state; return InputReports > 0 && Environment.TickCount64 - _lastInputTick < 2000; }
+    }
+
+    /// <summary>Writes the whole output state (USB report 0x02).</summary>
+    public bool Send()
+    {
+        if (_write == null || _write.IsInvalid || Bluetooth) return false;
+        var d = new byte[_outLen];
+        d[0] = 0x02;
+        d[1] = 0x01 | 0x02 | 0x04 | 0x08;       // compatible rumble + haptics select + right + left trigger
+        d[2] = 0x01 | 0x04 | 0x10;              // mic LED, lightbar, player LEDs
+        d[3] = RumbleRight; d[4] = RumbleLeft;
+        d[9] = MicLed;
+        Write(d, 11, RightTrigger); Write(d, 22, LeftTrigger);
+        d[39] = 0x02;                            // lightbar setup valid
+        d[42] = 0x02;                            // light out (take over from the boot animation)
+        d[44] = PlayerLeds; d[45] = Red; d[46] = Green; d[47] = Blue;
+        bool ok = Hid.WriteFile(_write, d, d.Length, out _, IntPtr.Zero);
+        if (ok) OutputReports++; else Error ??= "yazılamadı (" + Marshal.GetLastWin32Error() + ")";
+        return ok;
+    }
+
+    private static void Write(byte[] d, int at, TriggerFx fx) { d[at] = fx.Mode; fx.P.AsSpan(0, 10).CopyTo(d.AsSpan(at + 1)); }
+
+    public void Dispose()
+    {
+        _stop = true;
+        try { RumbleLeft = RumbleRight = 0; LeftTrigger = RightTrigger = TriggerFx.Off; Send(); } catch { }
+        _read?.Dispose(); _write?.Dispose();
+    }
+}
+
+internal static class Hid
+{
+    public const uint GenericRead = 0x80000000, GenericWrite = 0x40000000;
+    [StructLayout(LayoutKind.Sequential)] private struct Attr { public int Size; public ushort Vid, Pid, Version; }
+    [StructLayout(LayoutKind.Sequential)] private struct HidpCaps { public ushort Usage, UsagePage, InLen, OutLen, FeatLen; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)] public ushort[] Res; public ushort a, b, c, d, e, f, g, h, i, j; }
+    [StructLayout(LayoutKind.Sequential)] private struct IfData { public int Size; public Guid Class; public int Flags; public IntPtr Reserved; }
+    [DllImport("hid.dll")] private static extern void HidD_GetHidGuid(out Guid g);
+    [DllImport("hid.dll")] private static extern bool HidD_GetAttributes(SafeFileHandle h, ref Attr a);
+    [DllImport("hid.dll")] private static extern bool HidD_GetPreparsedData(SafeFileHandle h, out IntPtr p);
+    [DllImport("hid.dll")] private static extern bool HidD_FreePreparsedData(IntPtr p);
+    [DllImport("hid.dll")] private static extern int HidP_GetCaps(IntPtr p, ref HidpCaps c);
+    [DllImport("setupapi.dll", SetLastError = true)] private static extern IntPtr SetupDiGetClassDevs(ref Guid g, IntPtr e, IntPtr w, int flags);
+    [DllImport("setupapi.dll", SetLastError = true)] private static extern bool SetupDiEnumDeviceInterfaces(IntPtr set, IntPtr info, ref Guid g, int i, ref IfData d);
+    [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr set, ref IfData d, IntPtr detail, int size, out int req, IntPtr info);
+    [DllImport("setupapi.dll")] private static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern SafeFileHandle CreateFile(string n, uint a, uint s, IntPtr sec, uint d, uint f, IntPtr t);
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool ReadFile(SafeFileHandle h, byte[] b, int len, out int read, IntPtr o);
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool WriteFile(SafeFileHandle h, byte[] b, int len, out int written, IntPtr o);
+
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] private static extern int CM_Locate_DevNode(out uint node, string id, int flags);
+    [DllImport("cfgmgr32.dll")] private static extern int CM_Get_Parent(out uint parent, uint node, int flags);
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] private static extern int CM_Get_Device_ID(uint node, char[] buf, int len, int flags);
+
+    /// <summary>Instance IDs of the device and its parents ("HID\… ← USB\… ← …"), from a HID interface path.</summary>
+    public static string ParentChain(string path)
+    {
+        try
+        {
+            string p = path.StartsWith(@"\\?\") ? path[4..] : path;
+            int g = p.LastIndexOf("#{", StringComparison.Ordinal);
+            if (g > 0) p = p[..g];
+            string id = p.Replace('#', '\\');
+            if (CM_Locate_DevNode(out uint node, id, 0) != 0) return id;
+            var parts = new List<string> { id };
+            var buf = new char[400];
+            for (int i = 0; i < 4 && CM_Get_Parent(out uint parent, node, 0) == 0; i++)
+            {
+                if (CM_Get_Device_ID(parent, buf, buf.Length, 0) != 0) break;
+                parts.Add(new string(buf).TrimEnd((char)0));
+                node = parent;
+            }
+            return string.Join(" ← ", parts);
+        }
+        catch { return path; }
+    }
+
+    public static SafeFileHandle Open(string path, uint access) => CreateFile(path, access, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
+
+    public static IEnumerable<string> Paths()
+    {
+        HidD_GetHidGuid(out var g);
+        IntPtr set = SetupDiGetClassDevs(ref g, IntPtr.Zero, IntPtr.Zero, 0x12);
+        if (set == new IntPtr(-1)) yield break;
+        try
+        {
+            for (int i = 0; ; i++)
+            {
+                var d = new IfData { Size = Marshal.SizeOf<IfData>() };
+                if (!SetupDiEnumDeviceInterfaces(set, IntPtr.Zero, ref g, i, ref d)) break;
+                SetupDiGetDeviceInterfaceDetail(set, ref d, IntPtr.Zero, 0, out int req, IntPtr.Zero);
+                IntPtr buf = Marshal.AllocHGlobal(req);
+                try
+                {
+                    Marshal.WriteInt32(buf, 8);   // cbSize of SP_DEVICE_INTERFACE_DETAIL_DATA_W on x64
+                    if (SetupDiGetDeviceInterfaceDetail(set, ref d, buf, req, out _, IntPtr.Zero))
+                    {
+                        string? p = Marshal.PtrToStringUni(buf + 4);
+                        if (p != null) yield return p;
+                    }
+                }
+                finally { Marshal.FreeHGlobal(buf); }
+            }
+        }
+        finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
+    public static bool Attributes(SafeFileHandle h, out ushort vid, out ushort pid)
+    {
+        var a = new Attr { Size = Marshal.SizeOf<Attr>() };
+        bool ok = HidD_GetAttributes(h, ref a); vid = a.Vid; pid = a.Pid; return ok;
+    }
+
+    public static bool Caps(SafeFileHandle h, out ushort page, out ushort usage, out ushort inLen, out ushort outLen)
+    {
+        page = usage = inLen = outLen = 0;
+        if (!HidD_GetPreparsedData(h, out IntPtr p)) return false;
+        try
+        {
+            var c = new HidpCaps { Res = new ushort[17] };
+            if (HidP_GetCaps(p, ref c) != 0x110000) return false;
+            page = c.UsagePage; usage = c.Usage; inLen = c.InLen; outLen = c.OutLen; return true;
+        }
+        finally { HidD_FreePreparsedData(p); }
+    }
+}
