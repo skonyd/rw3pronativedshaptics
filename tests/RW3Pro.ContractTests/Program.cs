@@ -48,7 +48,7 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
         && o3 == DS && f3 == (pg | ru | tr) && o4 == S && f4 == (pa | tr)
         && o5 == DS && f5 == (pa | ru) && o6 == P && f6 == pa && o7 == X && f7 == (pa | ru),
         "Output matrix clicks: an unsupported row switches to the closest output that has it; a current cell toggles; palms keep one source");
-    Check(OutputMatrix.OnSelect(X, pa | tr) == pa && OutputMatrix.OnSelect(X, OutputFeature.None) == (pa | ru)
+    Check(OutputMatrix.OnSelect(X, pa | tr) == pa && OutputMatrix.OnSelect(X, OutputFeature.None) == (pa | ru | OutputFeature.SynthTriggers)
         && OutputMatrix.OnSelect(DS, pa | ru) == (pa | ru) && OutputMatrix.OnSelect(DS, OutputFeature.None) == (pg | ru | tr)
         && OutputMatrix.OnSelect(P, ru | tr) == pa,
         "Output selector: keeps what still fits, else the output's defaults");

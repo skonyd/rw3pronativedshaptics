@@ -330,6 +330,7 @@ public sealed class SensaStereoPrototype : IDisposable
             long cursor = Features.CompletedSlots;
             SideFeatures lastL = default, lastR = default;
             double lastSourceAt = -1, tickSec = TickMs / 1000.0, next = clock.Elapsed.TotalSeconds;
+            double synthTrigL = 0, synthTrigR = 0, synthDecay = Math.Exp(-tickSec * 10);   // ~100 ms pulses
             int silenceToSend = 0;
             bool wasActive = false;
             _lastRateStamp = Stopwatch.GetTimestamp(); _lastRateTicks = 0;
@@ -399,6 +400,15 @@ public sealed class SensaStereoPrototype : IDisposable
                     leftOn |= mln > 0; rightOn |= mrn > 0;
                 }
                 var (trigL, trigR) = gipMode ? XboxSensa.Triggers() : (0, 0);
+                if (gipMode && XboxSensa.SynthTriggers && !manual)
+                {
+                    // a sound hit (shot, impact, explosion) → a short pulse in that side's trigger motor
+                    double hl = fl.TransientCount > 0 ? fl.T0Amplitude * level : 0, hr = fr.TransientCount > 0 ? fr.T0Amplitude * level : 0;
+                    if (hl > .2) synthTrigL = Math.Max(synthTrigL, Math.Min(1, hl * 1.2));
+                    if (hr > .2) synthTrigR = Math.Max(synthTrigR, Math.Min(1, hr * 1.2));
+                    trigL = Math.Max(trigL, synthTrigL); trigR = Math.Max(trigR, synthTrigR);
+                }
+                synthTrigL *= synthDecay; synthTrigR *= synthDecay;
                 bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
                 bool sendFrame = active || silenceToSend > 0;

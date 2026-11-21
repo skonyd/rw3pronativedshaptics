@@ -36,6 +36,9 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// body motors go through XInput, the game's trigger values go to the trigger motors in the Sensa frame, and the sound
     /// goes to the palms through the Sensa engine (started by the orchestrator), not to the body motors.</summary>
     public bool Strict { get; init; }
+    /// <summary>"RW3'ün tetik titreşimi": trigger-motor pulses from the hits of the game's rumble (and, in the engine, of the sound).</summary>
+    public volatile bool SynthTriggers;
+    private double _rumbleAvgL, _rumbleAvgR, _synthL, _synthR;
     /// <summary>Main page levels for the game's rumble (0..100 %) and trigger motors (0..200 %), applied live.</summary>
     public static volatile int RumblePercent = 100, TriggerPercent = 100;
     /// <summary>Strict path: which pad the game sees (HIDMaestro profile, <see cref="OutputMatrix.Profile"/>).</summary>
@@ -363,6 +366,16 @@ public sealed class XboxAudioGameBridge : IDisposable
                 lock (_gate)
                     frame = XboxGameFeedback.Mix(!_muteTestAudio && now - _soundAt < 250 ? _sound : default,
                         now - _gameAt < 1000 ? _game : default, _includeGameRumble, _includeGameTriggers);
+                if (Strict && SynthTriggers)
+                {
+                    // the game's rumble hits (not its steady hum) → trigger motors, big motor left, small motor right
+                    var g = now - _gameAt < 1000 ? _game : default;
+                    double a = 1 - Math.Exp(-.008 / .35);
+                    _rumbleAvgL += (g.BodyLeft - _rumbleAvgL) * a; _rumbleAvgR += (g.BodyRight - _rumbleAvgR) * a;
+                    _synthL = Math.Max(_synthL * .93, Math.Clamp((g.BodyLeft - _rumbleAvgL) * 1.6, 0, 1));
+                    _synthR = Math.Max(_synthR * .93, Math.Clamp((g.BodyRight - _rumbleAvgR) * 1.6, 0, 1));
+                    frame = frame with { TriggerLeft = Math.Max(frame.TriggerLeft, _synthL), TriggerRight = Math.Max(frame.TriggerRight, _synthR) };
+                }
                 if (_running) _output.Submit(frame, now);
                 if (Strict)
                 {

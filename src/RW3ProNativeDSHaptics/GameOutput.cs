@@ -30,7 +30,10 @@ public enum OutputFeature
     /// <summary>The game's rumble → body motors.</summary>
     GameRumble = 4,
     /// <summary>The game's trigger vibration (Xbox impulse triggers, DualSense trigger effects) → trigger motors.</summary>
-    GameTriggers = 8
+    GameTriggers = 8,
+    /// <summary>RW3 makes trigger-motor vibration itself, from the game's rumble hits and the sound's hits, for pads that
+    /// carry no trigger channel to the game (Xbox 360, PS4). The trigger motors exist only in Xbox mode.</summary>
+    SynthTriggers = 16
 }
 
 public enum FeatureSupport
@@ -42,7 +45,8 @@ public enum FeatureSupport
 }
 
 /// <summary>What the existing pipelines run for an output + feature set.</summary>
-public sealed record OutputPlan(HapticMode Mode, string? VirtualProfile, bool Palms, NativeHapticSource Source, bool Rumble, bool Triggers)
+public sealed record OutputPlan(HapticMode Mode, string? VirtualProfile, bool Palms, NativeHapticSource Source, bool Rumble, bool Triggers,
+    bool SynthTriggers = false)
 {
     public bool NeedsAdmin => VirtualProfile != null || Mode == HapticMode.Native;
 }
@@ -54,7 +58,7 @@ public static class OutputMatrix
         { GameOutput.Physical, GameOutput.Xbox360, GameOutput.XboxSeries, GameOutput.DualShock4, GameOutput.DualSense };
 
     public static readonly OutputFeature[] Features =
-        { OutputFeature.PalmAudio, OutputFeature.PalmGame, OutputFeature.GameRumble, OutputFeature.GameTriggers };
+        { OutputFeature.PalmAudio, OutputFeature.PalmGame, OutputFeature.GameRumble, OutputFeature.GameTriggers, OutputFeature.SynthTriggers };
 
     public static FeatureSupport Support(GameOutput output, OutputFeature feature) => feature switch
     {
@@ -67,6 +71,7 @@ public static class OutputMatrix
             GameOutput.XboxSeries or GameOutput.DualSense => FeatureSupport.Yes,
             _ => FeatureSupport.No
         },
+        OutputFeature.SynthTriggers => output is GameOutput.Xbox360 or GameOutput.DualShock4 ? FeatureSupport.Yes : FeatureSupport.No,
         _ => FeatureSupport.No
     };
 
@@ -94,7 +99,7 @@ public static class OutputMatrix
     {
         GameOutput.Physical => OutputFeature.PalmAudio,
         GameOutput.DualSense => OutputFeature.PalmGame | OutputFeature.GameRumble | OutputFeature.GameTriggers,
-        _ => Normalize(output, OutputFeature.PalmAudio | OutputFeature.GameRumble | OutputFeature.GameTriggers)
+        _ => Normalize(output, OutputFeature.PalmAudio | OutputFeature.GameRumble | OutputFeature.GameTriggers | OutputFeature.SynthTriggers)
     };
 
     /// <summary>The closest output that supports <paramref name="feature"/>: DualSense for its HD haptics; for triggers
@@ -104,6 +109,7 @@ public static class OutputMatrix
         {
             OutputFeature.PalmGame => GameOutput.DualSense,
             OutputFeature.GameTriggers => current == GameOutput.DualShock4 ? GameOutput.DualSense : GameOutput.XboxSeries,
+            OutputFeature.SynthTriggers => current == GameOutput.DualSense ? GameOutput.DualShock4 : GameOutput.Xbox360,
             _ => current == GameOutput.Physical ? GameOutput.Xbox360 : current
         };
 
@@ -138,7 +144,7 @@ public static class OutputMatrix
             GameOutput.Physical => new(palms ? HapticMode.Audio : HapticMode.Normal, null, palms, NativeHapticSource.Off, false, false),
             GameOutput.DualSense => new(HapticMode.Native, null, false,
                 set.HasFlag(OutputFeature.PalmGame) ? NativeHapticSource.Game : palms ? NativeHapticSource.Audio : NativeHapticSource.Off, rumble, triggers),
-            _ => new(HapticMode.Audio, Profile(output), palms, NativeHapticSource.Off, rumble, triggers)
+            _ => new(HapticMode.Audio, Profile(output), palms, NativeHapticSource.Off, rumble, triggers, set.HasFlag(OutputFeature.SynthTriggers))
         };
     }
 
@@ -176,15 +182,16 @@ public static class OutputMatrix
         OutputFeature.PalmGame => "Oyunun HD haptiği",
         OutputFeature.GameRumble => "Oyunun rumble titreşimi",
         OutputFeature.GameTriggers => "Oyunun tetik titreşimi",
+        OutputFeature.SynthTriggers => "RW3'ün tetik titreşimi",
         _ => feature.ToString()
     };
 
     public static string Describe(GameOutput output) => output switch
     {
         GameOutput.Physical => "Oyun Wolverine'i olduğu gibi görür; rumble ve tetik titreşimini oyun kendisi gönderir.",
-        GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler; tetik titreşimi yoktur. Yönetici izni ister.",
+        GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
         GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble + tetik titreşimi. Yönetici izni ister.",
-        GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Tetik titreşimi yoktur. Yönetici izni ister.",
+        GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
         _ => "Oyun bir DualSense görür: HD haptik avuçlarda, tetik efektleri tetik motorlarında. DualSense destekli oyunlar için."
     };
 

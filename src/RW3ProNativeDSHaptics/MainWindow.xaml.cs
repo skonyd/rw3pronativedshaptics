@@ -1216,6 +1216,7 @@ public partial class MainWindow : Window
         OutputFeature.PalmGame => "Avuçlarda; DualSense HD haptiği gönderen oyunlar",
         OutputFeature.GameRumble => "Oyunun normal titreşimi, gövde motorlarında",
         OutputFeature.GameTriggers => "Tetik içi motorlar (kol Xbox modundayken)",
+        OutputFeature.SynthTriggers => "Oyun tetiğe komut gönderemiyorsa: rumble ve sesteki vuruşlardan (Xbox modu)",
         _ => ""
     };
 

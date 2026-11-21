@@ -13,6 +13,9 @@ public static class XboxSensa
 {
     /// <summary>Settings page: in Xbox mode, drive palms and trigger motors through Sensa. Default on.</summary>
     public static volatile bool Enabled = true;
+    /// <summary>"RW3'ün tetik titreşimi" (virtual Xbox 360 / PS4 pads): the engine adds short trigger-motor pulses on the
+    /// side of each sound hit; the virtual pad bridge adds the hits of the game's rumble.</summary>
+    public static volatile bool SynthTriggers;
     /// <summary>The engine has an open GIP route and sends Xbox-mode Sensa frames.</summary>
     public static volatile bool Active;
     private static long _triggers, _triggerTick;

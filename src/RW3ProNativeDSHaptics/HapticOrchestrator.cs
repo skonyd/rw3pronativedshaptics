@@ -194,6 +194,7 @@ public sealed class HapticOrchestrator
             }
             CombinedXbox = combined;
             _virtualPalms = palms;
+            combined.SynthTriggers = XboxSensa.SynthTriggers = plan.SynthTriggers;
             CheckPadHolders(padCreated);
             if (palms)
             {
@@ -274,6 +275,7 @@ public sealed class HapticOrchestrator
         XboxCompanion?.Dispose();
         XboxCompanion = null;
         _padHolders = new();
+        XboxSensa.SynthTriggers = false;
         try { CombinedXbox?.Dispose(); }
         catch (Exception ex) { DiagnosticsService.Error("Xbox köprüsü geri alma", ex); }
         CombinedXbox = null;
@@ -289,6 +291,7 @@ public sealed class HapticOrchestrator
         if (CombinedXbox == null || !UseXboxGameBridge) return false;
         CombinedXbox.IncludeGameRumble = IncludeXboxGameRumble();
         CombinedXbox.IncludeGameTriggers = IncludeXboxGameTriggers();
+        CombinedXbox.SynthTriggers = XboxSensa.SynthTriggers = Plan().SynthTriggers;
         return true;
     }
 
