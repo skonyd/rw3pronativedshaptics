@@ -44,6 +44,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     /// <summary>Strict path: which pad the game sees (HIDMaestro profile, <see cref="OutputMatrix.Profile"/>).</summary>
     public string VirtualProfile { get; init; } = "xbox-360-wired";
     private int _xinputSlot = -1;
+    private int _stalls;
     /// <summary>Virtual Xbox/PS4 pads of this process that currently own a HidHide state.</summary>
     private static int s_hidersAlive;
     /// <summary>A virtual Xbox / PS4 pad of this process currently owns the HidHide state (others must not restore it).</summary>
@@ -254,8 +255,12 @@ public sealed class XboxAudioGameBridge : IDisposable
             {
                 try
                 {
-                    if (_output.CheckTimeout(Environment.TickCount64))
-                        Fail("Xbox giriş watchdog'u motorları durdurdu.");
+                    // A stalled loop (window switch, Alt+Tab, a slow driver call) only silences the motors; the next frame
+                    // resumes them. Stopping the whole bridge here (until 2026-11-22) undid the HidHide state and handed the
+                    // game the real pad mid-session. Only a dead worker thread ends the bridge.
+                    if (_output.CheckTimeout(Environment.TickCount64) && Interlocked.Increment(ref _stalls) <= 5)
+                        DiagnosticsService.Info("Virtual pad: loop stalled > 250 ms, motors silenced (bridge keeps running).");
+                    if (_running && _worker is { IsAlive: false }) Fail("Xbox köprü döngüsü durdu.");
                 }
                 catch (Exception ex) { Fail(ex.Message); }
             }, null, 25, 25);
@@ -274,17 +279,40 @@ public sealed class XboxAudioGameBridge : IDisposable
             lock (_gate) { if (!_running) return; _game = ds4; _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
             return;
         }
-        // Not a Series 0x0F report (the Xbox 360 profile's rumble arrives another way): log the first few shapes.
+        var d = packet.Data.Span;
+        if (TryDecodeXusb(d, out var xusb, out bool ledOnly))
+        {
+            lock (_gate) { if (!_running) return; _game = xusb; _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
+            if (Interlocked.Increment(ref _xusbLogged) <= 4)
+                DiagnosticsService.Info($"Virtual Xbox 360 pad: rumble {Convert.ToHexString(d[..Math.Min(8, d.Length)])} -> big {xusb.BodyLeft:F2} small {xusb.BodyRight:F2}");
+            return;
+        }
+        if (ledOnly) return;   // player-indicator LED command: normal, not rumble
+        // Not a Series 0x0F report: log the first few unknown shapes.
         if (Interlocked.Increment(ref _unknownLogged) <= 6)
             DiagnosticsService.Info($"Virtual Xbox pad: unhandled output {packet.Source} id 0x{packet.ReportId:X2} len {packet.Data.Length}: " +
                 Convert.ToHexString(packet.Data.Span[..Math.Min(16, packet.Data.Length)]));
-        var d = packet.Data.Span;
-        // XUSB set-state as the Xbox 360 profile may hand it over: [.., left, right] motors 0..255 at the end of an 8-byte
-        // 00 08 00 L R 00 00 00 report (the XInput wire format).
-        if (Strict && d.Length >= 5 && d[0] == 0x00 && d[1] == 0x08)
-            lock (_gate) { _game = new(d[3] / 255.0, d[4] / 255.0, 0, 0); _gameAt = Environment.TickCount64; Interlocked.Increment(ref _reports); }
     }
-    private int _unknownLogged;
+    private int _unknownLogged, _xusbLogged;
+
+    /// <summary>
+    /// The Xbox 360 profile's rumble (HIDMaestro hands over the XUSB set-state): 5 bytes
+    /// [device, LED state, big motor, small motor, flags], flags bit 0 = LED, bit 1 = vibration (the XInput driver's
+    /// set-state request); or the 8-byte USB rumble report [00, 08, 00, big, small, 00, 00, 00]. Logged 2026-11-22:
+    /// 00 08 00 00 01 and 00 0D 00 00 01 are LED commands (patterns 0x08 / 0x0D, flag 0x01), not rumble.
+    /// </summary>
+    internal static bool TryDecodeXusb(ReadOnlySpan<byte> d, out BridgeMotorFrame frame, out bool ledOnly)
+    {
+        frame = default; ledOnly = false;
+        if (d.Length == 5)
+        {
+            if ((d[4] & 0x02) == 0) { ledOnly = (d[4] & 0x01) != 0; return false; }
+            frame = new(d[2] / 255.0, d[3] / 255.0, 0, 0);
+            return true;
+        }
+        if (d.Length >= 8 && d[0] == 0x00 && d[1] == 0x08) { frame = new(d[3] / 255.0, d[4] / 255.0, 0, 0); return true; }
+        return false;
+    }
 
     /// <summary>DualShock 4 USB output report 0x05 (data after the ID): [0] flags (bit 0 = rumble valid), [3] right/weak
     /// motor, [4] left/strong motor. No triggers.</summary>
