@@ -363,7 +363,7 @@ public sealed class RangeGame
 
     private void Melee()
     {
-        _fb.Sound(Synth.HPunch(90, .15, 0, .8f, 25), "melee");
+        _fb.Sound(Synth.Melee(), "melee");
         _fb.Haptic(Synth.HPunch(90, .15, 0, 1f, 25), "melee");
         _fb.Rumble(.8f, .2f, .15, why: "melee");
         Say("RS: dipçik darbesi (gövde + haptik)");

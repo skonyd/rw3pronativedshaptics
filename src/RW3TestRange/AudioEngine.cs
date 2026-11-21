@@ -74,7 +74,7 @@ public sealed class SpeakerOutput : ISampleProvider, IDisposable
         int frames = count / 2;
         if (MusicOn) Music.Read(buffer, offset, frames);
         if (SfxOn) Sfx.Mix(buffer, offset, frames); else Sfx.Mix(new float[count], 0, frames);
-        for (int i = 0; i < count; i++) buffer[offset + i] = Math.Clamp(buffer[offset + i], -1f, 1f);
+        for (int i = 0; i < count; i++) buffer[offset + i] = Dsp.Soft(buffer[offset + i]);   // soft limiter, no hard clipping
         return count;
     }
 

@@ -142,7 +142,7 @@ public sealed class MainWindow : Window
 
         KeyDown += OnKey;
         Closing += (_, _) => { SaveReport(false); _fb.Dispose(); _log.Dispose(); };
-        Loaded += (_, _) => { ScanDevices(); CompositionTarget.Rendering += Frame; _log.Event("app-start", new { args }); };
+        Loaded += (_, _) => { _ = Task.Run(Synth.Warm); ScanDevices(); CompositionTarget.Rendering += Frame; _log.Event("app-start", new { args }); };
     }
 
     private static TextBlock Header(string text) => new() { Text = text, FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(0, 16, 0, 6) };

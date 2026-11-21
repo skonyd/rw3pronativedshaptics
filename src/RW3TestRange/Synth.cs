@@ -26,86 +26,156 @@ public static class Synth
         b[2 * i] += v * l; b[2 * i + 1] += v * r;
     }
 
-    // ───────────── speaker sounds ─────────────
+    // ───────────── speaker sounds (layered, filtered, with a short room) ─────────────
 
+    private static readonly Dictionary<string, float[][]> Cache = new();
+
+    /// <summary>A few pre-rendered variants per sound, chosen at random so repeats do not sound identical.</summary>
+    private static float[] Variant(string key, int count, Func<int, float[]> make)
+    {
+        float[][] v;
+        lock (Cache)
+            if (!Cache.TryGetValue(key, out v!)) Cache[key] = v = Enumerable.Range(0, count).Select(make).ToArray();
+        return v[Random.Shared.Next(v.Length)];
+    }
+
+    /// <summary>Gunshot: transient crack + filtered body + low thump (+ string for bow / crossbow), then a room tail.</summary>
     public static float[] Shot(int weapon, float pan = .2f)
     {
-        double len = weapon switch { 2 => .55, 3 => .35, 1 => .18, _ => .3 };
-        var b = Buf(len); int n = b.Length / 2;
-        double body = weapon switch { 2 => 55, 1 => 95, 3 => 140, _ => 80 };
-        float lp = 0;
-        for (int i = 0; i < n; i++)
+        var mono = Variant("shot" + weapon, 3, seed => weapon switch
         {
-            double t = i / (double)Rate;
-            if (weapon == 3)   // bow: string twang
-            {
-                Add(b, i, (float)(Math.Sin(2 * Math.PI * 220 * t) * Math.Exp(-t * 18) * .5 + Math.Sin(2 * Math.PI * 440 * t) * Math.Exp(-t * 30) * .2), pan);
-                continue;
-            }
-            lp += (Noise() - lp) * (weapon == 2 ? .25f : .45f);
-            float crack = lp * (float)Math.Exp(-t * (weapon == 1 ? 45 : 28));
-            float thump = (float)(Math.Sin(2 * Math.PI * body * t * (1 - t * .6)) * Math.Exp(-t * 14));
-            Add(b, i, crack * .8f + thump * .7f, pan);
-        }
-        return b;
+            1 => Gun(seed, .28, crackHz: 2600, bodyHz: 1100, bodyDecay: 30, thumpFrom: 170, thumpTo: 70, thumpGain: .6f, tail: 14),
+            2 => Gun(seed, .7, crackHz: 1500, bodyHz: 700, bodyDecay: 9, thumpFrom: 120, thumpTo: 42, thumpGain: 1.1f, tail: 6),
+            3 => Bow(seed),
+            4 => Crossbow(seed),
+            _ => Gun(seed, .45, crackHz: 2100, bodyHz: 900, bodyDecay: 18, thumpFrom: 150, thumpTo: 55, thumpGain: .8f, tail: 9)
+        });
+        return Dsp.Place(mono, pan, weapon is 3 or 4 ? .12f : .28f, weapon == 2 ? 1.25 : 1, weapon == 2 ? .9 : .6);
     }
 
+    private static float[] Gun(int seed, double len, double crackHz, double bodyHz, double bodyDecay, double thumpFrom, double thumpTo, float thumpGain, double tail)
+    {
+        int n = Dsp.N(len);
+        var crack = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 1), Biquad.HighPass(crackHz)), 180);
+        var body = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 2), Biquad.BandPass(bodyHz, .7)), bodyDecay);
+        var low = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 3), Biquad.LowPass(400)), tail);
+        var thump = Dsp.Sweep(len, thumpFrom, thumpTo, .04, 14);
+        var mix = Dsp.Add(Dsp.Add(Dsp.Add(Dsp.Gain(crack, .7f), body, 1.1f), low, .9f), thump, thumpGain);
+        return Dsp.Finish(mix, .95f);
+    }
+
+    private static float[] Bow(int seed)
+    {
+        var twang = Dsp.Decay(Dsp.String(196 + seed * 4, .6, .6, seed + 11), 7);
+        var swish = new float[Dsp.N(.3)]; var noise = Dsp.Noise(swish.Length, seed + 21); var bp = Biquad.BandPass(1400, 1.5);
+        for (int i = 0; i < swish.Length; i++) { double t = i / (double)Rate; swish[i] = bp.Process(noise[i]) * (float)(Math.Sin(Math.PI * t / .3) * .8); }
+        var thud = Dsp.Sweep(.12, 160, 90, .02, 40);
+        return Dsp.Finish(Dsp.Add(Dsp.Add(twang, swish, .6f, .02), thud, .5f), .85f);
+    }
+
+    private static float[] Crossbow(int seed)
+    {
+        var latch = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.05), seed + 31), Biquad.BandPass(2800, 3)), 120);
+        var twang = Dsp.Decay(Dsp.String(110 + seed * 3, .5, .35, seed + 41, .993), 9);
+        var thump = Dsp.Sweep(.25, 130, 50, .03, 16);
+        return Dsp.Finish(Dsp.Add(Dsp.Add(Dsp.Gain(latch, .8f), twang, 1f, .008), thump, .9f), .95f);
+    }
+
+    /// <summary>Glass: a bright impact, then shards (narrow resonant noise bursts at random high pitches) falling over ~0.4 s.</summary>
     public static float[] Shatter(float pan)
     {
-        var b = Buf(.7); int n = b.Length / 2;
-        var tinkles = Enumerable.Range(0, 14).Select(_ => (at: Rng.NextDouble() * .45, hz: 2500 + Rng.NextDouble() * 4500, p: (float)(pan + (Rng.NextDouble() - .5) * .4))).ToArray();
-        float hp = 0, prev = 0;
-        for (int i = 0; i < n; i++)
+        var mono = Variant("glass", 4, seed =>
         {
-            double t = i / (double)Rate;
-            float x = Noise(); hp = .9f * (hp + x - prev); prev = x;
-            float v = hp * (float)Math.Exp(-t * 9) * .6f;
-            foreach (var k in tinkles)
-                if (t >= k.at) v += (float)(Math.Sin(2 * Math.PI * k.hz * (t - k.at)) * Math.Exp(-(t - k.at) * 40) * .18);
-            Add(b, i, v, pan);
-        }
-        return b;
+            var r = new Random(seed + 100);
+            int n = Dsp.N(.8);
+            var impact = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed + 101), Biquad.HighPass(1800)), 28);
+            var mix = Dsp.Gain(impact, .8f);
+            for (int k = 0; k < 26; k++)
+            {
+                double at = Math.Pow(r.NextDouble(), 1.8) * .45;     // denser at the start
+                double hz = 2800 + r.NextDouble() * 6500;
+                var ping = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.09), seed * 31 + k), Biquad.BandPass(hz, 18)), 35 + r.NextDouble() * 40);
+                mix = Dsp.Add(mix, ping, (float)(3.5 * (1 - at)), at);
+            }
+            var clink = Dsp.Decay(Dsp.Sweep(.25, 4200, 4100, 1, 18), 0);
+            return Dsp.Finish(Dsp.Add(mix, clink, .25f, .03), .8f);
+        });
+        return Dsp.Place(mono, pan, .3f, .8, .5);
     }
 
+    /// <summary>Renders every sound once (background), so the first shot does not stall a frame.</summary>
+    public static void Warm()
+    {
+        for (int w = 0; w < 5; w++) Shot(w);
+        Shatter(0); Reload(); Explosion(0); Heartbeat(); Melee();
+        foreach (var hz in new[] { 1200.0, 1100, 2600, 500 }) Click(hz);
+    }
+
+    /// <summary>Short mechanical click (switch, trigger, crank) centred at <paramref name="hz"/>.</summary>
     public static float[] Click(double hz = 1800, double len = .05, float gain = .5f)
     {
-        var b = Buf(len); int n = b.Length / 2;
-        for (int i = 0; i < n; i++) { double t = i / (double)Rate; Add(b, i, (float)(Math.Sin(2 * Math.PI * hz * t) * Math.Exp(-t * 90)) * gain, 0); }
-        return b;
+        var mono = Variant($"click{hz:0}", 2, seed =>
+        {
+            var tick = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(Math.Max(.03, len)), seed + 200), Biquad.BandPass(hz, 4)), 140);
+            var ring = Dsp.Decay(Dsp.Sweep(Math.Max(.03, len), hz * .55, hz * .5, .01, 70), 0);
+            return Dsp.Finish(Dsp.Add(tick, ring, .35f), 1f, 3);
+        });
+        return Dsp.Gain(Dsp.Place(mono, 0, .08f, .6, .2), gain);
     }
 
-    public static float[] Reload()
+    /// <summary>Magazine out, slide, magazine in with a solid clack.</summary>
+    public static float[] Reload() => Variant("reload", 2, seed =>
     {
-        var a = Click(1400, .06, .5f); var c = Click(900, .08, .6f);
-        var b = Buf(.45);
-        a.CopyTo(b, 0); for (int i = 0; i < c.Length; i++) b[(int)(.28 * Rate) * 2 + i] += c[i];
-        return b;
-    }
+        float[] Metal(double hz, double decay, int s) =>
+            Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.08), s), Biquad.BandPass(hz, 5)), decay), Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.02), s + 1), Biquad.HighPass(4000)), 300), .5f);
+        var slide = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.12), seed + 301), Biquad.BandPass(2600, 1.2)), 25);
+        var m = Dsp.Add(Metal(1500, 90, seed + 310), slide, .35f, .1);
+        m = Dsp.Add(m, Metal(900, 60, seed + 320), 1.2f, .3);
+        m = Dsp.Add(m, Dsp.Sweep(.08, 220, 140, .01, 50), .5f, .3);
+        return Dsp.Place(Dsp.Finish(m, .7f), 0, .1f, .6, .25);
+    });
 
+    /// <summary>Explosion: sub drop, rumbling low noise with a closing filter, sparse debris crackle, big room.</summary>
     public static float[] Explosion(float pan)
     {
-        var b = Buf(1.8); int n = b.Length / 2; float lp = 0;
-        for (int i = 0; i < n; i++)
+        var mono = Variant("boom", 2, seed =>
         {
-            double t = i / (double)Rate;
-            lp += (Noise() - lp) * .06f;
-            float boom = (float)(Math.Sin(2 * Math.PI * (45 - t * 12) * t) * Math.Exp(-t * 2.5));
-            Add(b, i, (lp * 3f * (float)Math.Exp(-t * 2.2) + boom * .8f) * .8f, pan);
-        }
-        return b;
+            int n = Dsp.N(2.2);
+            var noise = Dsp.Noise(n, seed + 400); var lp = Biquad.LowPass(4000); var rumble = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                double t = i / (double)Rate;
+                if (i % 64 == 0) lp.SetLowPass(200 + 3800 * Math.Exp(-t * 3));
+                rumble[i] = lp.Process(noise[i]) * (float)(Math.Min(1, t / .004) * Math.Exp(-t * 1.6));
+            }
+            var sub = Dsp.Sweep(2.2, 70, 28, .3, 1.8);
+            var r = new Random(seed); var debris = new float[n];
+            for (int k = 0; k < 60; k++)
+            {
+                double at = .05 + r.NextDouble() * 1.2;
+                var c = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.03), seed * 97 + k), Biquad.BandPass(1500 + r.NextDouble() * 3000, 3)), 150);
+                debris = Dsp.Add(debris, c, (float)(.25 * Math.Exp(-at * 1.5)), at);
+            }
+            return Dsp.Finish(Dsp.Add(Dsp.Add(Dsp.Gain(rumble, 2.2f), sub, 1.3f), debris, 1), .85f, 40);
+        });
+        return Dsp.Place(mono, pan * .6f, .3f, 1.4, 1.2);
     }
 
-    public static float[] Heartbeat()
+    public static float[] Heartbeat() => Variant("heart", 1, _ =>
     {
-        var b = Buf(.8); int n = b.Length / 2;
-        for (int i = 0; i < n; i++)
-        {
-            double t = i / (double)Rate, v = 0;
-            foreach (double at in new[] { 0, .22 }) if (t >= at) v += Math.Sin(2 * Math.PI * 55 * (t - at)) * Math.Exp(-(t - at) * 22);
-            Add(b, i, (float)v * .6f, 0);
-        }
-        return b;
-    }
+        var lub = Dsp.Filter(Dsp.Sweep(.25, 70, 45, .05, 18), Biquad.LowPass(200));
+        var dub = Dsp.Filter(Dsp.Sweep(.25, 60, 40, .05, 22), Biquad.LowPass(180));
+        return Dsp.Place(Dsp.Finish(Dsp.Add(lub, dub, .75f, .24), .8f, 20), 0, 0);
+    });
+
+    /// <summary>Rifle-butt hit: a short swish and a dull thud.</summary>
+    public static float[] Melee() => Variant("melee", 2, seed =>
+    {
+        var swish = new float[Dsp.N(.18)]; var noise = Dsp.Noise(swish.Length, seed + 500); var bp = Biquad.BandPass(900, 1.2);
+        for (int i = 0; i < swish.Length; i++) swish[i] = bp.Process(noise[i]) * (float)Math.Sin(Math.PI * i / swish.Length) * .6f;
+        var thud = Dsp.Filter(Dsp.Sweep(.25, 120, 60, .02, 22), Biquad.LowPass(500));
+        return Dsp.Place(Dsp.Finish(Dsp.Add(swish, thud, 1.2f, .12), .85f), 0, .1f, .6, .3);
+    });
 
     /// <summary>Speaker channel test: a short tone on one side only.</summary>
     public static float[] Tone(double hz, double seconds, float pan, float gain = .35f)
@@ -217,59 +287,5 @@ public static class Synth
         var r = new float[a.Length + off];
         a.CopyTo(r, off);
         return r;
-    }
-}
-
-/// <summary>
-/// Endless background music (no files): 112 BPM, A minor, bass + kick + hats + chord pad + a lead line.
-/// Its bass and melody are what RW3's audio-to-haptics and melody mode should pick up.
-/// </summary>
-public sealed class MusicGenerator
-{
-    private const double Bpm = 112;
-    private long _n;
-    private float _lp;
-    private readonly Random _rng = new(3);
-    public float Volume = .5f;
-
-    private static readonly int[] Bass = { 0, 0, 7, 0, 5, 5, 3, 7 };          // semitones from A1 per beat pair
-    private static readonly int[][] Chords = { new[] { 0, 3, 7 }, new[] { 5, 8, 12 }, new[] { 3, 7, 10 }, new[] { 7, 10, 14 } };
-    private static readonly int[] Lead = { 12, 15, 19, 17, 15, 12, 10, 12, 15, 17, 19, 22, 19, 17, 15, 12 };
-
-    private static double Hz(double baseHz, int semis) => baseHz * Math.Pow(2, semis / 12.0);
-
-    public void Read(float[] buffer, int offset, int frames)
-    {
-        double beat = 60.0 / Bpm;
-        for (int f = 0; f < frames; f++, _n++)
-        {
-            double t = _n / (double)Synth.Rate;
-            double b = t / beat;                       // beat position
-            int beatIdx = (int)b; double inBeat = b - beatIdx;
-            int bar = beatIdx / 4;
-            // kick on every beat, snare-ish noise on 2 and 4, hats on 8ths
-            double kick = Math.Sin(2 * Math.PI * 50 * inBeat * beat * (1 - inBeat * .5)) * Math.Exp(-inBeat * beat * 18);
-            _lp += ((float)(_rng.NextDouble() * 2 - 1) - _lp) * .5f;
-            double snare = beatIdx % 2 == 1 ? _lp * Math.Exp(-inBeat * beat * 22) * .5 : 0;
-            double half = (b * 2) % 1;
-            double hat = (_rng.NextDouble() * 2 - 1) * Math.Exp(-half * beat * .5 * 60) * .12;
-            // bass: two notes per bar pair
-            int bassSemi = Bass[(beatIdx / 2) % Bass.Length];
-            double bassHz = Hz(55, bassSemi);
-            double bass = (Math.Sin(2 * Math.PI * bassHz * t) * .7 + Math.Sin(2 * Math.PI * bassHz * 2 * t) * .2) * Math.Min(1, (1 - inBeat) * 3);
-            // pad
-            var ch = Chords[bar % Chords.Length]; double pad = 0;
-            foreach (int s in ch) pad += Math.Sin(2 * Math.PI * Hz(220, s) * t) * .06;
-            // lead: eighth notes, every other bar
-            double lead = 0;
-            if (bar % 2 == 1)
-            {
-                int step = (int)(b * 2) % Lead.Length; double inStep = half;
-                lead = Math.Sin(2 * Math.PI * Hz(220, Lead[step]) * t) * Math.Exp(-inStep * 2.5) * .22;
-            }
-            double v = (kick * .8 + snare + hat + bass * .55 + pad + lead) * Volume * .7;
-            float l = (float)(v + lead * .15 * Volume), r = (float)(v - lead * .15 * Volume);
-            buffer[offset + 2 * f] += l; buffer[offset + 2 * f + 1] += r;
-        }
     }
 }
