@@ -1,6 +1,6 @@
 namespace RW3TestRange;
 
-public sealed record Weapon(string Name, int Mag, double Rate, bool Auto, double Spread, byte R, byte G, byte B);
+public sealed record Weapon(string Name, int Mag, double Rate, bool Auto, double Spread, byte R, byte G, byte B, double Reload, string Feel);
 
 /// <summary>
 /// "Şişe Atışı": bottles on three shelves, four weapons, grenades, a 60-second round. Every action sends the feedback a
@@ -15,10 +15,16 @@ public sealed class RangeGame
 
     public static readonly Weapon[] Weapons =
     {
-        new("Tabanca", 12, 0, false, .004, 40, 120, 255),
-        new("Tüfek", 30, 10, true, .012, 40, 255, 90),
-        new("Pompalı", 6, 0, false, .05, 255, 70, 30),
-        new("Yay", 1, 0, false, 0, 200, 60, 255),
+        new("Tabanca", 12, 0, false, .004, 40, 120, 255, 1.2,
+            "R2: yolun %60'ında silah tıkı (0x25). Avuç: kısa, keskin vuruş. Tetik motoru: kısa itme."),
+        new("Tüfek", 30, 10, true, .012, 40, 255, 90, 1.6,
+            "R2: makineli titreşim (0x27), tetik içinde ritim. Avuç: her mermide sağ-sol sırayla geri tepme."),
+        new("Pompalı", 6, 0, false, .05, 255, 70, 30, 1.0,
+            "R2: sert, erken silah tıkı (0x25 güç 8). Avuç: derin patlama + pompa çift tık. İki gövde motoru."),
+        new("Yay", 1, 0, false, 0, 200, 60, 255, .4,
+            "R2: yay efekti (0x22), çektikçe direnç, bırakınca geri tepme. Avuç: gerilim uğultusu yükselir, bırakışta şak."),
+        new("Arbalet", 1, 0, false, .002, 255, 230, 120, 2.0,
+            "R2: en geç ve en sert tık (0x25, bölge 5→8). Doldururken L2 dirençli kurma, avuçta kurma tıkırtıları."),
     };
 
     public readonly List<Bottle> Bottles = new();
@@ -26,24 +32,26 @@ public sealed class RangeGame
     public readonly List<Popup> Popups = new();
     public readonly Queue<string> FeedbackLines = new();
     private readonly FeedbackHub _fb;
+    private readonly GameConfig _cfg;
     private readonly Random _rng = new();
     public double CrossX = .5, CrossY = .5, TimeLeft = 60, Flash, ExplosionAt = -1, ExplosionX, ExplosionY, ExplosionRing;
     public int WeaponIndex, Score, Shots, Hits, Grenades = 3;
     public readonly int[] Ammo = Weapons.Select(w => w.Mag).ToArray();
     public bool Aiming, Paused, Over, Reloading, GyroAim;
     private double _reloadLeft, _fireCooldown, _heartbeat, _spawn, _bowDraw, _bowMax, _bowTick, _grenadeTimer = -1;
-    private bool _rtArmed = true, _lightPulse;
+    private bool _rtArmed = true, _lightPulse, _recoilLeft;
+    private double _crankTick;
 
     public Weapon Current => Weapons[WeaponIndex];
-    public RangeGame(FeedbackHub fb) { _fb = fb; Restart(); }
+    public RangeGame(FeedbackHub fb, GameConfig cfg) { _fb = fb; _cfg = cfg; GyroAim = cfg.GyroAim; Restart(); }
 
     public void Restart()
     {
         Bottles.Clear(); Shards.Clear(); Popups.Clear();
-        TimeLeft = 60; Score = Shots = Hits = 0; Grenades = 3; Over = Paused = false;
+        TimeLeft = _cfg.RoundSeconds; Score = Shots = Hits = 0; Grenades = 3; Over = Paused = false;
         for (int i = 0; i < Ammo.Length; i++) Ammo[i] = Weapons[i].Mag;
         for (int i = 0; i < 9; i++) Spawn();
-        SelectWeapon(0, "round start");
+        SelectWeapon(Array.FindIndex(_cfg.Loadout, x => x) is var first && first >= 0 ? first : 0, "round start");
         SessionLog.Current?.Event("round-start");
     }
 
@@ -66,11 +74,21 @@ public sealed class RangeGame
 
     private float PanOf(double x) => (float)Math.Clamp(x * 2 - 1, -1, 1);
 
+    private int NextInLoadout(int from, int step)
+    {
+        for (int i = 1; i <= Weapons.Length; i++)
+        {
+            int k = ((from + step * i) % Weapons.Length + Weapons.Length) % Weapons.Length;
+            if (_cfg.Loadout[k]) return k;
+        }
+        return from;
+    }
+
     private void SelectWeapon(int index, string why)
     {
         WeaponIndex = (index + Weapons.Length) % Weapons.Length;
         var w = Current;
-        _fb.Adaptive(Aiming ? TriggerFx.Feedback(2, 4) : TriggerFx.Off, R2For(WeaponIndex, Ammo[WeaponIndex] > 0), "weapon " + w.Name);
+        _fb.Adaptive(L2Now(), R2For(WeaponIndex, Ammo[WeaponIndex] > 0), "weapon " + w.Name);
         UpdateLights();
         _fb.Sound(Synth.Click(1200, .04, .3f), "weapon switch");
         _fb.Haptic(Synth.HPunch(220, .04, 0, .4f, 90), "weapon switch");
@@ -78,13 +96,26 @@ public sealed class RangeGame
         SessionLog.Current?.Event("weapon", new { w.Name, why });
     }
 
-    private static TriggerFx R2For(int weapon, bool loaded) => !loaded ? TriggerFx.Off : weapon switch
+    /// <summary>The weapon's R2 effect, scaled by the trigger intensity setting (Off = no effect, like games).</summary>
+    private TriggerFx R2For(int weapon, bool loaded)
     {
-        0 => TriggerFx.Weapon(3, 7, 6),
-        1 => TriggerFx.Machine(2, 9, 6, 3, 25, 1),
-        2 => TriggerFx.Weapon(2, 6, 8),
-        _ => TriggerFx.Bow(1, 8, 6, 8)
-    };
+        if (!loaded || _cfg.Triggers == TriggerIntensity.Off) return TriggerFx.Off;
+        int S(int full) => _cfg.Strength(full);
+        return weapon switch
+        {
+            0 => TriggerFx.Weapon(3, 6, S(6)),
+            1 => TriggerFx.Machine(2, 9, S(6), S(3), 25, 1),
+            2 => TriggerFx.Weapon(2, 5, S(8)),
+            3 => TriggerFx.Bow(1, 8, S(6), S(8)),
+            _ => TriggerFx.Weapon(5, 8, S(8))
+        };
+    }
+
+    /// <summary>L2: aim resistance, or the crossbow's crank while it reloads.</summary>
+    private TriggerFx L2Now() =>
+        _cfg.Triggers == TriggerIntensity.Off ? TriggerFx.Off
+        : Reloading && WeaponIndex == 4 ? TriggerFx.Feedback(0, _cfg.Strength(6))
+        : Aiming ? TriggerFx.Feedback(2, _cfg.Strength(4)) : TriggerFx.Off;
 
     private void UpdateLights()
     {
@@ -115,18 +146,18 @@ public sealed class RangeGame
         if (aimNow != Aiming)
         {
             Aiming = aimNow;
-            _fb.Adaptive(Aiming ? TriggerFx.Feedback(2, 4) : TriggerFx.Off, R2For(WeaponIndex, Ammo[WeaponIndex] > 0), Aiming ? "aim start" : "aim end");
+            _fb.Adaptive(L2Now(), R2For(WeaponIndex, Ammo[WeaponIndex] > 0), Aiming ? "aim start" : "aim end");
             if (Aiming) { _fb.Haptic(Synth.HPunch(200, .03, -.6f, .35f, 120), "aim"); Say("Nişan (L2): L2 direnci açık"); }
         }
         double speed = Aiming ? .35 : .9;
         CrossX += (PadState.Dead(s.LX) * speed + PadState.Dead(s.RX) * .25) * dt;
-        CrossY -= (PadState.Dead(s.LY) * speed + PadState.Dead(s.RY) * .25) * dt;
+        CrossY -= (PadState.Dead(s.LY) * speed + PadState.Dead(s.RY) * .25) * dt * (_cfg.InvertY ? -1 : 1);
         if (GyroAim && s.HasMotion) { CrossX -= s.GyroY * dt * .02; CrossY -= s.GyroX * dt * .02; }
         if (s.Touching && input.Active?.Sony == true) { CrossX = s.TouchX; CrossY = s.TouchY; }
         CrossX = Math.Clamp(CrossX, 0, 1); CrossY = Math.Clamp(CrossY, .05, .95);
 
-        if (input.Pressed(Btn.RB) || input.Pressed(Btn.Right)) SelectWeapon(WeaponIndex + 1, "next");
-        if (input.Pressed(Btn.LB) || input.Pressed(Btn.Left)) SelectWeapon(WeaponIndex - 1, "previous");
+        if (!Reloading && (input.Pressed(Btn.RB) || input.Pressed(Btn.Right))) SelectWeapon(NextInLoadout(WeaponIndex, 1), "next");
+        if (!Reloading && (input.Pressed(Btn.LB) || input.Pressed(Btn.Left))) SelectWeapon(NextInLoadout(WeaponIndex, -1), "previous");
         if (input.Pressed(Btn.Up)) { _fb.RumbleScale = Math.Min(1, _fb.RumbleScale + .25f); Say($"Rumble gücü %{_fb.RumbleScale * 100:0}"); }
         if (input.Pressed(Btn.Down)) { _fb.RumbleScale = Math.Max(0, _fb.RumbleScale - .25f); Say($"Rumble gücü %{_fb.RumbleScale * 100:0}"); }
         if ((input.Pressed(Btn.X) || input.Pressed(Btn.Touchpad)) && !Reloading && Ammo[WeaponIndex] < Current.Mag) StartReload();
@@ -135,7 +166,18 @@ public sealed class RangeGame
         if (input.Pressed(Btn.LS)) { _fb.Haptic(Synth.HSweep(2), "pan test"); _fb.Rumble(.6f, 0, .5, why: "pan test left"); Say("LS: haptik sol→sağ süpürme"); }
         if (input.Pressed(Btn.Mute) && _fb.Speakers != null) { _fb.Speakers.MusicOn = !_fb.Speakers.MusicOn; _fb.MicLed(!_fb.Speakers.MusicOn); Say("Mute: müzik " + (_fb.Speakers.MusicOn ? "açık" : "kapalı")); }
 
-        if (Reloading) { _reloadLeft -= dt; if (_reloadLeft <= 0) FinishReload(); }
+        if (Reloading)
+        {
+            _reloadLeft -= dt;
+            if (WeaponIndex == 4 && (_crankTick -= dt) <= 0)   // crossbow crank: ticks in the palms and the left trigger motor
+            {
+                _crankTick = .22;
+                _fb.Haptic(Synth.HPunch(170, .03, -.5f, .5f, 110), "crossbow crank");
+                _fb.Sound(Synth.Click(1100, .03, .25f), "crossbow crank");
+                _fb.Rumble(0, .1f, .08, lt: .5f);
+            }
+            if (_reloadLeft <= 0) FinishReload();
+        }
         Fire(dt, s);
 
         if (_grenadeTimer >= 0) { _grenadeTimer -= dt; if (_grenadeTimer < 0) Explode(); }
@@ -174,7 +216,9 @@ public sealed class RangeGame
         _fireCooldown -= dt;
         var w = Current;
         if (WeaponIndex == 3) { Bow(dt, s); return; }
-        bool want = w.Auto ? s.RT > .5f && _fireCooldown <= 0 : s.RT > (WeaponIndex == 2 ? .85f : .75f) && _rtArmed;
+        // fire where each R2 effect breaks: pistol ~60 %, shotgun ~50 % (early, heavy), crossbow ~80 % (late)
+        float breakAt = WeaponIndex switch { 2 => .55f, 4 => .85f, _ => .65f };
+        bool want = w.Auto ? s.RT > .5f && _fireCooldown <= 0 : s.RT > breakAt && _rtArmed;
         if (!w.Auto && s.RT < .3f) _rtArmed = true;
         if (!want || Reloading) return;
         _rtArmed = false;
@@ -192,12 +236,21 @@ public sealed class RangeGame
         Flash = .06;
         float pan = PanOf(CrossX);
         _fb.Sound(Synth.Shot(WeaponIndex, pan * .5f), "shot " + w.Name);
-        _fb.Haptic(Synth.HShot(WeaponIndex), "shot " + w.Name);
         switch (WeaponIndex)
         {
-            case 0: _fb.Rumble(.25f, .6f, .12, rt: .8f, why: "pistol"); break;
-            case 1: _fb.Rumble(.2f, .45f, .07, rt: .55f, why: "rifle"); break;
-            case 2: _fb.Rumble(1f, .7f, .35, lt: .35f, rt: 1f, why: "shotgun"); break;
+            case 0:
+                _fb.Haptic(Synth.HShot(0), "shot pistol");
+                _fb.Rumble(.25f, .6f, .12, rt: .8f, why: "pistol"); break;
+            case 1:
+                _recoilLeft = !_recoilLeft;   // automatic recoil walks left-right in the palms
+                _fb.Haptic(Synth.HPunch(120, .07, _recoilLeft ? -.6f : .6f, .85f, 45), "shot rifle");
+                _fb.Rumble(.2f, .45f, .07, rt: .55f, why: "rifle"); break;
+            case 2:
+                _fb.Haptic(Synth.HShot(2), "shot shotgun");
+                _fb.Rumble(1f, .7f, .35, lt: .35f, rt: 1f, why: "shotgun"); break;
+            case 4:
+                _fb.Haptic(Synth.Mix(Synth.HPunch(240, .03, .4f, .6f, 120), Synth.HPunch(55, .3, 0, 1f, 10)), "shot crossbow");
+                _fb.Rumble(.6f, .4f, .2, rt: 1f, why: "crossbow"); break;
         }
         Say($"{w.Name} ateş · rumble + sağ tetik motoru · HD haptik · ses (pan {pan:+0.0;-0.0})");
         int pellets = WeaponIndex == 2 ? 7 : 1;
@@ -207,7 +260,7 @@ public sealed class RangeGame
             double y = CrossY + (_rng.NextDouble() - .5) * w.Spread * (Aiming ? .4 : 1) * (pellets > 1 ? 4 : 1);
             HitAt(x, y, .035);
         }
-        if (Ammo[WeaponIndex] == 0) _fb.Adaptive(Aiming ? TriggerFx.Feedback(2, 4) : TriggerFx.Off, TriggerFx.Off, "magazine empty");
+        if (Ammo[WeaponIndex] == 0) _fb.Adaptive(L2Now(), TriggerFx.Off, "magazine empty");
         if (WeaponIndex == 2 && Ammo[WeaponIndex] > 0) { _fb.Sound(Synth.Shift(Synth.Reload(), .35), "pump"); _fb.Haptic(Synth.Shift(Synth.HReload(), .35), "pump"); }
         UpdateLights();
     }
@@ -221,7 +274,7 @@ public sealed class RangeGame
             if (_bowTick <= 0)
             {
                 _bowTick = .12;
-                _fb.Haptic(Synth.HTension((float)_bowDraw), "bow tension", .8f);
+                _fb.Haptic(Synth.HTension((float)_bowDraw), "bow tension", .6f + .4f * (float)_bowDraw);
                 _fb.Rumble(0, .15f * (float)_bowDraw, .14, rt: .6f * (float)_bowDraw);
             }
             return;
@@ -231,7 +284,7 @@ public sealed class RangeGame
             Shots++; Flash = .04;
             float pan = PanOf(CrossX);
             _fb.Sound(Synth.Shot(3, pan * .5f), "bow release");
-            _fb.Haptic(Synth.HShot(3), "bow release");
+            _fb.Haptic(Synth.Mix(Synth.HShot(3), Synth.HPunch(260, .03, .6f, .7f * (float)_bowMax, 130)), "bow release");
             _fb.Rumble(.2f, .5f, .12, rt: .9f, why: "bow release");
             Say($"Yay bırakıldı (güç %{_bowMax * 100:0}) · R2 yay efekti · sağ tetik motoru");
             HitAt(CrossX, CrossY, .02 + .03 * _bowMax);
@@ -269,7 +322,8 @@ public sealed class RangeGame
 
     private void StartReload()
     {
-        Reloading = true; _reloadLeft = WeaponIndex == 3 ? .4 : 1.2;
+        Reloading = true; _reloadLeft = Current.Reload; _crankTick = 0;
+        if (WeaponIndex == 4) _fb.Adaptive(L2Now(), TriggerFx.Off, "crossbow crank");
         _fb.Sound(Synth.Reload(), "reload");
         _fb.Haptic(Synth.HReload(), "reload");
         _fb.Rumble(.0f, .3f, .08, why: "reload");
@@ -280,7 +334,7 @@ public sealed class RangeGame
     private void FinishReload()
     {
         Reloading = false; Ammo[WeaponIndex] = Current.Mag;
-        _fb.Adaptive(Aiming ? TriggerFx.Feedback(2, 4) : TriggerFx.Off, R2For(WeaponIndex, true), "reloaded");
+        _fb.Adaptive(L2Now(), R2For(WeaponIndex, true), "reloaded");
         UpdateLights();
     }
 

@@ -11,6 +11,10 @@ namespace RW3TestRange;
 public sealed class MainWindow : Window
 {
     private readonly SessionLog _log = new();
+    private readonly GameConfig _cfg = GameConfig.Load();
+    private readonly Grid _table = new();
+    private readonly TextBlock _tableInfo = new() { Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 4, 0, 0) };
+    private readonly TextBlock _rw3Info = new() { Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 6) };
     private readonly FeedbackHub _fb = new();
     private readonly InputHub _input = new();
     private readonly GameSurface _surface = new();
@@ -37,6 +41,7 @@ public sealed class MainWindow : Window
         (Out.DsHid, "DualSense · adaptif tetikler + ışık + LED", "PS5 oyunları gibi: L2/R2 efektleri, ışık çubuğu, oyuncu LED'leri (HD haptik kapalıysa rumble da)."),
         (Out.DsHaptics, "DualSense · HD haptik", "PS5 oyunları gibi: haptik ses kanalı 3/4 (RW3 sanal DualSense → avuçlar)."),
         (Out.DsSpeaker, "DualSense · kolun hoparlörü", "Efektler kolun kendi hoparlöründen de (kanal 1/2)."),
+        (Out.Ds4, "PS4 · DualShock 4 rumble + ışık", "PS4 kolu destekleyen oyunlar gibi: iki motor ve ışık çubuğu (rapor 0x05)."),
     };
 
     public MainWindow(string[] args)
@@ -58,22 +63,58 @@ public sealed class MainWindow : Window
         var rescan = MakeButton("↻ Yeniden tara", (_, _) => ScanDevices());
         rescan.HorizontalAlignment = HorizontalAlignment.Left; rescan.Margin = new Thickness(0, 6, 0, 0);
         stack.Children.Add(rescan);
-        stack.Children.Add(Header("Oyun hangi çıkışları kullansın?"));
-        var presets = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        presets.Children.Add(MakeButton("Xbox oyunu gibi", (_, _) => Preset(Out.Music | Out.Sfx | Out.XInput | Out.GameInput)));
-        presets.Children.Add(MakeButton("DualSense oyunu gibi", (_, _) => Preset(Out.Music | Out.Sfx | Out.DsHid | Out.DsHaptics)));
-        presets.Children.Add(MakeButton("Yalnız ses (sesten titreşim testi)", (_, _) => Preset(Out.Music | Out.Sfx)));
-        presets.Children.Add(MakeButton("Hepsi", (_, _) => Preset(Out.Music | Out.Sfx | Out.XInput | Out.GameInput | Out.DsHid | Out.DsHaptics)));
-        stack.Children.Add(presets);
+        // ── quick table: the pad the game "supports" and its feedback rows (like RW3's matrix) ──
+        stack.Children.Add(Header("Hızlı ayar: oyun hangi kolu destekliyor?"));
+        stack.Children.Add(Muted("Bir sütun seç: oyun o kolu destekleyen gerçek bir oyun gibi davranır (Xbox One/Series → GameInput, Xbox 360 → XInput, PS4 → DualShock 4 raporu, DualSense → adaptif tetik + HD haptik). Hücreye tıkla: satırı aç/kapat; o kolda olmayan satır en yakın destekleyen kola geçer. RW3'te de aynı kolu seç."));
+        var rw3Row = new WrapPanel { Margin = new Thickness(0, 6, 0, 6) };
+        rw3Row.Children.Add(MakeButton("⇄ RW3'teki seçimi kullan", (_, _) => UseRw3Choice()));
+        rw3Row.Children.Add(_rw3Info);
+        stack.Children.Add(rw3Row);
+        stack.Children.Add(new Border { Child = _table, Background = new SolidColorBrush(Color.FromRgb(15, 24, 41)), CornerRadius = new CornerRadius(10), Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 4) });
+        stack.Children.Add(_tableInfo);
+        var manual = new StackPanel();
         foreach (var (flag, title, hint) in Outputs)
         {
-            var cb = new CheckBox { Content = title, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), IsChecked = flag is Out.Music or Out.Sfx };
+            var cb = new CheckBox { Content = title, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            cb.Click += (_, _) => { _cfg.ManualOutputs = Chosen(); _cfg.Save(); RefreshTable(); };
             _outBoxes[flag] = cb;
-            stack.Children.Add(cb);
-            stack.Children.Add(new TextBlock { Text = hint, Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), Margin = new Thickness(22, 0, 0, 0), TextWrapping = TextWrapping.Wrap });
+            manual.Children.Add(cb);
+            manual.Children.Add(Muted(hint, 22));
         }
-        stack.Children.Add(new TextBlock { Text = "DualSense ses uç noktası (HD haptik / hoparlör):", Foreground = Brushes.Gainsboro, Margin = new Thickness(0, 10, 0, 0) });
-        stack.Children.Add(_endpoint);
+        manual.Children.Add(new TextBlock { Text = "DualSense ses uç noktası (HD haptik / hoparlör):", Foreground = Brushes.Gainsboro, Margin = new Thickness(0, 10, 0, 0) });
+        manual.Children.Add(_endpoint);
+        stack.Children.Add(new Expander { Header = "Gelişmiş: çıkışları elle seç (tablo yerine)", Content = manual, Foreground = Brushes.White, Margin = new Thickness(0, 8, 0, 0) });
+
+        // ── weapons ──
+        stack.Children.Add(Header("Silahlar (LB/RB ile aralarında geçilir)"));
+        for (int w = 0; w < RangeGame.Weapons.Length; w++)
+        {
+            int k = w;
+            var cb = new CheckBox { Content = RangeGame.Weapons[w].Name, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), IsChecked = _cfg.Loadout[w] };
+            cb.Click += (_, _) => { _cfg.Loadout[k] = cb.IsChecked == true; if (!_cfg.Loadout.Any(x => x)) { _cfg.Loadout[k] = true; cb.IsChecked = true; } _cfg.Save(); };
+            stack.Children.Add(cb);
+            stack.Children.Add(Muted(RangeGame.Weapons[w].Feel, 22));
+        }
+
+        // ── game settings, as real games offer them ──
+        stack.Children.Add(Header("Oyun ayarları"));
+        var trig = new ComboBox { ItemsSource = new[] { "Kapalı", "Zayıf", "Orta", "Güçlü" }, SelectedIndex = (int)_cfg.Triggers, MinWidth = 140 };
+        trig.SelectionChanged += (_, _) => { _cfg.Triggers = (TriggerIntensity)Math.Max(0, trig.SelectedIndex); _cfg.Save(); };
+        stack.Children.Add(Row("Tetik efekti yoğunluğu", trig));
+        stack.Children.Add(Slider("HD haptik seviyesi", 0, 200, _cfg.HapticPercent, v => _cfg.HapticPercent = v));
+        stack.Children.Add(Slider("Titreşim (rumble) seviyesi", 0, 100, _cfg.RumblePercent, v => _cfg.RumblePercent = v));
+        stack.Children.Add(Slider("Müzik sesi", 0, 100, _cfg.MusicPercent, v => _cfg.MusicPercent = v));
+        stack.Children.Add(Slider("Efekt sesi", 0, 100, _cfg.SfxPercent, v => _cfg.SfxPercent = v));
+        var round = new ComboBox { ItemsSource = new[] { "30 sn", "60 sn", "90 sn", "120 sn", "300 sn" }, MinWidth = 140 };
+        int[] rounds = { 30, 60, 90, 120, 300 };
+        round.SelectedIndex = Math.Max(0, Array.IndexOf(rounds, _cfg.RoundSeconds));
+        round.SelectionChanged += (_, _) => { _cfg.RoundSeconds = rounds[Math.Max(0, round.SelectedIndex)]; _cfg.Save(); };
+        stack.Children.Add(Row("Tur süresi", round));
+        var invert = new CheckBox { Content = "Ters Y ekseni", Foreground = Brushes.White, IsChecked = _cfg.InvertY, Margin = new Thickness(0, 6, 0, 0) };
+        invert.Click += (_, _) => { _cfg.InvertY = invert.IsChecked == true; _cfg.Save(); };
+        stack.Children.Add(invert);
+        _gyro.IsChecked = _cfg.GyroAim;
+        _gyro.Click += (_, _) => { _cfg.GyroAim = _gyro.IsChecked == true; _cfg.Save(); };
         stack.Children.Add(_gyro);
         stack.Children.Add(Header("Başlat"));
         var go = new WrapPanel();
@@ -116,20 +157,142 @@ public sealed class MainWindow : Window
         return b;
     }
 
-    private void Preset(Out o)
+    private static TextBlock Muted(string text, double indent = 0) => new()
     {
-        foreach (var (flag, cb) in _outBoxes) cb.IsChecked = (o & flag) != 0;
-        _log.Event("preset", o.ToString());
+        Text = text, Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(indent, 0, 0, 0)
+    };
+
+    private static FrameworkElement Row(string label, FrameworkElement control)
+    {
+        var p = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var t = new TextBlock { Text = label, Foreground = Brushes.White, Width = 220, VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(t, Dock.Left);
+        p.Children.Add(t); p.Children.Add(control);
+        return p;
+    }
+
+    private FrameworkElement Slider(string label, int min, int max, int value, Action<int> set)
+    {
+        var val = new TextBlock { Foreground = Brushes.White, Width = 50, VerticalAlignment = VerticalAlignment.Center, Text = $"%{value}" };
+        var sl = new System.Windows.Controls.Slider { Minimum = min, Maximum = max, Value = value, TickFrequency = 5, IsSnapToTickEnabled = true, MinWidth = 260, VerticalAlignment = VerticalAlignment.Center };
+        sl.ValueChanged += (_, e) => { set((int)e.NewValue); val.Text = $"%{(int)e.NewValue}"; _cfg.Save(); };
+        var p = new DockPanel();
+        DockPanel.SetDock(val, Dock.Right);
+        p.Children.Add(val); p.Children.Add(sl);
+        return Row(label, p);
+    }
+
+    private static readonly PadProfile[] Profiles = { PadProfile.Physical, PadProfile.Xbox360, PadProfile.XboxSeries, PadProfile.DualShock4, PadProfile.DualSense };
+    private static readonly GameFeature[] Rows = { GameFeature.Music, GameFeature.Sfx, GameFeature.HdHaptics, GameFeature.Rumble, GameFeature.Triggers };
+
+    /// <summary>Closest profile with a feature: HD haptics → DualSense; triggers → Series from the Xbox side, DualSense from PS4.</summary>
+    private static PadProfile BestFor(GameFeature f, PadProfile from) =>
+        GameConfig.Supports(from, f) ? from : f == GameFeature.HdHaptics ? PadProfile.DualSense
+        : f == GameFeature.Triggers ? (from == PadProfile.DualShock4 ? PadProfile.DualSense : PadProfile.XboxSeries) : from;
+
+    private void ClickCell(PadProfile column, GameFeature f)
+    {
+        var target = column;
+        if (!GameConfig.Supports(target, f)) target = BestFor(f, target);
+        if (!GameConfig.Supports(target, f)) return;
+        bool switching = target != _cfg.Profile || _cfg.ManualOutputs != null;
+        var set = _cfg.Features;
+        if (switching) set |= f; else set ^= f;
+        foreach (var row in Rows) if (!GameConfig.Supports(target, row)) set &= ~row;
+        _cfg.Profile = target; _cfg.Features = set; _cfg.ManualOutputs = null; _cfg.Save();
+        _log.Event("quick-table", new { profile = target.ToString(), features = set.ToString() });
+        RefreshTable();
+    }
+
+    private void SelectProfile(PadProfile p)
+    {
+        var set = _cfg.Features;
+        if (p == PadProfile.DualSense && _cfg.Profile != PadProfile.DualSense) set |= GameFeature.HdHaptics | GameFeature.Triggers;
+        if (p is PadProfile.XboxSeries or PadProfile.Physical && _cfg.Profile is not (PadProfile.XboxSeries or PadProfile.Physical)) set |= GameFeature.Triggers;
+        foreach (var row in Rows) if (!GameConfig.Supports(p, row)) set &= ~row;
+        _cfg.Profile = p; _cfg.Features = set; _cfg.ManualOutputs = null; _cfg.Save();
+        _log.Event("quick-table", new { profile = p.ToString(), features = set.ToString() });
+        RefreshTable();
+    }
+
+    private void UseRw3Choice()
+    {
+        var r = GameConfig.FromRw3();
+        if (r == null) { _rw3Info.Text = "RW3 ayarı okunamadı (RW3 kurulu ve bir kez açılmış olmalı)."; return; }
+        _cfg.Profile = r.Value.Profile; _cfg.Features = r.Value.Features; _cfg.ManualOutputs = null; _cfg.Save();
+        _rw3Info.Text = r.Value.Text;
+        _log.Note("RW3 seçimi kullanıldı: " + r.Value.Text);
+        RefreshTable();
+    }
+
+    private static readonly Brush CellAccent = new SolidColorBrush(Color.FromRgb(61, 123, 255));
+    private static readonly Brush CellPanel = new SolidColorBrush(Color.FromRgb(34, 48, 77));
+    private static readonly Brush CellCurrent = new SolidColorBrush(Color.FromRgb(23, 36, 67));
+    private static readonly Brush CellMuted = new SolidColorBrush(Color.FromRgb(147, 162, 191));
+
+    /// <summary>Draws the quick table and syncs the manual output checkboxes with it.</summary>
+    private void RefreshTable()
+    {
+        var g = _table;
+        g.Children.Clear(); g.ColumnDefinitions.Clear(); g.RowDefinitions.Clear();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        foreach (var _ in Profiles) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        bool table = _cfg.ManualOutputs == null;
+        for (int c = 0; c < Profiles.Length; c++)
+        {
+            var p = Profiles[c];
+            var head = new Button
+            {
+                Content = GameConfig.Label(p), Margin = new Thickness(3), Padding = new Thickness(4, 6, 4, 6), FontWeight = FontWeights.SemiBold,
+                Background = p == _cfg.Profile && table ? CellAccent : CellPanel, Foreground = Brushes.White, BorderThickness = new Thickness(0)
+            };
+            head.Click += (_, _) => SelectProfile(p);
+            Grid.SetColumn(head, c + 1);
+            g.Children.Add(head);
+        }
+        for (int r = 0; r < Rows.Length; r++)
+        {
+            var f = Rows[r];
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var label = new TextBlock { Text = GameConfig.Label(f), Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
+            Grid.SetRow(label, r + 1); g.Children.Add(label);
+            for (int c = 0; c < Profiles.Length; c++)
+            {
+                var p = Profiles[c];
+                bool supported = GameConfig.Supports(p, f), current = p == _cfg.Profile && table, on = current && _cfg.Features.HasFlag(f);
+                var cell = new Button
+                {
+                    Content = supported ? (current ? (on ? "●" : "○") : "✓") : "—",
+                    Margin = new Thickness(3), Padding = new Thickness(0, 5, 0, 5), FontSize = 15, BorderThickness = new Thickness(1), BorderBrush = CellPanel,
+                    Background = on ? CellAccent : current ? CellCurrent : Brushes.Transparent,
+                    Foreground = on ? Brushes.White : CellMuted,
+                    ToolTip = !supported ? $"{GameConfig.Label(p)} kolunda yok · tıkla: {GameConfig.Label(BestFor(f, p))} kola geç ve aç"
+                        : current ? (on ? "Açık · tıkla: kapat" : "Kapalı · tıkla: aç") : $"tıkla: {GameConfig.Label(p)} kola geç ve aç"
+                };
+                cell.Click += (_, _) => ClickCell(p, f);
+                Grid.SetRow(cell, r + 1); Grid.SetColumn(cell, c + 1);
+                g.Children.Add(cell);
+            }
+        }
+        var outs = EffectiveOutputs();
+        foreach (var (flag, cb) in _outBoxes) cb.IsChecked = (outs & flag) != 0;
+        _tableInfo.Text = !table
+            ? "Elle seçilmiş çıkışlar kullanılıyor (tablodan bir hücreye tıklayınca tabloya döner): " + outs
+            : $"Oyun şöyle davranacak: {GameConfig.Label(_cfg.Profile)} destekli oyun · çıkışlar: {outs}";
     }
 
     private Out Chosen() => _outBoxes.Where(kv => kv.Value.IsChecked == true).Aggregate(Out.None, (a, kv) => a | kv.Key);
+
+    private Out EffectiveOutputs() => _cfg.ManualOutputs ?? GameConfig.OutputsFor(_cfg.Profile, _cfg.Features);
 
     /// <summary>Finds every pad and output the game can use, and (re)opens them.</summary>
     private void ScanDevices()
     {
         _fb.StopAll();
         foreach (var ds in _fb.DualSenses) ds.Dispose();
-        _fb.DualSenses.Clear(); _fb.XPads.Clear(); _input.Sources.Clear();
+        foreach (var p in _fb.Ds4s) p.Dispose();
+        _fb.DualSenses.Clear(); _fb.Ds4s.Clear(); _fb.XPads.Clear(); _input.Sources.Clear();
         _fb.GameInput?.Dispose(); _fb.GameInput = new GameInputHub();
         var sb = new StringBuilder();
         foreach (var x in XInputPad.Present()) { _fb.XPads.Add(x); _input.Sources.Add(x); sb.AppendLine("XInput      " + x.Name); }
@@ -145,10 +308,18 @@ public sealed class MainWindow : Window
             if (ds.Open()) { _fb.DualSenses.Add(ds); _input.Sources.Add(ds); }
             sb.AppendLine($"DualSense   {ds.Name}{(ds.Error != null ? " · " + ds.Error : "")}\n            {ds.ParentIds}");
         }
+        foreach (var p in DualShock4Hid.FindAll())
+        {
+            if (p.Open()) { _fb.Ds4s.Add(p); _input.Sources.Add(p); }
+            sb.AppendLine($"DualShock 4 {p.Name}{(p.Error != null ? " · " + p.Error : "")}");
+        }
         var eps = HapticOutput.Endpoints();
         _endpoint.ItemsSource = eps.Select(e => e.Name).ToList();
         _endpoint.Tag = eps;
-        if (eps.Count > 0) _endpoint.SelectedIndex = 0;
+        if (eps.Count > 0) _endpoint.SelectedIndex = Math.Max(0, eps.FindIndex(e => e.Name == _cfg.EndpointName));
+        RefreshTable();
+        var rw3 = GameConfig.FromRw3();
+        _rw3Info.Text = rw3 != null ? "Şu an " + rw3.Value.Text : "RW3 ayarı bulunamadı.";
         foreach (var e in eps) sb.AppendLine("Ses 4 kanal " + e.Name);
         if (eps.Count == 0) sb.AppendLine("Ses 4 kanal DualSense uç noktası yok (HD haptik / kol hoparlörü kullanılamaz)");
         if (_fb.DualSenses.Count == 0) sb.AppendLine("DualSense   HID yok (adaptif tetik / ışık kullanılamaz)");
@@ -162,8 +333,14 @@ public sealed class MainWindow : Window
 
     private void ApplyOutputs()
     {
-        _fb.Enabled = Chosen();
-        _fb.Speakers!.SfxOn = _fb.Has(Out.Sfx);
+        _fb.Enabled = EffectiveOutputs();
+        _fb.RumbleOn = _cfg.ManualOutputs != null || _cfg.Features.HasFlag(GameFeature.Rumble);
+        _fb.TriggersOn = (_cfg.ManualOutputs != null || _cfg.Features.HasFlag(GameFeature.Triggers)) && _cfg.Triggers != TriggerIntensity.Off;
+        _fb.RumbleScale = _cfg.RumblePercent / 100f;
+        _fb.HapticGain = _cfg.HapticPercent / 100f;
+        _fb.SfxGain = _cfg.SfxPercent / 100f;
+        _fb.Speakers!.Music.Volume = _cfg.MusicPercent / 100f * .8f;
+        _fb.Speakers.SfxOn = _fb.Has(Out.Sfx);
         _fb.Speakers.MusicOn = _fb.Has(Out.Music) && _screen == Screen.Game;
         if (_fb.Has(Out.DsHaptics) || _fb.Has(Out.DsSpeaker))
         {
@@ -176,7 +353,8 @@ public sealed class MainWindow : Window
             }
             if (_fb.HapticOut == null) _log.Note("HD haptik seçili ama DualSense ses uç noktası yok.");
         }
-        _log.Event("outputs", _fb.Enabled.ToString());
+        if (_endpoint.SelectedItem is string epName) { _cfg.EndpointName = epName; _cfg.Save(); }
+        _log.Event("outputs", new { outputs = _fb.Enabled.ToString(), profile = _cfg.Profile.ToString(), features = _cfg.Features.ToString(), triggers = _cfg.Triggers.ToString(), _cfg.HapticPercent, _cfg.RumblePercent, loadout = string.Join(",", _cfg.Loadout) });
     }
 
     private void Enter(Screen s)
@@ -188,7 +366,7 @@ public sealed class MainWindow : Window
         _surface.Mode = s;
         _log.Event("screen", s.ToString());
         _log.Note("Ekran: " + s + " · çıkışlar: " + _fb.Enabled);
-        if (s == Screen.Game) { _game = new RangeGame(_fb) { GyroAim = _gyro.IsChecked == true }; _surface.Game = _game; }
+        if (s == Screen.Game) { _game = new RangeGame(_fb, _cfg); _surface.Game = _game; }
         if (s == Screen.Guided) { _surface.GuidedPhase = "idle"; }
         if (s == Screen.Setup) { _fb.StopAll(); if (_fb.Speakers != null) _fb.Speakers.MusicOn = false; }
         Focus();
@@ -302,7 +480,8 @@ public sealed class MainWindow : Window
     private void SaveReport(bool open)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("── Çıkışlar ── " + Chosen());
+        sb.AppendLine($"── Oyun profili ── {GameConfig.Label(_cfg.Profile)} · satırlar {_cfg.Features} · çıkışlar {EffectiveOutputs()}{(_cfg.ManualOutputs != null ? " (elle)" : "")}");
+        sb.AppendLine($"── Ayarlar ── tetik {_cfg.Triggers} · haptik %{_cfg.HapticPercent} · rumble %{_cfg.RumblePercent} · müzik %{_cfg.MusicPercent} · efekt %{_cfg.SfxPercent} · tur {_cfg.RoundSeconds} sn · silahlar {string.Join(", ", RangeGame.Weapons.Where((w, i) => _cfg.Loadout[i]).Select(w => w.Name))}");
         sb.AppendLine("── Kollar ──\n" + _devices.Text);
         sb.AppendLine("── Geri bildirim testi ──");
         foreach (var t in FeedbackTests.All)

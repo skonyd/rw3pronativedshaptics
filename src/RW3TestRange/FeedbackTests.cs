@@ -16,9 +16,9 @@ public static class FeedbackTests
 
     public static readonly FeedbackTest[] All =
     {
-        new("body-left", "Sol gövde motoru (büyük)", "Sol tutamaçta güçlü, derin titreşim var mı?", Out.XInput | Out.GameInput | Out.DsHid, 1.2,
+        new("body-left", "Sol gövde motoru (büyük)", "Sol tutamaçta güçlü, derin titreşim var mı?", Out.XInput | Out.GameInput | Out.DsHid | Out.Ds4, 1.2,
             fb => fb.Rumble(1, 0, 1.2, why: "test body-left")),
-        new("body-right", "Sağ gövde motoru (küçük)", "Sağ tutamaçta hafif, hızlı titreşim var mı?", Out.XInput | Out.GameInput | Out.DsHid, 1.2,
+        new("body-right", "Sağ gövde motoru (küçük)", "Sağ tutamaçta hafif, hızlı titreşim var mı?", Out.XInput | Out.GameInput | Out.DsHid | Out.Ds4, 1.2,
             fb => fb.Rumble(0, 1, 1.2, why: "test body-right")),
         new("trig-left", "Sol tetik motoru (LT)", "Sol TETİĞİN İÇİNDE titreşim var mı? (GameInput)", Out.GameInput, 1.2,
             fb => fb.Rumble(0, 0, 1.2, lt: 1, why: "test trigger-left")),
@@ -46,7 +46,7 @@ public static class FeedbackTests
             fb => fb.Haptic(Synth.HMelody(), "test hd-melody")),
         new("hd-hits", "HD haptik: vuruşlar", "Silah, cam ve patlama vuruşları ayırt ediliyor mu?", Out.DsHaptics, 3,
             fb => { fb.Haptic(Synth.HShot(0), "test hd-hits"); fb.Haptic(Synth.Shift(Synth.HShatter(0), .7), "test hd-hits"); fb.Haptic(Synth.Shift(Synth.HExplosion(0), 1.4), "test hd-hits"); }),
-        new("light", "Işık çubuğu renkleri", "Işık çubuğu kırmızı → yeşil → mavi oldu mu?", Out.DsHid, 3,
+        new("light", "Işık çubuğu renkleri", "Işık çubuğu kırmızı → yeşil → mavi oldu mu?", Out.DsHid | Out.Ds4, 3,
             fb => { fb.Light(255, 0, 0, 0b00100, "test light"); Later(1, () => fb.Light(0, 255, 0, 0b01010, "test light")); Later(2, () => fb.Light(0, 0, 255, 0b11111, "test light")); }),
         new("leds", "Oyuncu LED'leri", "Alt LED'ler 1 → 5 doldu mu?", Out.DsHid, 3,
             fb => { byte[] m = { 0b00100, 0b01010, 0b01110, 0b11011, 0b11111 }; for (int i = 0; i < 5; i++) { byte v = m[i]; Later(i * .5, () => fb.Light(40, 120, 255, v, "test leds")); } }),

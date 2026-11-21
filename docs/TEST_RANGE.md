@@ -6,7 +6,40 @@ without a commercial game. It does not use RW3's code: it talks to whatever pad 
 Start: `tools\run-test-range.cmd` (or `src\RW3TestRange\bin\Release\net10.0-windows\RW3TestRange.exe`).
 Window any size; F11 or View / Create = full screen; Esc = back to the start screen.
 
-## Outputs (start screen, several at once)
+## Quick table (start screen)
+
+Same idea as RW3's "Oyuna görünen kol" matrix, from the game's side: pick the pad the game **supports**
+(Xbox kolun kendisi, Xbox 360, Xbox Series, PS4, DualSense) and the feedback rows (Müzik, Efekt sesleri, HD haptik,
+Rumble, Tetik titreşimi / efekti). The game then uses the paths a real game with that support would use:
+
+| Column | Paths |
+| --- | --- |
+| Xbox (kolun kendisi), Xbox Series | GameInput: body motors + LT/RT trigger motors |
+| Xbox 360 | XInput: two body motors (no trigger row) |
+| PS4 | DualShock 4 output report 0x05: rumble + lightbar (no trigger row) |
+| DualSense | output report 0x02 (adaptive triggers, light, LEDs, compatible rumble) + HD haptics on channels 3/4 |
+
+A cell of another column switches to it; a row the column lacks switches to the closest column that has it.
+"⇄ RW3'teki seçimi kullan" reads RW3's `settings.json` (Output / Features) and sets the same column. "Gelişmiş" keeps
+the manual output checkboxes (they override the table until a cell is clicked).
+
+## Weapons (choose the loadout; LB/RB switches)
+
+| Weapon | DualSense R2 | Palms (HD haptics) | Trigger motors (GameInput) |
+| --- | --- | --- | --- |
+| Tabanca | weapon 0x25, click at ~60 % | short, sharp hit | short right push |
+| Tüfek | machine 0x27 (rhythm in the trigger) | recoil alternating left / right | rhythmic right |
+| Pompalı | heavy, early weapon 0x25 (strength 8) | deep blast + pump double click | both body motors + both triggers |
+| Yay | bow 0x22 (resistance, snap-back) | tension hum rising with the pull, snap on release | right trigger tension ramp |
+| Arbalet | latest, hardest weapon click (zones 5→8) | mechanism click + heavy thump; crank ticks while reloading (L2 resistance) | right push; left ticks while cranking |
+
+## Game settings
+
+Tetik efekti yoğunluğu (Kapalı / Zayıf / Orta / Güçlü, scales every trigger effect like the PS5 setting), HD haptik
+seviyesi (0–200 %), titreşim seviyesi, müzik / efekt sesi (also what RW3's audio-to-haptics hears), tur süresi,
+ters Y, jiroskopla nişan. Saved in `%LOCALAPPDATA%\RW3TestRange\config.json`; the session summary lists them.
+
+## Outputs (advanced, several at once)
 
 | Checkbox | What the game sends | Typical real game |
 | --- | --- | --- |
@@ -17,8 +50,9 @@ Window any size; F11 or View / Create = full screen; Esc = back to the start scr
 | DualSense · adaptif tetik + ışık + LED | USB output report 0x02: trigger effects (0x21 feedback, 0x25 weapon, 0x26 vibration, 0x22 bow, 0x27 machine, 0x23 galloping), lightbar, player LEDs, mic LED; compatible rumble when HD haptics are off | PS5 ports |
 | DualSense · HD haptik | PCM on channels 3/4 of the pad's 4-channel audio endpoint | PS5 ports |
 | DualSense · kolun hoparlörü | effects also on channels 1/2 | PS5 ports |
+| PS4 · DualShock 4 | output report 0x05: rumble + lightbar | PS4-pad games |
 
-Presets: "Xbox oyunu gibi", "DualSense oyunu gibi", "Yalnız ses", "Hepsi". Input: every XInput slot, GameInput
+Input: every XInput slot, GameInput
 gamepad and DualSense HID (real or RW3's virtual one) is read; the pad used last drives the game.
 
 ## Screens

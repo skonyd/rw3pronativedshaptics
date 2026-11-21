@@ -300,3 +300,101 @@ internal static class Hid
         finally { HidD_FreePreparsedData(p); }
     }
 }
+
+/// <summary>
+/// A DualShock 4 on USB HID (real 054C:05C4 / 09CC, or RW3's virtual PS4 pad). Input report 0x01, output report 0x05:
+/// [1] flags (0x01 rumble, 0x02 light), [4] right (weak) motor, [5] left (strong) motor, [6..8] lightbar RGB.
+/// </summary>
+public sealed class DualShock4Hid : IPadSource
+{
+    public string Path { get; }
+    private SafeFileHandle? _read, _write;
+    private volatile bool _stop;
+    private PadState _state;
+    private long _lastTick;
+    private readonly object _gate = new();
+    private int _outLen = 32;
+    public long InputReports { get; private set; }
+    public long OutputReports { get; private set; }
+    public string? Error { get; private set; }
+    public byte RumbleLeft, RumbleRight, Red = 0, Green = 60, Blue = 255;
+    public bool Virtual { get; private init; }
+    public string ParentIds { get; private init; } = "";
+
+    private DualShock4Hid(string path) => Path = path;
+    public string Name => Virtual ? "DualShock 4 (sanal, RW3)" : "DualShock 4";
+    public string Kind => "dualshock4";
+    public bool Sony => true;
+    public bool Connected => _read != null && !_read.IsInvalid && Error == null;
+
+    public static List<DualShock4Hid> FindAll()
+    {
+        var list = new List<DualShock4Hid>();
+        foreach (var path in Hid.Paths())
+        {
+            using var h = Hid.Open(path, 0);
+            if (h.IsInvalid) continue;
+            if (!Hid.Attributes(h, out ushort vid, out ushort pid) || vid != 0x054C || pid is not (0x05C4 or 0x09CC or 0x0BA0)) continue;
+            if (!Hid.Caps(h, out ushort page, out ushort usage, out _, out _) || page != 1 || usage != 5) continue;
+            string parent = Hid.ParentChain(path);
+            list.Add(new DualShock4Hid(path) { ParentIds = parent, Virtual = !parent.Contains("USB\\", StringComparison.OrdinalIgnoreCase) && !parent.Contains("BTH", StringComparison.OrdinalIgnoreCase) });
+        }
+        return list;
+    }
+
+    public bool Open()
+    {
+        _read = Hid.Open(Path, Hid.GenericRead | Hid.GenericWrite);
+        _write = Hid.Open(Path, Hid.GenericRead | Hid.GenericWrite);
+        if (_read.IsInvalid || _write.IsInvalid) { Error = "HID açılamadı (" + Marshal.GetLastWin32Error() + ")"; return false; }
+        if (Hid.Caps(_write, out _, out _, out _, out ushort outLen) && outLen > 0) _outLen = outLen;
+        new Thread(ReadLoop) { IsBackground = true, Name = "DS4 input" }.Start();
+        return true;
+    }
+
+    private void ReadLoop()
+    {
+        var buf = new byte[128];
+        while (!_stop)
+        {
+            if (!Hid.ReadFile(_read!, buf, buf.Length, out int n, IntPtr.Zero) || n <= 0) { if (!_stop) Error = "okuma kesildi"; return; }
+            if (buf[0] != 0x01 || n < 40) continue;
+            var s = new PadState
+            {
+                LX = (buf[1] - 128) / 127f, LY = -(buf[2] - 128) / 127f, RX = (buf[3] - 128) / 127f, RY = -(buf[4] - 128) / 127f,
+                LT = buf[8] / 255f, RT = buf[9] / 255f
+            };
+            byte b0 = buf[5], b1 = buf[6], b2 = buf[7];
+            Btn b = (b0 & 0x0F) switch
+            {
+                0 => Btn.Up, 1 => Btn.Up | Btn.Right, 2 => Btn.Right, 3 => Btn.Right | Btn.Down, 4 => Btn.Down,
+                5 => Btn.Down | Btn.Left, 6 => Btn.Left, 7 => Btn.Left | Btn.Up, _ => Btn.None
+            };
+            if ((b0 & 0x10) != 0) b |= Btn.X; if ((b0 & 0x20) != 0) b |= Btn.A; if ((b0 & 0x40) != 0) b |= Btn.B; if ((b0 & 0x80) != 0) b |= Btn.Y;
+            if ((b1 & 0x01) != 0) b |= Btn.LB; if ((b1 & 0x02) != 0) b |= Btn.RB; if ((b1 & 0x10) != 0) b |= Btn.View; if ((b1 & 0x20) != 0) b |= Btn.Menu;
+            if ((b1 & 0x40) != 0) b |= Btn.LS; if ((b1 & 0x80) != 0) b |= Btn.RS;
+            if ((b2 & 0x01) != 0) b |= Btn.Guide; if ((b2 & 0x02) != 0) b |= Btn.Touchpad;
+            s.Buttons = b; s.DeriveTriggerButtons();
+            s.HasMotion = true;
+            s.GyroX = BitConverter.ToInt16(buf, 13) / 1024f; s.GyroY = BitConverter.ToInt16(buf, 15) / 1024f; s.GyroZ = BitConverter.ToInt16(buf, 17) / 1024f;
+            s.AccX = BitConverter.ToInt16(buf, 19) / 8192f; s.AccY = BitConverter.ToInt16(buf, 21) / 8192f; s.AccZ = BitConverter.ToInt16(buf, 23) / 8192f;
+            s.Touching = (buf[35] & 0x80) == 0;
+            s.TouchX = (buf[36] | ((buf[37] & 0x0F) << 8)) / 1919f; s.TouchY = ((buf[37] >> 4) | (buf[38] << 4)) / 941f;
+            lock (_gate) { _state = s; _lastTick = Environment.TickCount64; InputReports++; }
+        }
+    }
+
+    public bool TryRead(out PadState s) { lock (_gate) { s = _state; return InputReports > 0 && Environment.TickCount64 - _lastTick < 2000; } }
+
+    public bool Send()
+    {
+        if (_write == null || _write.IsInvalid) return false;
+        var d = new byte[_outLen];
+        d[0] = 0x05; d[1] = 0x07; d[4] = RumbleRight; d[5] = RumbleLeft; d[6] = Red; d[7] = Green; d[8] = Blue;
+        bool ok = Hid.WriteFile(_write, d, d.Length, out _, IntPtr.Zero);
+        if (ok) OutputReports++; else Error ??= "yazılamadı (" + Marshal.GetLastWin32Error() + ")";
+        return ok;
+    }
+
+    public void Dispose() { _stop = true; try { RumbleLeft = RumbleRight = 0; Send(); } catch { } _read?.Dispose(); _write?.Dispose(); }
+}

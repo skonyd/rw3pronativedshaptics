@@ -15,7 +15,9 @@ public enum Out
     /// <summary>DualSense HD haptics: PCM on channels 3/4 of the pad's audio endpoint.</summary>
     DsHaptics = 32,
     /// <summary>Sound effects also on the DualSense's own speaker (channels 1/2).</summary>
-    DsSpeaker = 64
+    DsSpeaker = 64,
+    /// <summary>DualShock 4 HID report 0x05: rumble + lightbar.</summary>
+    Ds4 = 128
 }
 
 /// <summary>
@@ -34,6 +36,13 @@ public sealed class FeedbackHub : IDisposable
     public readonly List<XInputPad> XPads = new();
     public GameInputHub? GameInput;
     public readonly List<DualSenseHid> DualSenses = new();
+    public readonly List<DualShock4Hid> Ds4s = new();
+    /// <summary>Quick-table rows: the game's rumble / trigger feedback on or off (game setting).</summary>
+    public bool RumbleOn = true, TriggersOn = true;
+    /// <summary>Game settings: HD haptic level (0..2).</summary>
+    public float HapticGain = 1;
+    /// <summary>Game settings: effect volume (0..1).</summary>
+    public float SfxGain = 1;
     public SpeakerOutput? Speakers;
     public HapticOutput? HapticOut;
     public float RumbleScale = 1;
@@ -62,6 +71,8 @@ public sealed class FeedbackHub : IDisposable
                 low = Math.Max(low, e.Low * k); high = Math.Max(high, e.High * k); lt = Math.Max(lt, e.Lt * k); rt = Math.Max(rt, e.Rt * k);
             }
         low *= RumbleScale; high *= RumbleScale; lt *= RumbleScale; rt *= RumbleScale;
+        if (!RumbleOn) low = high = 0;
+        if (!TriggersOn) lt = rt = 0;
         _sinceSend += dt;
         bool zero = low + high + lt + rt < .01f;
         bool changed = Math.Abs(low - _sLow) > .03f || Math.Abs(high - _sHigh) > .03f || Math.Abs(lt - _sLt) > .03f || Math.Abs(rt - _sRt) > .03f;
@@ -72,17 +83,24 @@ public sealed class FeedbackHub : IDisposable
         if (Has(Out.XInput)) foreach (var p in XPads) if (p.Rumble(low, high)) SessionLog.Current?.Count("xinput writes");
         if (Has(Out.GameInput) && GameInput != null)
             foreach (var d in GameInput.Devices) if (d.Rumble(low, high, lt, rt)) SessionLog.Current?.Count("gameinput writes");
-        if (Has(Out.DsHid) && !Has(Out.DsHaptics))
+        if (Has(Out.DsHid) && RumbleOn)
             foreach (var ds in DualSenses)
             {
                 ds.RumbleLeft = (byte)(low * 255); ds.RumbleRight = (byte)(high * 255);
                 if (ds.Send()) SessionLog.Current?.Count("dualsense reports (rumble)");
+            }
+        if (Has(Out.Ds4))
+            foreach (var p in Ds4s)
+            {
+                p.RumbleLeft = (byte)(low * 255); p.RumbleRight = (byte)(high * 255);
+                if (p.Send()) SessionLog.Current?.Count("dualshock4 reports (rumble)");
             }
     }
 
     public void Adaptive(TriggerFx left, TriggerFx right, string why)
     {
         if (!Has(Out.DsHid)) return;
+        if (!TriggersOn) { left = TriggerFx.Off; right = TriggerFx.Off; }
         foreach (var ds in DualSenses)
         {
             if (ds.LeftTrigger.Mode == left.Mode && ds.LeftTrigger.P.SequenceEqual(left.P) && ds.RightTrigger.Mode == right.Mode && ds.RightTrigger.P.SequenceEqual(right.P)) continue;
@@ -94,6 +112,9 @@ public sealed class FeedbackHub : IDisposable
 
     public void Light(byte r, byte g, byte b, byte playerLeds, string why)
     {
+        if (Has(Out.Ds4))
+            foreach (var p in Ds4s)
+                if (p.Red != r || p.Green != g || p.Blue != b) { p.Red = r; p.Green = g; p.Blue = b; if (p.Send()) SessionLog.Current?.Count("dualshock4 reports (light)"); }
         if (!Has(Out.DsHid)) return;
         foreach (var ds in DualSenses)
         {
@@ -114,14 +135,14 @@ public sealed class FeedbackHub : IDisposable
     public void Haptic(float[] stereo, string why, float gain = 1)
     {
         if (!Has(Out.DsHaptics) || HapticOut == null) return;
-        HapticOut.Haptics.Play(stereo, gain);
+        HapticOut.Haptics.Play(stereo, gain * HapticGain);
         SessionLog.Current?.Count("hd haptic clips");
         SessionLog.Current?.Event("hd-haptic", new { why, seconds = Math.Round(stereo.Length / 2.0 / Synth.Rate, 3), gain });
     }
 
     public void Sound(float[] stereo, string why, float gain = 1)
     {
-        if (Has(Out.Sfx) && Speakers != null) { Speakers.Sfx.Play(stereo, gain); SessionLog.Current?.Count("sfx played"); }
+        if (Has(Out.Sfx) && Speakers != null) { Speakers.Sfx.Play(stereo, gain * SfxGain); SessionLog.Current?.Count("sfx played"); }
         if (Has(Out.DsSpeaker) && HapticOut != null) HapticOut.PadSpeaker.Play(stereo, gain * .7f);
         SessionLog.Current?.Event("sfx", new { why });
     }
@@ -132,6 +153,7 @@ public sealed class FeedbackHub : IDisposable
         if ((mask & Out.XInput) != 0 && Has(Out.XInput)) parts.Add($"XInput×{XPads.Count}");
         if ((mask & Out.GameInput) != 0 && Has(Out.GameInput)) parts.Add($"GameInput×{GameInput?.Devices.Count ?? 0}");
         if ((mask & Out.DsHid) != 0 && Has(Out.DsHid)) parts.Add($"DualSense×{DualSenses.Count}");
+        if ((mask & Out.DsHid) != 0 && Has(Out.Ds4)) parts.Add($"DS4×{Ds4s.Count}");
         return string.Join(",", parts);
     }
 
@@ -141,6 +163,7 @@ public sealed class FeedbackHub : IDisposable
         foreach (var p in XPads) p.Rumble(0, 0);
         if (GameInput != null) foreach (var d in GameInput.Devices) d.Rumble(0, 0, 0, 0);
         foreach (var ds in DualSenses) { ds.RumbleLeft = ds.RumbleRight = 0; ds.LeftTrigger = ds.RightTrigger = TriggerFx.Off; ds.Send(); }
+        foreach (var p in Ds4s) { p.RumbleLeft = p.RumbleRight = 0; p.Send(); }
         HapticOut?.Haptics.Clear();
         _sentNonZero = false; _sLow = _sHigh = _sLt = _sRt = 0;
     }
@@ -150,6 +173,7 @@ public sealed class FeedbackHub : IDisposable
         try { StopAll(); } catch { }
         foreach (var p in XPads) p.Dispose();
         foreach (var ds in DualSenses) ds.Dispose();
+        foreach (var p in Ds4s) p.Dispose();
         GameInput?.Dispose();
         Speakers?.Dispose();
         HapticOut?.Dispose();
