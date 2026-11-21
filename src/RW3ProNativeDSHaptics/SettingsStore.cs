@@ -54,6 +54,8 @@ public sealed class UserSettings
     public bool XboxRumbleFallback { get; set; } = true;
     /// <summary>Experimental: in Xbox mode also hide the pad from GameInput (GDK / Game Pass games), see VirtualDualSenseBridge.StrictHide.</summary>
     public bool XboxStrictHide { get; set; }
+    /// <summary>The HIDMaestro pad the "Xbox Series" output creates (OutputMatrix.SeriesPadTypes); games accept different ones.</summary>
+    public string XboxSeriesProfile { get; set; } = OutputMatrix.DefaultSeriesProfile;
     /// <summary>The first-start guide was answered or closed. False shows it on the next start.</summary>
     public bool GuideDone { get; set; }
     /// <summary>While the virtual DualSense runs, hide the physical Xbox pad from games (HidHide).</summary>

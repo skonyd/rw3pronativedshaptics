@@ -174,6 +174,9 @@ public partial class MainWindow : Window
         ControllerFocusGuard.FallbackEnabled = _settings.XboxRumbleFallback;
         VirtualDualSenseBridge.StrictHide = _settings.XboxStrictHide;
         XboxStrictHide.IsChecked = _settings.XboxStrictHide;
+        OutputMatrix.SeriesProfile = _settings.XboxSeriesProfile;
+        SeriesTypeCombo.ItemsSource = OutputMatrix.SeriesPadTypes;
+        SeriesTypeCombo.SelectedValue = OutputMatrix.SeriesProfile;
         AudioRumbleFallback.IsChecked = NativeRumbleFallback.IsChecked = _settings.XboxRumbleFallback;
         UpdateOutputMethodStatus();
         AudioHapticsBridge.SyncDelaySetting = _settings.AudioSyncDelayMs;
@@ -1194,6 +1197,7 @@ public partial class MainWindow : Window
             row++;
         }
         OutputHint.Text = OutputMatrix.Describe(_output);
+        SeriesTypeRow.Visibility = _output == GameOutput.XboxSeries ? Visibility.Visible : Visibility.Collapsed;
         ShowOutputWarning();
         // Level sliders for the game's feedback rows that RW3 drives (not "by the game" on the Wolverine itself).
         bool rumbleRow = _features.HasFlag(OutputFeature.GameRumble) && OutputMatrix.Support(_output, OutputFeature.GameRumble) == FeatureSupport.Yes;
@@ -2387,6 +2391,18 @@ public partial class MainWindow : Window
         SettingsBasicPanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
         SettingsAdvancedPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         if (advanced) { UpdateAudioSyncStatus(); UpdateOutputMethodStatus(); }
+    }
+
+    /// <summary>Another Series pad type: saved, and a running virtual pad is recreated (the plan's profile changes).
+    /// The game sees it only after its own restart.</summary>
+    private void SeriesType_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized || SeriesTypeCombo.SelectedValue is not string profile || profile == OutputMatrix.SeriesProfile) return;
+        OutputMatrix.SeriesProfile = profile;
+        _settings.XboxSeriesProfile = OutputMatrix.SeriesProfile;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Series kol türü", ex); }
+        DiagnosticsService.Info("Xbox Series pad type: " + OutputMatrix.SeriesProfile + ".");
+        if (_output == GameOutput.XboxSeries) ApplyOutputToControls();   // VirtualProfile changed: restarts the pad
     }
 
     private void XboxStrictHide_Changed(object sender, RoutedEventArgs e)

@@ -51,6 +51,12 @@ public sealed record OutputPlan(HapticMode Mode, string? VirtualProfile, bool Pa
     public bool NeedsAdmin => VirtualProfile != null || Mode == HapticMode.Native;
 }
 
+/// <summary>One HIDMaestro pad the "Xbox Series" output can be.</summary>
+public sealed record SeriesPadType(string Profile, string Label, string Ids)
+{
+    public string Display => Label + "  (" + Ids + ")";
+}
+
 /// <summary>Pure rules of the output selector and the feature matrix (no UI, contract-tested).</summary>
 public static class OutputMatrix
 {
@@ -148,11 +154,34 @@ public static class OutputMatrix
         };
     }
 
+    /// <summary>The HIDMaestro Xbox One/Series pads the user can try for <see cref="GameOutput.XboxSeries"/>: all carry
+    /// impulse triggers, but a game may accept only some of them (Banishers opened the Series BT pad and ignored its
+    /// input, E-20261122-03).</summary>
+    public static readonly SeriesPadType[] SeriesPadTypes =
+    {
+        new("xbox-series-xs-bt", "Xbox Series X|S · Bluetooth", "045E:0B13"),
+        new("xbox-series-xs", "Xbox Series X|S · USB", "045E:0B12"),
+        new("xbox-one-s", "Xbox One S · USB", "045E:02EA"),
+        new("xbox-one-s-bt", "Xbox One S · Bluetooth", "045E:02FD"),
+        new("xbox-elite-v2", "Xbox Elite Series 2 · USB", "045E:0B00"),
+        new("xbox-elite-v2-bt", "Xbox Elite Series 2 · Bluetooth", "045E:0B05")
+    };
+
+    public const string DefaultSeriesProfile = "xbox-series-xs-bt";
+
+    /// <summary>The chosen Series pad type (from the settings at start; unknown ids fall back to the default).</summary>
+    public static string SeriesProfile
+    {
+        get => s_seriesProfile;
+        set => s_seriesProfile = Array.Exists(SeriesPadTypes, t => t.Profile == value) ? value! : DefaultSeriesProfile;
+    }
+    private static string s_seriesProfile = DefaultSeriesProfile;
+
     /// <summary>HIDMaestro profile of a virtual pad output.</summary>
     public static string? Profile(GameOutput output) => output switch
     {
         GameOutput.Xbox360 => "xbox-360-wired",
-        GameOutput.XboxSeries => "xbox-series-xs-bt",
+        GameOutput.XboxSeries => SeriesProfile,
         GameOutput.DualShock4 => "dualshock-4-v2",
         _ => null
     };
@@ -202,7 +231,7 @@ public static class OutputMatrix
             ? "Xbox modunda Game Pass oyunları, tarayıcılar ve Claude/Codex öndeyken Windows avuçları (Sensa) susturur. Avuçlar için sanal bir kol seçebilirsin."
             : null,
         GameOutput.Xbox360 => "Deneysel: oyunda henüz denenmedi. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
-        GameOutput.XboxSeries => "Deneysel: oyunda henüz doğrulanmadı. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
+        GameOutput.XboxSeries => "Deneysel: oyunda henüz doğrulanmadı. Oyun kolu görmüyorsa aşağıdan başka bir kol türü dene. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
         GameOutput.DualShock4 => "Deneysel: oyunda henüz denenmedi. Oyun PS4 kolunu desteklemiyorsa kol tepki vermez. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
         _ => null
     };

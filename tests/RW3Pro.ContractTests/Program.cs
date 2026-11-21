@@ -60,6 +60,14 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
         && pl5.VirtualProfile == "xbox-series-xs-bt" && pl5.Palms && pl5.Rumble && pl5.Triggers
         && OutputMatrix.Profile(D4) == "dualshock-4-v2",
         "Output plan: maps onto the Normal/Audio/Native pipelines and the virtual pad profile");
+    OutputMatrix.SeriesProfile = "xbox-one-s";
+    bool seriesPicked = OutputMatrix.Plan(S, pa | tr).VirtualProfile == "xbox-one-s" && OutputMatrix.Profile(X) == "xbox-360-wired";
+    OutputMatrix.SeriesProfile = "not-a-profile";
+    bool seriesFallback = OutputMatrix.SeriesProfile == OutputMatrix.DefaultSeriesProfile;
+    OutputMatrix.SeriesProfile = OutputMatrix.DefaultSeriesProfile;
+    Check(seriesPicked && seriesFallback && OutputMatrix.SeriesPadTypes.Length == 6
+        && Array.TrueForAll(OutputMatrix.SeriesPadTypes, t => t.Profile.StartsWith("xbox-") && t.Ids.StartsWith("045E:")),
+        "Series pad type: the chosen HIDMaestro profile drives only the Series output; unknown ids fall back to Series BT");
     Check(OutputMatrix.FromLegacy(HapticMode.Normal, null, true, true) == (P, OutputFeature.None)
         && OutputMatrix.FromLegacy(HapticMode.Audio, null, true, true) == (P, pa)
         && OutputMatrix.FromLegacy(HapticMode.Native, NativeHapticSource.Game, true, false) == (DS, pg | ru)

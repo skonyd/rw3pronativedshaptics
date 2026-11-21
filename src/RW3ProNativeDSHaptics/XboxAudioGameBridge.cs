@@ -460,11 +460,13 @@ public sealed class XboxAudioGameBridge : IDisposable
     [System.Runtime.InteropServices.DllImport("xinput1_4.dll", EntryPoint = "#108")]
     private static extern uint XInputGetCapabilitiesEx(uint one, uint user, uint flags, out CapsEx caps);
 
-    /// <summary>HIDMaestro's Xbox 360 (045E:028E) and Series BT (045E:0B13) pads. After a replug the physical pad's slot
-    /// is gone for a moment and the scan found the virtual pad (2026-11-15, "back on XInput slot 1").</summary>
+    /// <summary>HIDMaestro's Xbox pads (360 045E:028E and the selectable One/Series/Elite types, OutputMatrix.SeriesPadTypes,
+    /// plus the USB Series pad's driver PID 02FF). After a replug the physical pad's slot is gone for a moment and the
+    /// scan found the virtual pad (2026-11-15, "back on XInput slot 1").</summary>
     private static bool IsVirtualPad(int slot)
     {
-        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 && c.Vid == 0x045E && c.Pid is 0x028E or 0x0B13; }
+        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 && c.Vid == 0x045E &&
+                     c.Pid is 0x028E or 0x0B13 or 0x0B12 or 0x02FF or 0x02EA or 0x02FD or 0x0B00 or 0x0B05; }
         catch { return false; }
     }
 
