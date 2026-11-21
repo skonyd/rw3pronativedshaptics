@@ -1,10 +1,12 @@
 # Roadmap — 2026-11-08 (top section updated 2026-11-11)
 
-**Firmware lab, 2026-11-21:** [basic-frame Cortex-M IRQ replay](firmware/CORTEX_M_IRQ.md)
-and the [15-stage validation](firmware/validation/20261122-fpu.json)
-extend the stock/candidate simulator, now including bounded eager/lazy
-FP frames and stock Sensa timer IRQs on an explicitly selected M4.
-Next: system exceptions, authentic peripheral responses and event timing. Full-device
+**Firmware lab, 2026-11-22:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
+[DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
+[16-stage validation](firmware/validation/20261122-dma-preemption.json)
+extend the stock/candidate simulator with original DMA and nested motor
+handlers on an explicitly selected M4. Next: compile candidate Sensa
+frame construction/publication, test ownership under preemption, then
+resolve actual peripheral responses and event timing. Full-device
 equivalence, image placement, bootloader acceptance and recovery remain open.
 
 **2026-11-11:**

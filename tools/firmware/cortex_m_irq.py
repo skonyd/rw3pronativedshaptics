@@ -32,6 +32,7 @@ class CortexMInterrupts(InterruptEnableModel):
         self.trace, self.frames, self.servicing, self.preempt = [], [], False, None
         self.instructions = 0
         self.context_restart = False
+        self.level_sources = {}
         cpu.mem_write(CCR, struct.pack("<I", 0x200))
         cpu.hook_add(UC_HOOK_MEM_READ, self.read_nvic, begin=ISPR, end=IPR + 63)
         cpu.hook_add(UC_HOOK_MEM_WRITE, self.write_nvic, begin=ISPR, end=IPR + 63)
@@ -63,6 +64,12 @@ class CortexMInterrupts(InterruptEnableModel):
         return not self.active or ignore_active or self.group_priority(priority) < self.group_priority(self.priorities[self.active[-1]])
 
     def choose(self, *, ignore_primask=False, ignore_active=False):
+        # External levels are sampled at harness instruction boundaries.
+        # A still-asserted source can re-pend after return; an acknowledged
+        # source cannot invent another interrupt. This is not cycle timing.
+        for irq, asserted in self.level_sources.items():
+            if irq not in self.active and asserted():
+                self.pend(irq)
         eligible = [irq for irq in range(IRQ_COUNT) if self.pending & (1 << irq) and
                     self.allows(self.cpu, irq, ignore_primask=ignore_primask, ignore_active=ignore_active)]
         return min(eligible, key=lambda irq: (self.priorities[irq], irq)) if eligible else None

@@ -25,6 +25,8 @@ class CortexMFpuInterrupts(CortexMInterrupts):
         self.lazy_frame = None
         self.fp_trace = []
         self.total_instructions = 0
+        self.executing, self.foreground_irq = False, False
+        self.foreground_dispatches = 0
         for address in (FPCCR, FPCAR, FPDSCR):
             cpu.hook_add(UC_HOOK_MEM_READ, self.read_fp, begin=address, end=address + 3)
             cpu.hook_add(UC_HOOK_MEM_WRITE, self.write_fp, begin=address, end=address + 3)
@@ -114,20 +116,35 @@ class CortexMFpuInterrupts(CortexMInterrupts):
             self.context_restart = True
             cpu.emu_stop()
 
+    def before_instruction(self, cpu, pc, size, data):
+        if self.executing and not self.servicing and self.choose() is not None:
+            self.foreground_irq = True
+            cpu.emu_stop()
+            return
+        super().before_instruction(cpu, pc, size, data)
+
     def execute(self, start, end, instruction_limit=20000):
         """Foreground execution with bounded restarts after FP context creation."""
         verify(not self.servicing and not self.active, "Foreground execution during IRQ service")
         initial = self.total_instructions
-        pc = start
-        while True:
-            remaining = instruction_limit - (self.total_instructions - initial)
-            verify(remaining > 0, "Foreground FP instruction budget exhausted")
-            self.context_restart = False
-            self.cpu.emu_start(pc | 1, end, count=remaining)
-            if not self.context_restart:
-                verify(self.cpu.reg_read(arm_const.UC_ARM_REG_PC) == end, "Foreground FP execution did not reach its endpoint")
-                return
-            pc = self.cpu.reg_read(arm_const.UC_ARM_REG_PC)
+        verify(not self.executing, "Nested foreground execution API call")
+        pc, self.executing = start, True
+        try:
+            while True:
+                remaining = instruction_limit - (self.total_instructions - initial)
+                verify(remaining > 0, "Foreground FP instruction budget exhausted")
+                self.context_restart = self.foreground_irq = False
+                self.cpu.emu_start(pc | 1, end, count=remaining)
+                if self.foreground_irq:
+                    remaining = instruction_limit - (self.total_instructions - initial)
+                    verify(remaining > 0, "Foreground FP instruction budget exhausted")
+                    self.foreground_dispatches += self.service(instruction_limit=remaining)
+                elif not self.context_restart:
+                    verify(self.cpu.reg_read(arm_const.UC_ARM_REG_PC) == end, "Foreground FP execution did not reach its endpoint")
+                    return
+                pc = self.cpu.reg_read(arm_const.UC_ARM_REG_PC)
+        finally:
+            self.executing = False
 
     def unstack_extension(self, address, expected):
         if expected & 0x10:

@@ -52,6 +52,7 @@ class Replay:
         cpu.mem_write(0x8000, image)
         cpu.mem_map(0x20000000, 0x28000)
         self.steps = 0
+        self.execution_model = None
         if dsp is not None:
             verify(0 < len(dsp) <= 4096, "Invalid simulator DSP binary size")
             cpu.mem_map(DSP, 4096)
@@ -67,7 +68,11 @@ class Replay:
         cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
         for reg, value in zip((UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3), args):
             cpu.reg_write(reg, value)
-        cpu.emu_start(entry | 1, end, count=instruction_limit)
+        if self.execution_model is None:
+            cpu.emu_start(entry | 1, end, count=instruction_limit)
+        else:
+            verify(self.execution_model.cpu is cpu, "Execution model belongs to another CPU")
+            self.execution_model.execute(entry, end, instruction_limit)
         verify(cpu.reg_read(UC_ARM_REG_PC) == end, f"Routine 0x{entry:X} did not reach 0x{end:X}")
 
     def tick(self, pcm, streaming, primed, slot, alternate=False, enabled=True):
@@ -680,7 +685,8 @@ def check_stock_dma_descriptor(image, dsp):
             "candidate_enabled_strengths": enabled_strengths}
 
 
-def check_continuous_dma(image, dsp, blocks, arrival_ticks=None, replay=None, on_block=None, tail_ticks=25):
+def check_continuous_dma(image, dsp, blocks, arrival_ticks=None, replay=None, on_block=None, tail_ticks=25,
+                         irq_dispatch=None):
     """Run the stock USB producer and generated DMA descriptor ring together."""
     if replay is None:
         replay = initialize_stock_dma(image, dsp)
@@ -728,10 +734,13 @@ def check_continuous_dma(image, dsp, blocks, arrival_ticks=None, replay=None, on
         address = link
         active = struct.unpack("<4I", cpu.mem_read(address, 16))
         irq_status = 0x60 if flags & 0x20 else 0x58
-        for offset in (0x48, 0x58, 0x60):
-            cpu.mem_write(dma + offset, struct.pack("<I", channel_bit if offset in (0x48, irq_status) else 0))
-        cpu.ctl_flush_tb()
-        replay.call(0xC478, RETURN)
+        if irq_dispatch is None:
+            for offset in (0x48, 0x58, 0x60):
+                cpu.mem_write(dma + offset, struct.pack("<I", channel_bit if offset in (0x48, irq_status) else 0))
+            cpu.ctl_flush_tb()
+            replay.call(0xC478, RETURN)
+        else:
+            irq_dispatch(irq_status, channel_bit)
         if on_block is not None:
             on_block(tick, source, fifo)
 

@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 15 stages passed with the local pinned images on 2026-11-22,
+All 16 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-fpu.json)
+The [public validation summary](firmware/validation/20261122-dma-preemption.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -189,6 +189,21 @@ select and assert M4. Earlier reports predate this correction.
 System exceptions, general FPU-control manipulation, physical event
 timing and full NVIC cycle behavior remain open. The new FP model has
 explicit policy bounds; no whole-device equivalence follows.
+The [DMA/DSP preemption extension](firmware/DMA_DSP_PREEMPTION.md) now
+runs the original DMA0/I²S/TX handler, compiled tap and worker with
+nested stock motor timers. Six continuous cases preserve PCM delivery,
+PWM/DSP traces and 81,192 stock RAM bytes against the direct-call path.
+Twelve worker cases and seven DMA-register checks cover busy/released
+mailboxes, masks, eager/lazy nesting, error/recovery and explicit unknown
+readback inputs. The main cases check 6,056 balanced returns without
+host context restoration. Injected stacked R0/S0 corruption fails.
+Stock reads write-only INTENCLR: readbacks 0/0x80 leave modeled enables
+0x6000, while 0xFFFFFFFF leaves 0x2000. The physical readback and channel
+14 behavior are unverified. The one-slot haptic tap skips new copies
+when busy; audio-byte preservation does not prove zero haptic loss.
+Candidate Sensa frames are still assembled by the harness. Next move
+their construction/publication into the compiled module and test its
+ownership under preemption; image placement and real timing stay open.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen

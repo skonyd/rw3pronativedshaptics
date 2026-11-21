@@ -1,0 +1,909 @@
+{
+  "date": "2026-11-22",
+  "scope": "offline stock and candidate replay with modeled peripherals",
+  "complete": true,
+  "passed": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "546a033a943faeb4566e9b0fa21ce280700f24f04475fd2bb062deff7f492ab1",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "tool_source_lf_sha256": {
+    "tools/firmware/cortex_m_irq.py": "074c83fe0c385047ce97d56346bcfb22c69e5afd2416b983230c7cc74bc99d09",
+    "tools/firmware/cortex_m_fpu.py": "3da7488a2f844d732eaff4e3d1f5196d0099e0982650f4191bb7b9db4e1bf706",
+    "tools/firmware/nxp_dma_status.py": "1b286205f3ea86b01bed2fd26e56abe3545a14b01c0df8eac78bc56cb41e5f1c",
+    "tools/firmware/replay_nxp_exceptions.py": "97695d5fa50067f08202e7a50a42f54a4a89edbbc10862a2ecfae3401fc8c15c",
+    "tools/firmware/replay_nxp_fpu.py": "e4e3a1e915d3642ecbbb31c96eeb67688a42ae67d5627b4f41497c27b9b0ddaf",
+    "tools/firmware/replay_nxp_dma_preemption.py": "ed1efbb98883d4bc8822f2cc74e46c0fc3e2977e9fbdd2896e5ca029cb3412f2",
+    "tools/firmware/replay_nxp_startup.py": "4af80bd96df85a2d84374a39050382c8e68ad6d082f141ff1eb88c7801f1e3c7",
+    "tools/firmware/simulate_audio_haptics.py": "edd4af0c11f773365a1ffa1890fa6f71d038cd33059ad0e6f17784a4e1d8de27",
+    "tools/firmware/run_simulator_suite.py": "e0b538a283a87a0d45088f3b13c5d36bf4775af8ec06dee4756994c2d64cae7f"
+  },
+  "active_stereo_excerpt": 3000,
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-startup-i2c": true,
+    "nxp-exceptions": true,
+    "nxp-fpu-exceptions": true,
+    "nxp-dma-preemption": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true
+  },
+  "regression_counts": {
+    "basic_checks": 22,
+    "basic_guards": 8,
+    "stock_candidate_startup_pairs": 12,
+    "startup_irq_entries_and_returns_both_variants": 2006,
+    "fp_checks": 16,
+    "fp_guards": 12,
+    "stock_fp_timer_entries_and_returns": 792
+  },
+  "dma_preemption": {
+    "scope": "instruction-boundary DMA/DSP/motor preemption with supplied descriptor events",
+    "continuous_cases": {
+      "left_stock": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "checked_returns": 954,
+        "dma_acknowledgements": 159,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 163,
+        "pwm_snapshots": 795,
+        "stock_ram_bytes_compared": 81192
+      },
+      "left_candidate": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "checked_returns": 954,
+        "dma_acknowledgements": 159,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 163,
+        "pwm_snapshots": 795,
+        "stock_ram_bytes_compared": 81192,
+        "pwm_positive_control": true,
+        "opposite_outputs_unchanged": true,
+        "drained_levels_zero": true
+      },
+      "right_stock": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "checked_returns": 954,
+        "dma_acknowledgements": 159,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 163,
+        "pwm_snapshots": 795,
+        "stock_ram_bytes_compared": 81192
+      },
+      "right_candidate": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "checked_returns": 954,
+        "dma_acknowledgements": 159,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 163,
+        "pwm_snapshots": 795,
+        "stock_ram_bytes_compared": 81192,
+        "pwm_positive_control": true,
+        "opposite_outputs_unchanged": true,
+        "drained_levels_zero": true
+      },
+      "mixed_pause_stock": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [
+          8
+        ],
+        "underrun_selected_silence": true,
+        "checked_returns": 1098,
+        "dma_acknowledgements": 183,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 187,
+        "pwm_snapshots": 915,
+        "stock_ram_bytes_compared": 81192
+      },
+      "mixed_pause_candidate": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [
+          8
+        ],
+        "underrun_selected_silence": true,
+        "checked_returns": 1098,
+        "dma_acknowledgements": 183,
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 187,
+        "pwm_snapshots": 915,
+        "stock_ram_bytes_compared": 81192,
+        "pwm_positive_control": true,
+        "opposite_outputs_unchanged": true,
+        "drained_levels_zero": true
+      }
+    },
+    "worker_cases": [
+      {
+        "target": 1,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f88",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f28",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e78",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x100902"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 20,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f88",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f28",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e78",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x100964"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10008c"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 500,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10005e"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 1000,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10008c"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": "release",
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 5,
+        "checked_returns": 3,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f88",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f28",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e78",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x100972"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          23,
+          44
+        ],
+        "busy_mailbox_preserved": false,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": null,
+        "policy": "eager",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10008c"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": "primask",
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 5,
+        "checked_returns": 3,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f98",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f38",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e88",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0xfff0"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          23,
+          44
+        ],
+        "busy_mailbox_preserved": false,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": "basepri",
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 5,
+        "checked_returns": 3,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f98",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f38",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e88",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0xfff0"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          23,
+          44
+        ],
+        "busy_mailbox_preserved": false,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": "nvic",
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x0",
+        "undefined_intenclr_reads": 5,
+        "checked_returns": 3,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f98",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026f38",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e88",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0xfff0"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          23,
+          44
+        ],
+        "busy_mailbox_preserved": false,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0x80",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10008c"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      },
+      {
+        "target": 100,
+        "mask": null,
+        "policy": "lazy",
+        "intenclr_fixture_readback": "0xffffffff",
+        "undefined_intenclr_reads": 6,
+        "checked_returns": 4,
+        "nesting": [
+          {
+            "event": "entry",
+            "irq": 1,
+            "frame": "0x20026f50",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 13,
+            "frame": "0x20026ef0",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "entry",
+            "irq": 36,
+            "frame": "0x20026e40",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 36,
+            "pc": "0x2ae32"
+          },
+          {
+            "event": "return",
+            "irq": 13,
+            "pc": "0x100800"
+          },
+          {
+            "event": "return",
+            "irq": 1,
+            "pc": "0x10008c"
+          }
+        ],
+        "first_levels": [
+          3,
+          8,
+          0,
+          0
+        ],
+        "second_levels": [
+          9,
+          8,
+          7,
+          13
+        ],
+        "busy_mailbox_preserved": true,
+        "source_pcm_unchanged": true
+      }
+    ],
+    "guards": {
+      "spurious_irq_no_completion": true,
+      "error_retains_queue": true,
+      "success_after_error_rearms": true,
+      "uncleared_level_budget_rejected": true,
+      "error_with_channel_interrupt_disabled_acknowledged": true,
+      "injected_corruption_rejected": [
+        "stacked_r0",
+        "stacked_s0"
+      ]
+    },
+    "dma_register_checks": [
+      "enable_set_clear_aliases",
+      "w1c_zero_no_effect_and_bank_isolation",
+      "retained_disabled_status_reasserts_on_enable",
+      "error_not_gated_by_intenset",
+      "summary_bits_1_and_2",
+      "explicit_write_only_readback",
+      "invalid_fixture_inputs_rejected"
+    ],
+    "unverified": [
+      "INTENCLR is write-only: its real readback is unknown; 0, 0x80 and 0xFFFFFFFF are explicit test inputs",
+      "Instruction/event boundaries are supplied, not physical bus or interrupt timing",
+      "Candidate Sensa frames are assembled by the harness, not a complete on-device frame publisher"
+    ]
+  },
+  "checked_returns_continuous_and_worker_cases": 6056,
+  "intenclr_setup_probe": {
+    "scope": "offline stock setup under explicit unknown INTENCLR readback inputs; not a physical register measurement",
+    "cases": [
+      {
+        "fixture_readback": "0x0",
+        "post_setup_intenset": "0x6000",
+        "undefined_reads": 4
+      },
+      {
+        "fixture_readback": "0x80",
+        "post_setup_intenset": "0x6000",
+        "undefined_reads": 4
+      },
+      {
+        "fixture_readback": "0xffffffff",
+        "post_setup_intenset": "0x2000",
+        "undefined_reads": 4
+      }
+    ],
+    "limitation": "TX channel 13 passing does not validate the separate channel 14 path"
+  },
+  "cpu_scope": "Shared NXP audio Replay and core fixtures explicitly assert Cortex-M4; standalone legacy helpers not claimed changed",
+  "unverified": [
+    "Physical INTENCLR readback and its consequences for channel 14; explicit values 0/0x80/0xFFFFFFFF are fixtures",
+    "Physical descriptor/FIFO progress, IRQ priorities, event times and worst-case sustainable DSP cadence",
+    "The one-slot haptic tap intentionally skips a copy when busy: this is not proof of zero haptic input loss",
+    "Candidate Sensa frame construction/publication is still in the host harness, not the compiled module",
+    "System exceptions, general FPU/control/fault/MPU handling, late arrival, cycle-accurate tail chaining and sleep/wake",
+    "Full board startup, real second I2C peer, radio clock acquisition and physical actuator fidelity",
+    "Resident bootloader acceptance, loadable image placement and hardware recovery"
+  ],
+  "desktop_packaging_note": "This firmware suite does not establish desktop build success. E-20261122-05 records the separate pre-existing missing ChromaEffect type on published main.",
+  "local_full_reports": "TestResults/firmware-lab/suite-20261122-dma-preemption",
+  "hardware_access": "None; local pinned images, compiled simulator DSP and previously captured USB input only"
+}

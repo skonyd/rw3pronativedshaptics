@@ -168,3 +168,12 @@ than emulate NOCP escalation. Manual lazy-state/control manipulation,
 system exceptions, MPU faults, cycle timing and full board startup
 remain open. This is a bounded FP model, not complete Cortex-M4 or
 whole-controller equivalence.
+
+## DMA and foreground delivery continuation
+
+The [DMA/DSP preemption replay](DMA_DSP_PREEMPTION.md) now exercises
+automatic foreground interrupt delivery, external level-source
+sampling and nested original DMA/motor handlers. `execute` resumes
+the interrupted instruction after service instead of returning early
+to a host context-restoration fixture. The earlier direct-call and
+basic/FP contract stages remain independent regressions.

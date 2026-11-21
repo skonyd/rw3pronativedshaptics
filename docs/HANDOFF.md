@@ -99,14 +99,30 @@ The shared NXP audio Replay and core fixtures explicitly select M4 and
 assert it; Unicorn 2.1.4 silently forces M33 when MCLASS mode is used.
 See the IRQ report for translation-restart and SPSEL ordering fixes.
 The [FP validation summary](firmware/validation/20261122-fpu.json)
-is now the latest full-suite run: 15/15 stages, the prior 22 basic checks
+records the earlier 15/15 stages, the prior 22 basic checks
 and eight guards plus 16 FP checks and 12 FP guards. The 12 startup
 pairs still have 2,006 balanced entries/returns.
-Next extend architectural delivery to the DMA callbacks and compiled
-DSP worker under preemption. System exceptions, general FPU-control
-changes, actual second-peer replies and physical event timing remain
-open; do not replace them with invented success values. Earlier
+The next DMA increment is documented in
+[DMA_DSP_PREEMPTION.md](firmware/DMA_DSP_PREEMPTION.md): the original
+DMA0/I²S/TX callback and candidate tap can interrupt the compiled worker;
+the original Sensa timers nest inside that IRQ. Comparisons use real
+stack restoration, with register snapshots only as assertions. The DMA
+status model handles enable aliases, W1C and a level source. INTENCLR
+readback is explicitly supplied because stock reads that write-only
+register; its physical value remains unknown. Next move candidate
+Sensa frame construction and publication from the harness into the
+compiled module, then test publication/ownership under preemption.
+System exceptions, general FPU-control changes, actual second-peer
+replies and physical event timing remain open; do not replace them
+with invented success values. Earlier
 12/13/14-stage summaries remain historical evidence.
+The [latest full-suite summary](firmware/validation/20261122-dma-preemption.json)
+records 16/16 stages (E-20261122-07). New DMA coverage has seven register
+checks, six continuous stock/candidate cases and 12 worker cases, with
+6,056 checked returns in those main scenarios. Stack corruption and an
+uncleared IRQ level fail deliberately. Do not claim lossless haptic
+input: the one-slot tap skips a new copy while busy. INTENCLR setup
+fixtures change channel 14's enable even when the covered TX path passes.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

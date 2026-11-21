@@ -119,8 +119,20 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   Replay and core fixtures; the selected CPU is now asserted as M4.
   Original timer duty/depth and stock RAM match the direct-call baseline
   in six cases, with 792 balanced entries/returns and full FP register
-  preservation checks. Extend this to preemption during the compiled
-  DSP worker and actual DMA handlers. General FPU-control manipulation,
+  preservation checks. E-20261122-06 adds actual DMA0/I²S/TX execution
+  and nested CTIMER3/CTIMER2 delivery during the compiled DSP worker.
+  The new checker compares suspended registers without restoring a
+  host CPU context, and deliberately corrupted stack words are rejected.
+  Next move candidate Sensa frame construction/publication into the
+  compiled module and test ownership/publication under preemption; the
+  current harness still assembles those frames. Stock reads write-only
+  DMA INTENCLR at 0x12AA4/0x12FB4. Its real readback is unknown; 0,
+  0x80 and 0xFFFFFFFF are explicit fixture inputs, not hardware facts.
+  Resolve that readback and consequences for the other DMA channels.
+  Modeled setup yields INTENSET 0x6000 for readbacks 0/0x80 but 0x2000
+  for 0xFFFFFFFF, removing channel 14's enable. Do not interpret a TX
+  pass under all three fixtures as proof of the complete audio path.
+  General FPU-control manipulation,
   system exceptions/fault escalation, peripheral event clocks, late
   arrival and cycle-accurate tail chaining remain open. Validate actual
   timing independently; basic-frame replay is not full NVIC fidelity.
