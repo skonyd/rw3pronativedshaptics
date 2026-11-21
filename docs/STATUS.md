@@ -189,6 +189,12 @@ select and assert M4. Earlier reports predate this correction.
 System exceptions, general FPU-control manipulation, physical event
 timing and full NVIC cycle behavior remain open. The new FP model has
 explicit policy bounds; no whole-device equivalence follows.
+The firmware suite result is separate from desktop packaging: Windows
+CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
+compilation on the pre-existing missing `ChromaEffect` type (also seen
+on parent `04f9ab3`). The local working tree builds with 575 contracts
+but includes separate, uncommitted RGB/shortcut additions; that is not
+a clean published-main build. See E-20261122-05.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

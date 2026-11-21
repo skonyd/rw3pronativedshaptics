@@ -108,6 +108,16 @@ changes, actual second-peer replies and physical event timing remain
 open; do not replace them with invented success values. Earlier
 12/13/14-stage summaries remain historical evidence.
 
+Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
+local 15-stage firmware suite, but Windows CI run `44956123630` fails
+WPF compilation at the existing `MainWindow.xaml.cs` reference to the
+missing committed `ChromaEffect` type. Its 573 contract checks pass.
+The same failure already appears on parent `04f9ab3` (run `44952555468`).
+The local working tree builds and has 575 passing contracts because it
+also contains separate, uncommitted RGB/shortcut work. Do not report
+that working-tree result as a clean build of published main. Preserve
+those other files and finish their own review/commit separately.
+
 | Period | Result | Where |
 | --- | --- | --- |
 | 2026-11-05..08 | Windows app (WPF, tray, 3 modes), audio→haptics, virtual DualSense bridge (HIDMaestro), contract suite | README, STATUS |
