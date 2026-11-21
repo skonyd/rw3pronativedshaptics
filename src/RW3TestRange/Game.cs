@@ -174,7 +174,7 @@ public sealed class RangeGame
             {
                 _crankTick = .22;
                 _fb.Haptic(Synth.HPunch(170, .03, -.5f, .5f, 110), "crossbow crank");
-                _fb.Sound(Synth.Click(1100, .03, .25f), "crossbow crank");
+                _fb.Sound(SoundBank.Get("crank", -.3f, .6f) ?? Synth.Click(1100, .03, .25f), "crossbow crank");
                 _fb.Rumble(0, .1f, .08, lt: .5f);
             }
             if (_reloadLeft <= 0) FinishReload();
@@ -225,7 +225,7 @@ public sealed class RangeGame
         _rtArmed = false;
         if (Ammo[WeaponIndex] == 0)
         {
-            _fb.Sound(Synth.Click(2600, .03, .4f), "empty");
+            _fb.Sound(SoundBank.Get("empty", 0, .7f) ?? Synth.Click(2600, .03, .4f), "empty");
             _fb.Haptic(Synth.HPunch(250, .025, .5f, .4f, 120), "empty");
             Say("Şarjör boş: X / □ ile doldur");
             _fireCooldown = .3;
@@ -262,7 +262,7 @@ public sealed class RangeGame
             HitAt(x, y, .035);
         }
         if (Ammo[WeaponIndex] == 0) _fb.Adaptive(L2Now(), TriggerFx.Off, "magazine empty");
-        if (WeaponIndex == 2 && Ammo[WeaponIndex] > 0) { _fb.Sound(Synth.Shift(Synth.Reload(), .35), "pump"); _fb.Haptic(Synth.Shift(Synth.HReload(), .35), "pump"); }
+        if (WeaponIndex == 2 && Ammo[WeaponIndex] > 0) { _fb.Sound(SoundBank.Get("pump", .1f, .8f) is { } pump ? Synth.Shift(pump, .3) : Synth.Shift(Synth.Reload(), .35), "pump"); _fb.Haptic(Synth.Shift(Synth.HReload(), .35), "pump"); }
         UpdateLights();
     }
 
@@ -275,7 +275,12 @@ public sealed class RangeGame
         float pull = Math.Max(s.LT, s.RT);
         if (pull > .15f && !Reloading)
         {
-            if (_bowMax == 0) _bowLeft = s.LT > s.RT;
+            if (_bowMax == 0)
+            {
+                _bowLeft = s.LT > s.RT;
+                var draw = SoundBank.Get("bowdraw", _bowLeft ? -.3f : .3f, .7f);   // recorded string draw (none in the synth set)
+                if (draw != null) _fb.Sound(draw, "bow draw");
+            }
             _bowDraw = pull; _bowMax = Math.Max(_bowMax, pull);
             _bowTick -= dt;
             if (_bowTick <= 0)
@@ -333,7 +338,7 @@ public sealed class RangeGame
     {
         Reloading = true; _reloadLeft = Current.Reload; _crankTick = 0;
         if (WeaponIndex == 4) _fb.Adaptive(L2Now(), TriggerFx.Off, "crossbow crank");
-        _fb.Sound(Synth.Reload(), "reload");
+        _fb.Sound(SoundBank.Get(WeaponIndex switch { 2 => "reload-shotgun", 3 or 4 => "reload-bow", _ => "reload" }, -.2f, .8f) ?? Synth.Reload(), "reload");
         _fb.Haptic(Synth.HReload(), "reload");
         _fb.Rumble(.0f, .3f, .08, why: "reload");
         _fb.Light(255, 200, 0, 0, "reloading");

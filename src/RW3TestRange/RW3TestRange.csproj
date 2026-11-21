@@ -18,4 +18,8 @@
     <Page Include="..\RW3ProNativeDSHaptics\Theme.xaml" Link="Theme.xaml" />
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Recorded CC0 sounds and music (Sounds/CREDITS.md); missing files fall back to the synthesised ones -->
+    <None Include="Sounds\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

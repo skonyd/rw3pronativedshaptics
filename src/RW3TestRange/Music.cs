@@ -6,12 +6,12 @@ namespace RW3TestRange;
 /// filters, with note envelopes (no clicks), a ping-pong delay on the lead and a room on snare / pad / lead.
 /// Its bass line and lead melody are what RW3's audio-to-haptics and melody mode should pick up.
 /// </summary>
-public sealed class MusicGenerator
+public sealed class MusicGenerator : IMusicSource
 {
     private const double Bpm = 100;
     private const int Rate = Synth.Rate;
     private static readonly int StepSamples = (int)(Rate * 60.0 / Bpm / 4);   // 16th note
-    public float Volume = .5f;
+    public float Volume { get; set; } = .5f;
 
     // A minor: Am, F, C, G (pad voicings, MIDI) and bass roots
     private static readonly int[][] Chords = { new[] { 57, 60, 64 }, new[] { 53, 57, 60 }, new[] { 55, 60, 64 }, new[] { 55, 59, 62 } };

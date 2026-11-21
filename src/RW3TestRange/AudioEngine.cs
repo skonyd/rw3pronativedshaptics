@@ -47,7 +47,8 @@ public sealed class SpeakerOutput : ISampleProvider, IDisposable
 {
     public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(Synth.Rate, 2);
     public readonly VoiceMixer Sfx = new();
-    public readonly MusicGenerator Music = new();
+    /// <summary>Recorded CC0 tracks from Sounds/ (music*.wav), else the synthesised loop.</summary>
+    public readonly IMusicSource Music = (IMusicSource?)FileMusic.TryCreate() ?? new MusicGenerator();
     public volatile bool MusicOn, SfxOn;
     private WasapiOut? _out;
     public string Device { get; private set; } = "-";

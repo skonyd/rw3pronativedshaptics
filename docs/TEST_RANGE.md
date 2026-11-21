@@ -45,8 +45,8 @@ ters Y, jiroskopla nişan. Saved in `%LOCALAPPDATA%\RW3TestRange\config.json`; t
 
 | Checkbox | What the game sends | Typical real game |
 | --- | --- | --- |
-| Müzik | procedural music (bass, drums, pad, lead) on the default speakers | any; RW3 "sesten titreşim" / melody mode should play it |
-| Ses efektleri | shots, glass, reload, explosion, heartbeat (panned) | any |
+| Müzik | two recorded CC0 tracks (`Sounds/music*.wav`, looped with a crossfade; procedural music only if the files are missing) on the default speakers | any; RW3 "sesten titreşim" / melody mode should play it |
+| Ses efektleri | recorded CC0 shots (pistol, rifle, shotgun + pump, bow + draw, crossbow + crank), glass, melee; reload / empty click / explosion / heartbeat still synthesised (panned). Sources: `src/RW3TestRange/Sounds/CREDITS.md` | any |
 | Xbox · XInput | two body motors (`XInputSetState`) | most PC games |
 | Xbox · GameInput | body motors + LT/RT trigger motors (`IGameInputDevice::SetRumbleState`, inbox API v0) | GDK / Game Pass |
 | DualSense · adaptif tetik + ışık + LED | USB output report 0x02: trigger effects (0x21 feedback, 0x25 weapon, 0x26 vibration, 0x22 bow, 0x27 machine, 0x23 galloping), lightbar, player LEDs, mic LED; compatible rumble when HD haptics are off | PS5 ports |

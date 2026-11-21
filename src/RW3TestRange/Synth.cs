@@ -42,6 +42,9 @@ public static class Synth
     /// <summary>Gunshot: transient crack + filtered body + low thump (+ string for bow / crossbow), then a room tail.</summary>
     public static float[] Shot(int weapon, float pan = .2f)
     {
+        // recorded CC0 shots (Sounds/) first; the synthesised ones below are the fallback
+        var rec = SoundBank.Get(weapon switch { 0 => "pistol", 1 => "rifle", 2 => "shotgun", 3 => "bow", _ => "crossbow" }, pan, .9f);
+        if (rec != null) return rec;
         var mono = Variant("shot" + weapon, 3, seed => weapon switch
         {
             1 => Gun(seed, .28, crackHz: 2600, bodyHz: 1100, bodyDecay: 30, thumpFrom: 170, thumpTo: 70, thumpGain: .6f, tail: 14),
@@ -85,6 +88,8 @@ public static class Synth
     /// <summary>Glass: a bright impact, then shards (narrow resonant noise bursts at random high pitches) falling over ~0.4 s.</summary>
     public static float[] Shatter(float pan)
     {
+        var rec = SoundBank.Get("glass", pan, .8f, .85 + Random.Shared.NextDouble() * .3);   // one recording, varied pitch
+        if (rec != null) return rec;
         var mono = Variant("glass", 4, seed =>
         {
             var r = new Random(seed + 100);
@@ -107,6 +112,8 @@ public static class Synth
     /// <summary>Renders every sound once (background), so the first shot does not stall a frame.</summary>
     public static void Warm()
     {
+        foreach (var k in new[] { "pistol", "rifle", "shotgun", "bow", "crossbow", "bowdraw", "glass", "reload", "reload-shotgun", "reload-bow", "pump", "melee", "crank", "empty" })
+            SoundBank.Has(k);
         for (int w = 0; w < 5; w++) Shot(w);
         Shatter(0); Reload(); Explosion(0); Heartbeat(); Melee();
         foreach (var hz in new[] { 1200.0, 1100, 2600, 500 }) Click(hz);
@@ -125,7 +132,7 @@ public static class Synth
     }
 
     /// <summary>Magazine out, slide, magazine in with a solid clack.</summary>
-    public static float[] Reload() => Variant("reload", 2, seed =>
+    public static float[] Reload() => SoundBank.Get("reload", -.2f, .8f) ?? Variant("reload", 2, seed =>
     {
         float[] Metal(double hz, double decay, int s) =>
             Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.08), s), Biquad.BandPass(hz, 5)), decay), Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.02), s + 1), Biquad.BandPass(3500, 2)), 300), .25f);
@@ -170,7 +177,7 @@ public static class Synth
     });
 
     /// <summary>Rifle-butt hit: a short swish and a dull thud.</summary>
-    public static float[] Melee() => Variant("melee", 2, seed =>
+    public static float[] Melee() => SoundBank.Get("melee", 0, .8f) ?? Variant("melee", 2, seed =>
     {
         var swish = new float[Dsp.N(.18)]; var noise = Dsp.Noise(swish.Length, seed + 500); var bp = Biquad.BandPass(900, 1.2);
         for (int i = 0; i < swish.Length; i++) swish[i] = bp.Process(noise[i]) * (float)Math.Sin(Math.PI * i / swish.Length) * .6f;
