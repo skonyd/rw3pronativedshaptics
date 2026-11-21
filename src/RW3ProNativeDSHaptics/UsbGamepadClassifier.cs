@@ -62,3 +62,25 @@ public static class UsbGamepadClassifier
             "USB PnP kimliği gözlendi; fiziksel haptics ayrı doğrulanmalıdır.", wired);
     }
 }
+
+/// <summary>Which XInput slot is the Wolverine (the strict virtual pad reads only that one).</summary>
+public static class XInputWolverineSlot
+{
+    /// <summary>
+    /// Whether an XInput slot can be the Wolverine: Razer VID (PC mode), or 045E:02FF, the XInput child Windows gives a
+    /// wired GIP pad (the Wolverine in Xbox mode, parent USB\VID_1532&amp;PID_0A3F, 2026-11-22). Unknown ids (0:0) may be it.
+    /// Any other Microsoft pad is not: until 2026-11-22 a paired Bluetooth Xbox controller (045E:0B13) was read as the
+    /// Wolverine after a replug, and its stick drift went to the game instead of the user's input.
+    /// </summary>
+    public static bool CanBe(ushort vid, ushort pid) => vid == 0x1532 || (vid == 0x045E && pid == 0x02FF) || (vid == 0 && pid == 0);
+
+    /// <summary>The Wolverine among XInput slots that are not our virtual pad: the one Razer slot, else the one slot that
+    /// can be it; -1 when none or ambiguous (never guess).</summary>
+    public static int Choose(IReadOnlyList<(int Slot, ushort Vid, ushort Pid)> candidates)
+    {
+        var fit = new List<(int Slot, ushort Vid, ushort Pid)>();
+        foreach (var c in candidates) if (CanBe(c.Vid, c.Pid)) fit.Add(c);
+        if (fit.Count > 1) fit = fit.FindAll(c => c.Vid == 0x1532);
+        return fit.Count == 1 ? fit[0].Slot : -1;
+    }
+}

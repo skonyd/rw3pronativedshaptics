@@ -68,6 +68,14 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
     Check(seriesPicked && seriesFallback && OutputMatrix.SeriesPadTypes.Length == 6
         && Array.TrueForAll(OutputMatrix.SeriesPadTypes, t => t.Profile.StartsWith("xbox-") && t.Ids.StartsWith("045E:")),
         "Series pad type: the chosen HIDMaestro profile drives only the Series output; unknown ids fall back to Series BT");
+    // 2026-11-22 live: slot 0 = a paired Bluetooth Xbox controller (045E:0B13, stick drift), slot 1 = the Wolverine in Xbox
+    // mode (045E:02FF, child of USB\VID_1532&PID_0A3F).
+    Check(XInputWolverineSlot.Choose(new[] { (0, (ushort)0x045E, (ushort)0x0B13), (1, (ushort)0x045E, (ushort)0x02FF) }) == 1
+        && XInputWolverineSlot.Choose(new[] { (0, (ushort)0x045E, (ushort)0x0B13) }) == -1
+        && XInputWolverineSlot.Choose(new[] { (2, (ushort)0x1532, (ushort)0x0A4C), (0, (ushort)0x045E, (ushort)0x02FF) }) == 2
+        && XInputWolverineSlot.Choose(new[] { (0, (ushort)0x045E, (ushort)0x02FF), (1, (ushort)0x045E, (ushort)0x02FF) }) == -1
+        && XInputWolverineSlot.Choose(new[] { (3, (ushort)0, (ushort)0) }) == 3,
+        "Strict virtual pad input: only the Wolverine (Razer VID, or the 045E:02FF GIP child) is read; a Bluetooth Xbox pad never is, two candidates never guess");
     Check(OutputMatrix.FromLegacy(HapticMode.Normal, null, true, true) == (P, OutputFeature.None)
         && OutputMatrix.FromLegacy(HapticMode.Audio, null, true, true) == (P, pa)
         && OutputMatrix.FromLegacy(HapticMode.Native, NativeHapticSource.Game, true, false) == (DS, pg | ru)

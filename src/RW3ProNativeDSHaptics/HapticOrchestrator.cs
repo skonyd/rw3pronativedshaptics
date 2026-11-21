@@ -65,14 +65,19 @@ public sealed class HapticOrchestrator
 
     // Games that had the real pad open before a virtual pad appeared (PadHolders): they keep it until restarted.
     private volatile List<(int Pid, string Name)> _padHolders = new();
-    /// <summary>"Restart X" while a game opened before the virtual pad still runs; null otherwise.</summary>
+    /// <summary>"Restart X" while a game opened before the virtual pad still runs, else "turn off the other pad" while a
+    /// foreign pad is on XInput next to the strict virtual pad; null otherwise.</summary>
     public string? PadHolderNote
     {
         get
         {
             var list = _padHolders;
-            return list.Count == 0 ? null
-                : string.Join(", ", list.ConvertAll(h => h.Name)) + " sanal koldan önce açıldı ve hâlâ gerçek kolu kullanıyor " +
+            if (list.Count == 0)
+                return XboxAudioGameBridge.ForeignPads is { } other
+                    ? "Başka bir kol da bağlı (" + other + "; örneğin Bluetooth ile eşli bir Xbox kolu). Oyun sanal kol yerine onu " +
+                      "kullanabilir: o kolu kapat (Xbox tuşuna 6 sn bas) ya da Bluetooth'tan bağlantısını kes, sonra oyunu yeniden aç."
+                    : null;
+            return string.Join(", ", list.ConvertAll(h => h.Name)) + " sanal koldan önce açıldı ve hâlâ gerçek kolu kullanıyor " +
                   "(girdi, rumble ve tetik RW3'ü atlar, Xbox modunda avuçlar susar). Oyunu kapatıp yeniden aç.";
         }
     }
@@ -168,6 +173,12 @@ public sealed class HapticOrchestrator
     private async Task<bool> StartAudioAsync(HapticMode mode)
     {
         AudioRoute = await Task.Run(WolverineModeDetector.Detect);
+        // Right after a virtual pad stops (another pad type, HidHide undone) the pad re-enumerates for a moment.
+        for (int i = 0; i < 6 && UseXboxGameBridge && AudioRoute is not (WolverineMode.Xbox or WolverineMode.Pc) && !Superseded(mode); i++)
+        {
+            await Task.Delay(1000);
+            AudioRoute = await Task.Run(WolverineModeDetector.Detect);
+        }
         if (Superseded(mode) || !_settings.AudioOutputEnabled) return false;
         var profile = EffectiveProfile;
         if (UseXboxGameBridge)

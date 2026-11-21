@@ -203,7 +203,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             throw new InvalidOperationException("HidHide hazır olmalı ve önceki gizleme geri alınmalı.");
         try
         {
-            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Wolverine XInput ile görünmüyor (tek kol bağlı olmalı)."); }
+            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Wolverine XInput ile görünmüyor (" + SlotTable() + ")."); }
             else if (!_physical.TryAcquire() || !_physical.TryReadPad(out _))
                 throw new InvalidOperationException("Xbox modunda tek Wolverine gerekli. " + _physical.LastError);
             if (!synthetic)
@@ -431,6 +431,10 @@ public sealed class XboxAudioGameBridge : IDisposable
                             $"INPUT physical changes {_physChanges} → virtual XInput {VirtualXInputNote()} → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
                             (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
+                        var foreign = FindForeignPads();
+                        if (foreign != ForeignPads)
+                            DiagnosticsService.Info("Virtual pad (strict): other pads on XInput: " + (foreign ?? "none") + " (" + SlotTable() + ").");
+                        ForeignPads = foreign;
                     }
                 }
                 Thread.Sleep(8);
@@ -460,14 +464,41 @@ public sealed class XboxAudioGameBridge : IDisposable
     [System.Runtime.InteropServices.DllImport("xinput1_4.dll", EntryPoint = "#108")]
     private static extern uint XInputGetCapabilitiesEx(uint one, uint user, uint flags, out CapsEx caps);
 
-    /// <summary>HIDMaestro's Xbox pads (360 045E:028E and the selectable One/Series/Elite types, OutputMatrix.SeriesPadTypes,
-    /// plus the USB Series pad's driver PID 02FF). After a replug the physical pad's slot is gone for a moment and the
-    /// scan found the virtual pad (2026-11-15, "back on XInput slot 1").</summary>
+    /// <summary>HIDMaestro's Xbox pads (360 045E:028E and the selectable One/Series/Elite types, OutputMatrix.SeriesPadTypes).
+    /// Not 02FF: that is the Wolverine itself in Xbox mode (its GIP XInput child, 2026-11-22). After a replug the
+    /// physical pad's slot is gone for a moment and the scan found the virtual pad (2026-11-15, "back on XInput slot 1").</summary>
     private static bool IsVirtualPad(int slot)
     {
         try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 && c.Vid == 0x045E &&
-                     c.Pid is 0x028E or 0x0B13 or 0x0B12 or 0x02FF or 0x02EA or 0x02FD or 0x0B00 or 0x0B05; }
+                     c.Pid is 0x028E or 0x0B13 or 0x0B12 or 0x02EA or 0x02FD or 0x0B00 or 0x0B05; }
         catch { return false; }
+    }
+
+    private static (ushort Vid, ushort Pid) IdsOf(int slot)
+    {
+        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 ? (c.Vid, c.Pid) : ((ushort)0, (ushort)0); }
+        catch { return (0, 0); }
+    }
+
+    /// <summary>"slot 0 045E:0B13, slot 1 045E:02FF" for every connected XInput slot.</summary>
+    internal static string SlotTable()
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < 4; i++)
+            if (XInput.GetState((uint)i, out _) == 0) { var (v, p) = IdsOf(i); parts.Add($"slot {i} {v:X4}:{p:X4}"); }
+        return parts.Count == 0 ? "no XInput pad" : string.Join(", ", parts);
+    }
+
+    /// <summary>Other pads on XInput while the strict virtual pad runs (not the Wolverine, not our pad), e.g. a paired
+    /// Bluetooth Xbox controller: a game may bind to it instead of the virtual pad. Null when none.</summary>
+    public static volatile string? ForeignPads;
+
+    private string? FindForeignPads()
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < 4; i++)
+            if (i != _xinputSlot && XInput.GetState((uint)i, out _) == 0 && !IsOurs(i)) { var (v, p) = IdsOf(i); parts.Add($"{v:X4}:{p:X4}"); }
+        return parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
     /// <summary>Our own virtual pad's XInput slot: it appeared after the pad was created (else, before that is known, the
@@ -475,11 +506,6 @@ public sealed class XboxAudioGameBridge : IDisposable
     private bool IsOurs(int slot) => _virtualXSlot >= 0 ? slot == _virtualXSlot
         : _slotsBefore >= 0 && _running ? (_slotsBefore & (1 << slot)) == 0 && slot != _lastGoodSlot
         : IsVirtualPad(slot);
-
-    private static int VidOf(int slot)
-    {
-        try { return XInputGetCapabilitiesEx(1, (uint)slot, 0, out var c) == 0 ? c.Vid : -1; } catch { return -1; }
-    }
 
     private bool TryReadXInput(out XInputPad pad)
     {
@@ -490,16 +516,16 @@ public sealed class XboxAudioGameBridge : IDisposable
             // The pad's earlier slot first (after a replug Windows usually gives it back, and the virtual Xbox pad may now
             // also be on XInput); otherwise a single connected slot. Two unknown pads: keep waiting, never guess.
             // Our own virtual pad is on XInput too: never read it back (checked only when a slot is chosen, not per loop).
-            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0 && !IsOurs(_lastGoodSlot)) slot = _lastGoodSlot;
+            if (_lastGoodSlot >= 0 && XInput.GetState((uint)_lastGoodSlot, out _) == 0 && !IsOurs(_lastGoodSlot) &&
+                IdsOf(_lastGoodSlot) is var (lv, lp) && XInputWolverineSlot.CanBe(lv, lp)) slot = _lastGoodSlot;
             else
             {
-                var candidates = new List<int>();
-                for (int i = 0; i < 4; i++) if (XInput.GetState((uint)i, out _) == 0 && !IsOurs(i)) candidates.Add(i);
-                // another pad too (e.g. a Bluetooth Xbox controller): the Razer one wins, else anything that is not 045E:0B13/028E
-                if (candidates.Count > 1) { var razer = candidates.FindAll(i => VidOf(i) == 0x1532); if (razer.Count == 1) candidates = razer; }
-                if (candidates.Count > 1) candidates = candidates.FindAll(i => !IsVirtualPad(i));
-                if (candidates.Count != 1) return false;
-                slot = candidates[0];
+                // Another pad too (e.g. a paired Bluetooth Xbox controller) is never read as the Wolverine.
+                var candidates = new List<(int, ushort, ushort)>();
+                for (int i = 0; i < 4; i++)
+                    if (XInput.GetState((uint)i, out _) == 0 && !IsOurs(i)) { var (v, p) = IdsOf(i); candidates.Add((i, v, p)); }
+                slot = XInputWolverineSlot.Choose(candidates);
+                if (slot < 0) return false;
             }
         }
         if (slot < 0 || XInput.GetState((uint)slot, out var s) != 0) { _xinputSlot = -1; return false; }
@@ -521,6 +547,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     public void Dispose()
     {
         _running = false;
+        ForeignPads = null;
         try { _probeThread?.Join(500); _inputProbe?.Dispose(); } catch { }
         _watchdog?.Dispose();
         _watchdog = null;
