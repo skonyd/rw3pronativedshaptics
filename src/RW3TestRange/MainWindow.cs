@@ -33,6 +33,7 @@ public sealed class MainWindow : Window
     private bool _devicesOpen;
     private WolverineMode _wolverineSeen;
     private double _modeCheck;
+    private double _statsTimer;
 
     private static readonly (Out Flag, string Title, string Hint)[] Outputs =
     {
@@ -637,6 +638,12 @@ public sealed class MainWindow : Window
             case Screen.Guided: Guided(dt); break;
         }
         _fb.Update(dt);
+        if ((_statsTimer += dt) >= 2)
+        {
+            _statsTimer = 0;
+            var stats = _input.TakeStats();
+            if (stats.Count > 0) SessionLog.Current?.Event("input-stats", stats);
+        }
         if (_screen != Screen.Setup)
         {
             _surface.Status = $"Giriş: {_input.Active?.Name ?? "-"} · çıkışlar: {_fb.Enabled} · hedef: {_fb.Targets(Out.XInput | Out.GameInput | Out.DsHid)}" +
