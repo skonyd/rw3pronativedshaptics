@@ -1,5 +1,11 @@
 # Roadmap — 2026-11-08 (top section updated 2026-11-11)
 
+**Firmware lab, 2026-11-21:** [basic-frame Cortex-M IRQ replay](firmware/CORTEX_M_IRQ.md)
+and the [14-stage validation](firmware/validation/20261121-exceptions.json)
+extend the stock/candidate simulator. Next: FP/lazy frames, system
+exceptions, authentic peripheral responses and event timing. Full-device
+equivalence, image placement, bootloader acceptance and recovery remain open.
+
 **2026-11-11:**
 - Done: Xbox-mode Sensa (palms + trigger motors) over Razer's GIP route, in every mode (setting, default on).
 - Done: weapon/bow resistance rising to the break, stronger triggers, and the blind general calibration test.

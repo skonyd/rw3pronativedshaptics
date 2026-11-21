@@ -554,6 +554,12 @@ fail as expected. Ready/lock bits, the empty bootloader handoff word,
 other mapped peripherals and vector scheduling remain fixture state.
 The physical startup and a complete main loop are still unverified.
 
+The subsequent [basic Cortex-M IRQ model](CORTEX_M_IRQ.md) runs these
+same stock handlers with memory-backed exception frames and original
+EXC_RETURN instructions, including mask/priority tests. The direct-call
+baseline above remains separately tested. Peripheral event scheduling
+and authentic device responses are still outside this increment.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

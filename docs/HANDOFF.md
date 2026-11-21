@@ -85,6 +85,18 @@ The [latest public summary](firmware/validation/20261121-startup.json)
 records the 13/13 full-suite run (E-20261121-07), including system-control
 and NVIC write/mask comparison. The earlier 12-stage report above is history.
 
+IRQ continuation (E-20261121-08): [CORTEX_M_IRQ.md](firmware/CORTEX_M_IRQ.md)
+documents `cortex_m_irq.py` and `replay_nxp_exceptions.py`. This path uses
+memory-backed basic MSP/PSP frames and original EXC_RETURN instead of
+whole-context restore. It checks masks, nested priority and pending
+deferral, then runs the same 12 stock/candidate startup pairs. Keep the
+direct-call regression. FP/lazy stacking, system exceptions and authentic
+peripheral event timing remain open; unsupported cases fail explicitly.
+The [IRQ validation summary](firmware/validation/20261121-exceptions.json)
+is now the latest full-suite run: 14/14 stages, 22 core checks, eight
+guards and 2,006 balanced entries/returns across 12 stock/candidate pairs.
+Earlier 12/13-stage summaries remain historical evidence.
+
 | Period | Result | Where |
 | --- | --- | --- |
 | 2026-11-05..08 | Windows app (WPF, tray, 3 modes), audio→haptics, virtual DualSense bridge (HIDMaestro), contract suite | README, STATUS |

@@ -111,7 +111,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   with stock/candidate state comparison. The four-byte replies are
   synthetic, not captured device status. Identify the actual second
   peer and its response protocol before continuing its status parser.
-  Extend enable/PRIMASK checks to real exception entry and preemption.
+  E-20261121-08 adds modeled MSP/PSP basic exception entry/return,
+  pending/active aliases, mask checks, priority grouping and preemption.
+  It keeps the original direct-call regression separate. FP/lazy frames,
+  system exceptions/fault escalation, peripheral event clocks, late
+  arrival and cycle-accurate tail chaining remain open. Validate actual
+  timing independently; basic-frame replay is not full NVIC fidelity.
   Independently validate timing and pin-level PWM. The runtime switch
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

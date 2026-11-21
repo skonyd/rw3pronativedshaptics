@@ -1,5 +1,14 @@
 # Research and reference log (2026-11-05)
 
+## 2026-11-21 firmware IRQ model
+
+The [Cortex-M IRQ report](firmware/CORTEX_M_IRQ.md) records the bounded
+model and its tests. Primary references checked for this increment:
+[Arm Cortex-M4 Generic User Guide, sections 2.3 and 4.2–4.3](https://documentation-service.arm.com/static/5f2ac4ab60a93e65927bbdbf)
+and [NXP's LPC54605 device header](https://github.com/nxp-mcuxpresso/mcux-sdk/blob/master/devices/LPC54605/LPC54605.h).
+They establish the architectural reference and device configuration;
+the replay results are separate local emulation evidence, not a device measurement.
+
 ## 2026-11-08 Native Xbox / Audio ownership correction
 
 [Routing audit, implementation and sources](XBOX_NATIVE_ROUTING_20261108.md): local Windows SDK v0 `GameInput.h` defines the pinned inbox DLL ABI, device enumeration/filter and same-device gamepad reads/output. Microsoft XInput documents only the two body vibration channels; Audio now uses those rather than explicitly writing a four-channel WGI state. Concurrent game-trigger preservation still requires hardware testing. Sony-authored Linux flags and primary community trigger encoders distinguish haptic-select validity, zone-mask enablement/strength and weapon endpoints. Unknown effects are not silently treated as feedback. No physical equivalence follows from protocol decoding.

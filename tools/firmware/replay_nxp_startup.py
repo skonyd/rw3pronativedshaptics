@@ -7,7 +7,12 @@ from pathlib import Path
 import struct
 
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_PROT_EXEC, UC_PROT_READ
-from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_PRIMASK, UC_ARM_REG_R0, UC_ARM_REG_SP
+from unicorn.arm_const import (
+    UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_PRIMASK, UC_ARM_REG_R0, UC_ARM_REG_R1,
+    UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6,
+    UC_ARM_REG_R7, UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
+    UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_XPSR,
+)
 
 from simulate_audio_haptics import (
     BOOT_HANDOFF, CANDIDATE_BOOT, CTIMER2, CTIMER3, MAIN_DISPATCH_CALL, FOREGROUND,
@@ -22,6 +27,20 @@ BUS_SPECS = ((0x40089800, 17), (0x40099800, 40))
 WAIT_FLAGS = {0x2B428: 0x200093F1, 0x2B460: 0x200093F1,
               0x1336C: 0x200093F1, 0x2A610: 0x200093F0, 0x2A690: 0x200093F0}
 EXPECTED_CONFIG = {0: 4, 1: 14, 2: 13, 3: 65, 4: 112, 5: 132, 6: 32, 7: 203, 12: 133}
+
+
+def startup_scenarios():
+    return (("configured", {}), ("identity_mask_low", {"identity": 0x50}),
+            ("identity_mask_high", {"identity": 0x57}),
+            ("identity_below_mask", {"identity": 0x4F}),
+            ("identity_above_mask", {"identity": 0x58}),
+            ("wrong_identity", {"identity": 0}),
+            ("address_nack", {"nack_identity": True}),
+            ("missing_interrupt", {"suppress_bus_irq": True}),
+            ("delayed_interrupt", {"defer_bus_irqs": 8}),
+            ("timeout_then_recovery", {"defer_bus_irqs": 80}),
+            ("second_peer_read", {"until_second": True}),
+            ("second_peer_byte_edges", {"until_second": True, "second_bytes": b"\0\xFF\x80\x7F"}))
 
 
 class InterruptEnableModel:
@@ -114,7 +133,7 @@ class I2CMasterModel:
         return bool(self.configuration & self.enabled & self.status & 1)
 
 
-def prepare(image, dsp, candidate, identity, second_bytes):
+def prepare(image, dsp, candidate, identity, second_bytes, interrupt_factory=None):
     replay = Replay(image, dsp)
     cpu = replay.cpu
     model_syscon_reset(cpu)
@@ -133,15 +152,16 @@ def prepare(image, dsp, candidate, identity, second_bytes):
     cpu.mem_write(0x20027FF8, bytes(8))
     for address, value in ((0x40020054, 0x220), (0x40000584, 1), (0x40000520, 1)):
         cpu.mem_write(address, struct.pack("<I", value))
-    nvic = InterruptEnableModel(cpu)
+    nvic = (interrupt_factory or InterruptEnableModel)(cpu)
     devices = ({0x6B: {0x0B: identity}}, {0x20: dict(enumerate(second_bytes, 0x82))})
     buses = [I2CMasterModel(cpu, *spec, peers) for spec, peers in zip(BUS_SPECS, devices)]
     return cpu, nvic, buses
 
 
 def run_startup(image, dsp, *, candidate=False, identity=0x53, second_bytes=b"\x12\x34\x56\x78",
-                until_second=False, suppress_bus_irq=False, nack_identity=False, defer_bus_irqs=0):
-    cpu, nvic, buses = prepare(image, dsp, candidate, identity, second_bytes)
+                until_second=False, suppress_bus_irq=False, nack_identity=False, defer_bus_irqs=0,
+                interrupt_factory=None):
+    cpu, nvic, buses = prepare(image, dsp, candidate, identity, second_bytes, interrupt_factory)
     if nack_identity:
         buses[0].devices.clear()
     waits, writes, system_writes, irq_counts = [], [], [], Counter()
@@ -171,19 +191,30 @@ def run_startup(image, dsp, *, candidate=False, identity=0x53, second_bytes=b"\x
             break
         verify(stopped == pc, f"Unmodeled startup boundary at 0x{pc:X}")
         waits.append(pc)
-        context = cpu.context_save()
-        interrupt_sp = (cpu.reg_read(UC_ARM_REG_SP) - 32) & ~7
         withhold = suppress_bus_irq or irq_counts[9] < defer_bus_irqs
         pending = [] if withhold else [b.irq for b in buses if b.pending() and nvic.allows(cpu, b.irq)]
         irq = pending[0] if pending else 9
         verify(nvic.allows(cpu, irq), f"Startup requested disabled interrupt {irq}")
-        vector, = struct.unpack("<I", cpu.mem_read(0x8000 + (16 + irq) * 4, 4))
-        cpu.reg_write(UC_ARM_REG_SP, interrupt_sp)
-        cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
-        cpu.emu_start(vector, RETURN, count=20_000)
-        verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, f"Startup vector {irq} did not return")
+        if interrupt_factory:
+            checked_registers = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
+                                 UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
+                                 UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
+                                 UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_XPSR)
+            before_irq = tuple(cpu.reg_read(register) for register in checked_registers)
+            nvic.pend(irq)
+            verify(nvic.service() == 1, "Unexpected IRQ count at the supplied startup event")
+            verify(before_irq == tuple(cpu.reg_read(register) for register in checked_registers),
+                   "Stock IRQ did not preserve the interrupted startup registers")
+        else:
+            context = cpu.context_save()
+            interrupt_sp = (cpu.reg_read(UC_ARM_REG_SP) - 32) & ~7
+            vector, = struct.unpack("<I", cpu.mem_read(0x8000 + (16 + irq) * 4, 4))
+            cpu.reg_write(UC_ARM_REG_SP, interrupt_sp)
+            cpu.reg_write(UC_ARM_REG_LR, RETURN | 1)
+            cpu.emu_start(vector, RETURN, count=20_000)
+            verify(cpu.reg_read(UC_ARM_REG_PC) == RETURN, f"Startup vector {irq} did not return")
+            cpu.context_restore(context)
         irq_counts[irq] += 1
-        cpu.context_restore(context)
         cpu.ctl_flush_tb()
         entry = pc | 1
     verify(cpu.reg_read(UC_ARM_REG_PC) == target,
@@ -208,6 +239,14 @@ def run_startup(image, dsp, *, candidate=False, identity=0x53, second_bytes=b"\x
               "system_control_writes": len(system_writes),
               "unknown_addresses": [b.unknown_addresses for b in buses],
               "received_bytes": [[list(item) for item in b.received] for b in buses]}
+    if interrupt_factory:
+        entries = sum(event["event"] == "entry" for event in nvic.trace)
+        returns = sum(event["event"] == "return" for event in nvic.trace)
+        verify(entries == returns == sum(irq_counts.values()) and not nvic.active and not nvic.frames,
+               "Startup exception accounting did not balance")
+        report["exception_entries"] = entries
+        report["exception_returns"] = returns
+        report["interrupted_register_checks"] = entries
     # Compare all initialized stock RAM and peripheral writes, excluding the
     # candidate's separately allocated private simulator state.
     state = (bytes(cpu.mem_read(0x20000000, 0x13D28)), cpu.reg_read(UC_ARM_REG_SP),
@@ -224,17 +263,7 @@ def main():
     verify(hashlib.sha256(image).hexdigest() == STOCK_SHA256, "Expected unmodified Dev2FW 2.04.00")
     verify(len(dsp) > CANDIDATE_BOOT - 0x100000, "Rebuild the DSP module including its reset routine")
     report = {}
-    for name, options in (("configured", {}), ("identity_mask_low", {"identity": 0x50}),
-                          ("identity_mask_high", {"identity": 0x57}),
-                          ("identity_below_mask", {"identity": 0x4F}),
-                          ("identity_above_mask", {"identity": 0x58}),
-                          ("wrong_identity", {"identity": 0}),
-                          ("address_nack", {"nack_identity": True}),
-                          ("missing_interrupt", {"suppress_bus_irq": True}),
-                          ("delayed_interrupt", {"defer_bus_irqs": 8}),
-                          ("timeout_then_recovery", {"defer_bus_irqs": 80}),
-                          ("second_peer_read", {"until_second": True}),
-                          ("second_peer_byte_edges", {"until_second": True, "second_bytes": b"\0\xFF\x80\x7F"})):
+    for name, options in startup_scenarios():
         stock, stock_state = run_startup(image, dsp, **options)
         candidate, candidate_state = run_startup(image, dsp, candidate=True, **options)
         verify(stock == candidate and stock_state == candidate_state, f"Candidate changed stock startup in {name}")

@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 13 stages passed with the local pinned images on 2026-11-21,
+All 14 stages passed with the local pinned images on 2026-11-21,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261121-startup.json)
+The [public validation summary](firmware/validation/20261121-exceptions.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -167,6 +167,16 @@ The comparison includes system-control/NVIC writes and final mask state.
 The model checks NVIC enables and PRIMASK but still schedules vector calls
 manually. It stops before interpreting the second peer's response;
 whole-board startup and authentic external responses remain unverified.
+An additional [basic Cortex-M IRQ replay](firmware/CORTEX_M_IRQ.md) now
+uses memory-backed MSP/PSP frames, IPSR and EXC_RETURN for those original
+handlers. It checks pending/active state, PRIMASK/BASEPRI/FAULTMASK,
+priority nesting and deferral. The old direct-call path remains separate.
+Twenty-two core checks and eight invalid/unsupported controls pass;
+the same 12 stock/candidate startup scenarios also pass with frame
+delivery and per-interrupt register preservation. Across those pairs,
+2,006 entries and 2,006 returns balance. FP/lazy frames,
+system exceptions, physical event timing and full NVIC cycle behavior
+remain unimplemented. No whole-device equivalence follows.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
