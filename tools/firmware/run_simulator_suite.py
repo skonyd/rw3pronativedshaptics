@@ -80,6 +80,7 @@ def main():
         ("controller-spi", "replay_controller_spi.py", (radio, nxp)),
         ("controller-i2s", "replay_controller_i2s.py", (radio, nxp)),
         ("nxp-analog", "replay_nxp_analog.py", (nxp,)),
+        ("nxp-startup-i2c", "replay_nxp_startup.py", (nxp, args.dsp)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )

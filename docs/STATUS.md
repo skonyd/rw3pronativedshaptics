@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 12 stages passed with the local pinned images on 2026-11-21,
+All 13 stages passed with the local pinned images on 2026-11-21,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261121-voice.json)
+The [public validation summary](firmware/validation/20261121-startup.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -156,6 +156,17 @@ stock main. The startup trace matches stock RAM and MMIO writes through
 timer initialization and five peripheral waits advanced by the stock MRT0 handler.
 An additional NXP scenario drives stock FLEXCOMM3 interrupts through the
 first I²C register read with a synthetic peripheral response.
+The register-driven startup replay now follows the stock identity check
+and all nine configuration writes on FLEXCOMM3. It also reaches the first
+four-byte read on FLEXCOMM8 with two explicitly synthetic response patterns.
+Twelve stock/candidate scenarios compare initialized stock RAM, stack
+pointer, wait order and peripheral writes, covering wrong identity, NACK,
+missing/delayed interrupts and timeout followed by recovery. Missing and
+truncated peer definitions fail rather than silently becoming zeros.
+The comparison includes system-control/NVIC writes and final mask state.
+The model checks NVIC enables and PRIMASK but still schedules vector calls
+manually. It stops before interpreting the second peer's response;
+whole-board startup and authentic external responses remain unverified.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

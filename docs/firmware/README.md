@@ -62,14 +62,19 @@ The suite covers currently modeled paths, including the stock and
 candidate NXP runs, Telink boot and audio, RF retry, controller SPI,
 I²S, the voice encoder/RF/decoder/USB IN path, captured voice framing
 with malformed controls, and the ADC-to-USB descriptor and completion
-path. Voice framing is checked against every captured endpoint-0x87
+path. The [startup I²C replay](AUDIO_HAPTICS_REPLAY.md#register-driven-startup-i²c-peers)
+checks stock configuration, transport failures and retry using explicit
+synthetic peers and original interrupt handlers.
+Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
 The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [2026-11-21 validation summary](validation/20261121-voice.json)
-preserves the 12-stage result, input hashes and voice checks without
+The [latest 2026-11-21 validation summary](validation/20261121-startup.json)
+preserves the 13-stage result, input/tool hashes and startup controls.
+The [earlier voice summary](validation/20261121-voice.json)
+preserves that 12-stage result and voice checks without
 firmware images or raw packet payloads. Its explicit unverified fields
 remain part of the result.

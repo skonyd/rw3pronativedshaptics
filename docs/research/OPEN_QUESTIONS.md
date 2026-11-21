@@ -104,8 +104,14 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   E-20261114-33 covers the application reset vector and stock/candidate
   startup comparison through five modeled MRT-driven peripheral timeouts.
   E-20261115-90 completes the first NXP I²C read through six simulated
-  FLEXCOMM3 events. Next identify additional peripheral replies and
-  reconstruct delivered interrupts beyond the second wait at 0x2A610.
+  FLEXCOMM3 events. E-20261121-06 models that register peer from stock
+  commands through all nine configuration writes and reaches the first
+  four-byte read on FLEXCOMM8 (IRQ40, address 0x20/register 0x82). It
+  tests identity boundaries, NACK, missing/delayed IRQs and timeout/retry
+  with stock/candidate state comparison. The four-byte replies are
+  synthetic, not captured device status. Identify the actual second
+  peer and its response protocol before continuing its status parser.
+  Extend enable/PRIMASK checks to real exception entry and preemption.
   Independently validate timing and pin-level PWM. The runtime switch
   remains a simulator input.
 - Identify board debug pads and obtain a read-only stock backup if supported.

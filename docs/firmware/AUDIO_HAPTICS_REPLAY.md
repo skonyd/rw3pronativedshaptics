@@ -492,6 +492,68 @@ RAM, stack and 348 peripheral writes. The two full USB replay reports
 each pass 35 checks with this scenario included.
 [NXP I²C master state codes](https://mcuxpresso.nxp.com/api_doc/dev/4601/a00196.html)
 
+### Register-driven startup I²C peers
+
+```powershell
+python -B tools/firmware/replay_nxp_startup.py <Dev2FW.bin> <audio_haptics.bin>
+```
+
+This additional replay starts from the application reset vector on dirty
+RAM and observes the original I²C driver's START, CONTINUE and STOP
+writes. The model uses the documented pending/idle, RX-ready, TX-ready
+and address-NACK states, then invokes the stock vectors. It does not
+replace the driver's transfer completion or write success into its RAM.
+It models NVIC enable set/clear aliases and checks enable plus PRIMASK
+before scheduling each vector call. NVIC exception entry, BASEPRI,
+priority arbitration, electrical timing and bus clocks are not modeled.
+
+The first path uses FLEXCOMM3 at `0x40089000`, I²C register block
+`0x40089800`, IRQ 17 and the 7-bit peer address `0x6B`. The explicitly
+synthetic identity register `0x0B = 0x53` takes the stock accepted branch.
+Stock accepts the mask range `0x50..0x57`, and performs these nine writes:
+
+| Register | Value |
+| --- | --- |
+| 0x00 | 0x04 |
+| 0x01 | 0x0E |
+| 0x02 | 0x0D |
+| 0x03 | 0x41 |
+| 0x04 | 0x70 |
+| 0x05 | 0x84 |
+| 0x06 | 0x20 |
+| 0x07 | 0xCB |
+| 0x0C | 0x85 |
+
+The successful trace reaches `0x2DC5C` with 51 stock FLEXCOMM3 calls,
+483 peripheral writes and the stock configured flag set. Identity mask
+boundaries are checked on both sides. A wrong identity produces three
+reads and no configuration. Address NACK and withheld interrupts follow
+the stock timeout/abort/retry path and leave the configured flag clear.
+Each uses 240 MRT0 vector calls across three attempts. An eight-call
+delay still configures the peer; an 80-call delay expires the first
+attempt and the stock retry then succeeds. These counts are fixture
+events, not measured device latency. A test-harness boundary initially
+kept stopping after timeout; it now lets the stock cleanup run when the
+timeout counter reaches zero.
+
+The second path is **FLEXCOMM8**, base `0x40099000`, I²C register block
+`0x40099800`, IRQ 40. The original call sends address `0x20`, selects
+register `0x82` and reads four bytes. Nine stock vector calls complete
+that transfer. The test checks exact `12 34 56 78` and `00 FF 80 7F`
+bytes at `0x2000A3FF` and stops at the caller return `0xBD82`, before
+interpreting the peer's reply. Its identity and real response contents
+remain open. Missing or truncated peer register definitions fail clearly
+instead of supplying zeros. No undocumented response is claimed authentic.
+
+Twelve scenarios each compare stock and the candidate reset/hooks:
+81,192 initialized stock RAM bytes, stack pointer, wait-event order and
+all observed peripheral and system-control/NVIC writes match. Final NVIC
+enable state and PRIMASK also agree. Private candidate-state guards
+also retain their expected reset values. Two incomplete-peer controls
+fail as expected. Ready/lock bits, the empty bootloader handoff word,
+other mapped peripherals and vector scheduling remain fixture state.
+The physical startup and a complete main loop are still unverified.
+
 ### Hardware and integration
 
 1. Trace endpoint registration and DMA completion into the

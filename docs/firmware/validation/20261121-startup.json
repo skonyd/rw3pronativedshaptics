@@ -1,0 +1,219 @@
+{
+  "date": "2026-11-21",
+  "scope": "offline stock and candidate replay with modeled peripherals",
+  "complete": true,
+  "passed": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "546a033a943faeb4566e9b0fa21ce280700f24f04475fd2bb062deff7f492ab1",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "tool_source_lf_sha256": {
+    "tools/firmware/replay_nxp_startup.py": "5e2c5fd87008959ba91c46cb8a02a443e6aa886407af6862bd437ddda2865d84",
+    "tools/firmware/run_simulator_suite.py": "0043fc9381b93cf115eae25866dc5a27251743b651dcad1b19c1157f9dfc1705"
+  },
+  "active_stereo_excerpt": 3000,
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-startup-i2c": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true
+  },
+  "startup_scope": "offline startup with synthetic register peers and manually scheduled vectors",
+  "stock_candidate_match": true,
+  "stock_ram_compared_bytes": 81192,
+  "incomplete_peer_reply_cases": 2,
+  "missing_peer_register_rejected": true,
+  "cases": {
+    "configured": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19
+    },
+    "identity_mask_low": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 80,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19
+    },
+    "identity_mask_high": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 87,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19
+    },
+    "identity_below_mask": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 79,
+      "first_device_configured": false,
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14
+    },
+    "identity_above_mask": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 88,
+      "first_device_configured": false,
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14
+    },
+    "wrong_identity": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 0,
+      "first_device_configured": false,
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14
+    },
+    "address_nack": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": false,
+      "interrupt_counts": {
+        "17": 6,
+        "9": 240
+      },
+      "wait_events": 246,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 598,
+      "system_control_writes": 11
+    },
+    "missing_interrupt": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": false,
+      "interrupt_counts": {
+        "9": 240
+      },
+      "wait_events": 240,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 592,
+      "system_control_writes": 11
+    },
+    "delayed_interrupt": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "9": 8,
+        "17": 51
+      },
+      "wait_events": 59,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 491,
+      "system_control_writes": 19
+    },
+    "timeout_then_recovery": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "9": 80,
+        "17": 51
+      },
+      "wait_events": 131,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 572,
+      "system_control_writes": 20
+    },
+    "second_peer_read": {
+      "checkpoint": "0xbd82",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "17": 51,
+        "40": 9
+      },
+      "wait_events": 60,
+      "second_reply_hex": "12345678",
+      "stock_mmio_writes": 725,
+      "system_control_writes": 23
+    },
+    "second_peer_byte_edges": {
+      "checkpoint": "0xbd82",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "interrupt_counts": {
+        "17": 51,
+        "40": 9
+      },
+      "wait_events": 60,
+      "second_reply_hex": "00ff807f",
+      "stock_mmio_writes": 725,
+      "system_control_writes": 23
+    }
+  },
+  "synthetic_peers": [
+    {
+      "peripheral": "FLEXCOMM3",
+      "register_base": "0x40089800",
+      "irq": 17,
+      "address": "0x6b",
+      "identity_register": "0x0b",
+      "default_identity": "0x53"
+    },
+    {
+      "peripheral": "FLEXCOMM8",
+      "register_base": "0x40099800",
+      "irq": 40,
+      "address": "0x20",
+      "first_register": "0x82",
+      "reply_is_authentic": false
+    }
+  ],
+  "unverified": [
+    "Identity and authentic response protocol of the second I2C peer",
+    "Full board startup and normal main-loop scheduling",
+    "NVIC exception entry/return, BASEPRI and interrupt preemption",
+    "Physical bus clocks and pin routing, RF synchronization, physical PWM and actuator fidelity",
+    "Resident bootloader acceptance and recovery after invalid application"
+  ],
+  "local_full_reports": "TestResults/firmware-lab/suite-20261121-startup",
+  "hardware_access": "None; offline local images and existing USB captures only"
+}

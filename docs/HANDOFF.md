@@ -73,6 +73,18 @@ physical inter-chip I²S routing and whole-board GPIO/interrupt behavior.
 Full-system equivalence and a flashable candidate remain unverified;
 resident bootloader and recovery are still unavailable. No flashing.
 
+Startup continuation (E-20261121-06): `replay_nxp_startup.py` follows
+the stock I²C command registers through nine FLEXCOMM3 configuration
+writes and a first FLEXCOMM8 four-byte read. Twelve stock/candidate
+scenario pairs cover identity boundaries, NACK, missing/delayed
+interrupts and timeout/retry; two incomplete-peer controls fail clearly.
+The second peer is opaque and its replies are explicit synthetic data.
+Next identify that peer/status protocol and extend the manually
+scheduled, enable/PRIMASK-gated vector calls to exception delivery.
+The [latest public summary](firmware/validation/20261121-startup.json)
+records the 13/13 full-suite run (E-20261121-07), including system-control
+and NVIC write/mask comparison. The earlier 12-stage report above is history.
+
 | Period | Result | Where |
 | --- | --- | --- |
 | 2026-11-05..08 | Windows app (WPF, tray, 3 modes), audio→haptics, virtual DualSense bridge (HIDMaestro), contract suite | README, STATUS |
