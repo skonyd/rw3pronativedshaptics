@@ -68,3 +68,8 @@ PCM is not a reference for the synthetic microphone tone.
 The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
+
+The [2026-11-21 validation summary](validation/20261121-voice.json)
+preserves the 12-stage result, input hashes and voice checks without
+firmware images or raw packet payloads. Its explicit unverified fields
+remain part of the result.

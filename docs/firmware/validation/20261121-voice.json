@@ -1,0 +1,101 @@
+{
+  "date": "2026-11-21",
+  "source_commit": "f4d98c6",
+  "scope": "offline stock and candidate replay with modeled peripherals",
+  "complete": true,
+  "passed": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "546a033a943faeb4566e9b0fa21ce280700f24f04475fd2bb062deff7f492ab1",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "active_stereo_excerpt": 3000,
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true
+  },
+  "downstream_audio_slots": {
+    "wired": 6552,
+    "dongle": 6272
+  },
+  "voice_capture": {
+    "device_address": 9,
+    "usb_endpoint": "0x87",
+    "urb_completions": 784,
+    "packets_per_urb": {
+      "8": 784
+    },
+    "voice_packets": 6272,
+    "packet_bytes": 54,
+    "pcm_samples_per_packet": 24,
+    "header_without_sequence": "602332c000",
+    "sequence_wraps_skipping_zero": 25,
+    "pcm_peak": 43,
+    "pcm_sha256": "404d4307037790ee3ef31891e9bd91cd6a07b6be49eaf23c7053cd29798626da",
+    "capture_sha256": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173",
+    "scope": "captured framing and grouping; no synthetic waveform or timing equivalence",
+    "rejected_negative_controls": [
+      "truncated_transfer",
+      "truncated_header",
+      "failed_urb",
+      "iso_error_count",
+      "slot_past_end",
+      "wrong_slot_size",
+      "failed_slot",
+      "zero_sequence",
+      "wrong_gip_length"
+    ]
+  },
+  "voice_replay": {
+    "decoded_samples": 240,
+    "mono_ring_wrap": true,
+    "stock_timer_irq_used": true,
+    "decoded_peak": 23916,
+    "resampled_peak": 23919,
+    "resampled_pcm_sha256": "89fde48eb7105f0d8af1167aaa17a5b3778e75caeb7df2a939af0080fb37bfe6",
+    "usb_endpoint": "0x87",
+    "usb_packets": 6,
+    "packet_bytes": 54,
+    "usb_header_without_sequence": "602332c000",
+    "usb_sequences": [
+      254,
+      255,
+      1,
+      2,
+      3,
+      4
+    ],
+    "usb_payload_sha256": "4f53576e6575db3a60433c8e372e32f97f6a2bff4e4e2895768c442451072653",
+    "underrun_silent": true,
+    "missing_slot_peaks": [
+      23892,
+      0
+    ],
+    "recovery_decoded": true
+  },
+  "extra_negative_control": "Wrong voice USB address 1 rejected with exit code 1",
+  "unverified": [
+    "Resident NXP bootloader, custom-image acceptance and recovery after invalid application",
+    "Physical inter-chip I2S clock/data routing and board GPIO mapping",
+    "Full RF synchronization acquisition, host polling and interrupt/preemption timing",
+    "Whole-board startup and all peripheral responses",
+    "Physical PWM and actuator equivalence; captured voice PCM is background-level input"
+  ],
+  "local_full_reports": "TestResults/firmware-lab/suite-20261121-voice-capture",
+  "hardware_access": "None in this validation; existing captures and local images only"
+}

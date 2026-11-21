@@ -51,6 +51,9 @@ explorer.exe TestResults\install-when-closed.cmd    # waits for RW3 to close, co
   Each AI adds its own `Co-Authored-By` line.
 - PowerShell 5.1 mangles double quotes inside `-m` arguments: write the message to a file and use `git commit -F`.
 - Commit only what the user asked for; update `docs/STATUS.md` in the same commit when behaviour changes.
+- Concurrent tools share the Git index in this checkout. Commit an explicit
+  path list with `git commit --only ... -- <paths>` so another tool's staged
+  files cannot enter your commit. Do not reset or discard their staged work.
 - Never commit Razer/Sony binaries or firmware images; only our maps, notes and tools.
 
 ## 3. What has been done (chronological, newest last)
@@ -63,7 +66,9 @@ underrun and sequence wrap skipping zero. A separate parser checks
 all 6,272 recorded IN packets and nine damaged-capture controls.
 Run [the suite](firmware/README.md#run-the-offline-replay-suite) from the
 local pinned images/captures; reports stay under ignored `TestResults/`.
-See E-20261121-02/03. Next: actual RF synchronization and scheduling,
+The [public validation summary](firmware/validation/20261121-voice.json)
+records the 12/12 run, input hashes, negative controls and scope limits.
+See E-20261121-02/03/05. Next: actual RF synchronization and scheduling,
 physical inter-chip I²S routing and whole-board GPIO/interrupt behavior.
 Full-system equivalence and a flashable candidate remain unverified;
 resident bootloader and recovery are still unavailable. No flashing.

@@ -98,6 +98,8 @@ including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
+The [public validation summary](firmware/validation/20261121-voice.json)
+retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
