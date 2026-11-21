@@ -292,6 +292,48 @@ public sealed class XboxAudioGameBridge : IDisposable
     }
 
 #if HAS_HIDMAESTRO
+    /// <summary>
+    /// While the Wolverine is out (a replug), recreates the virtual pad when a lower XInput slot than its own is now free,
+    /// so the game's player 1 (XInput slot 0 in Unreal games) is the virtual pad and the Wolverine comes back behind it.
+    /// 2026-11-22: the Wolverine held slot 0 and the virtual pad slot 1; Banishers passed "press any button" but nothing
+    /// moved, while the test range (reading every pad) saw full stick/trigger input from the virtual pad.
+    /// </summary>
+    private bool TryTakeLowerSlot(ref HMController? controller)
+    {
+        if (!Strict || _context == null || controller == null || _virtualXSlot <= 0 || _slotMoves >= 3) return false;
+        int free = -1;
+        for (int i = 0; i < _virtualXSlot; i++) if (XInput.GetState((uint)i, out _) != 0) { free = i; break; }
+        if (free < 0) return false;
+        int was = _virtualXSlot;
+        _slotMoves++;
+        var model = controller.Profile;
+        controller.OutputReceived -= OnOutput;
+        try { controller.Dispose(); } catch (Exception ex) { DiagnosticsService.Info("Virtual pad: old pad close " + ex.Message); }
+        int before = 0;
+        for (int i = 0; i < 4; i++) if (XInput.GetState((uint)i, out _) == 0) before |= 1 << i;
+        controller = _context.CreateController(model, "rw3-xbox-audio");
+        controller.OutputReceived += OnOutput;
+        _controller = controller;
+        _slotsBefore = before;
+        _virtualXSlot = -1;
+        // Pin the new slot now, before the Wolverine comes back (both would be "new" slots then).
+        for (int n = 0; n < 40 && _virtualXSlot < 0; n++)
+        {
+            for (int i = 0; i < 4; i++)
+                if ((before & (1 << i)) == 0 && XInput.GetState((uint)i, out var st) == 0) { _virtualXSlot = i; _virtualXPacket0 = st.dwPacketNumber; break; }
+            if (_virtualXSlot < 0) Thread.Sleep(50);
+        }
+        VirtualSlot = _virtualXSlot;
+        DiagnosticsService.Info($"Virtual Xbox pad (strict): recreated while the Wolverine is out, XInput slot {was} → {(_virtualXSlot >= 0 ? _virtualXSlot.ToString() : "?")} (player 1 = slot 0).");
+        return true;
+    }
+    private int _slotMoves;
+    private long _startedAt = Environment.TickCount64;
+
+    /// <summary>XInput slot of the running strict virtual pad (-1 unknown). Above 0 while the Wolverine holds a lower
+    /// slot: games that take player 1 from slot 0 then read the hidden Wolverine and ignore the virtual pad.</summary>
+    public static volatile int VirtualSlot = -1;
+
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
         if (packet.Source == HMOutputSource.HidOutput && AcceptReport(packet.ReportId, packet.Data.Span)) return;
@@ -396,12 +438,17 @@ public sealed class XboxAudioGameBridge : IDisposable
                 XInputPad pad;
                 if (Strict)
                 {
+                    // Know our slot early (a replug right after start must already move the pad to slot 0).
+                    if (_virtualXSlot == -2 && Environment.TickCount64 - _startedAt > 1500) VirtualXInputNote();
                     // A replug (which the strict setup asks for) drops XInput for a few seconds. Until 2026-11-15 that ended
                     // the bridge silently, HidHide was restored and the game went back to the physical pad.
                     if (!TryReadXInput(out pad))
                     {
                         long t = Environment.TickCount64;
                         if (lostSince == 0) { lostSince = t; DiagnosticsService.Info("Virtual Xbox pad (strict): Wolverine left XInput; waiting up to 60 s."); }
+#if HAS_HIDMAESTRO
+                        if (TryTakeLowerSlot(ref controller)) { pad = default; continue; }
+#endif
                         if (t - lostSince > 60_000) throw new InvalidOperationException("Wolverine 60 sn XInput'ta görünmedi.");
                         pad = default;
                     }
@@ -479,6 +526,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             _virtualXSlot = -1;
             for (int i = 0; i < 4; i++)
                 if (i != _xinputSlot && IsOurs(i) && XInput.GetState((uint)i, out var st) == 0) { _virtualXSlot = i; _virtualXPacket0 = st.dwPacketNumber; break; }
+            VirtualSlot = _virtualXSlot;
         }
         if (_virtualXSlot < 0) return "yok";
         return XInput.GetState((uint)_virtualXSlot, out var s) == 0 ? $"slot {_virtualXSlot} packets +{s.dwPacketNumber - _virtualXPacket0}" : $"slot {_virtualXSlot} gone";
@@ -573,6 +621,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     {
         _running = false;
         ForeignPads = null;
+        VirtualSlot = -1;
         try { _probeThread?.Join(500); _inputProbe?.Dispose(); } catch { }
         _watchdog?.Dispose();
         _watchdog = null;

@@ -73,7 +73,10 @@ public sealed class HapticOrchestrator
         {
             var list = _padHolders;
             if (list.Count == 0)
-                return XboxAudioGameBridge.ForeignPads is { } other
+                return XboxAudioGameBridge.VirtualSlot > 0
+                    ? $"Sanal kol XInput yuva {XboxAudioGameBridge.VirtualSlot + 1}'de, Wolverine önünde. Bazı oyunlar (ör. Banishers) 1. oyuncuyu " +
+                      "ilk yuvadan okur ve sanal kola tepki vermez: oyunu kapat, kolu çıkarıp tak (RW3 sanal kolu öne alır), sonra oyunu aç."
+                    : XboxAudioGameBridge.ForeignPads is { } other
                     ? "Başka bir kol da bağlı (" + other + "; örneğin Bluetooth ile eşli bir Xbox kolu). Oyun sanal kol yerine onu " +
                       "kullanabilir: o kolu kapat (Xbox tuşuna 6 sn bas) ya da Bluetooth'tan bağlantısını kes, sonra oyunu yeniden aç."
                     : null;
