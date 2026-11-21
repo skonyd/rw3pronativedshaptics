@@ -14,6 +14,7 @@ from unicorn import (
     UC_PROT_EXEC, UC_PROT_READ,
 )
 from unicorn.arm_const import (
+    UC_CPU_ARM_CORTEX_M4,
     UC_ARM_REG_APSR, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1,
     UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_SP,
 )
@@ -42,7 +43,11 @@ def verify(condition, message):
 
 class Replay:
     def __init__(self, image, dsp=None):
-        self.cpu = cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+        # Unicorn 2.1.4's MCLASS mode forcibly selects M33 even after setting
+        # a CPU model. Select M4 explicitly without that overriding flag.
+        self.cpu = cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+        cpu.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M4)
+        verify(cpu.ctl_get_cpu_model() == UC_CPU_ARM_CORTEX_M4, "Replay requires Cortex-M4")
         cpu.mem_map(0, 0x40000)
         cpu.mem_write(0x8000, image)
         cpu.mem_map(0x20000000, 0x28000)

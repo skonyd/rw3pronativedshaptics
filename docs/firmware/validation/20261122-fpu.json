@@ -1,0 +1,856 @@
+{
+  "date": "2026-11-22",
+  "scope": "offline stock and candidate replay with modeled peripherals",
+  "complete": true,
+  "passed": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "546a033a943faeb4566e9b0fa21ce280700f24f04475fd2bb062deff7f492ab1",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "tool_source_lf_sha256": {
+    "tools/firmware/cortex_m_irq.py": "d52861e1911b7c48442f7f5cae053329a4bb3083b8a95fac05c7b64310ed5504",
+    "tools/firmware/cortex_m_fpu.py": "c52be12f70ef765387d717d6ec8f32de574831778195a8e647c2865de149724f",
+    "tools/firmware/replay_nxp_exceptions.py": "97695d5fa50067f08202e7a50a42f54a4a89edbbc10862a2ecfae3401fc8c15c",
+    "tools/firmware/replay_nxp_fpu.py": "e4e3a1e915d3642ecbbb31c96eeb67688a42ae67d5627b4f41497c27b9b0ddaf",
+    "tools/firmware/replay_nxp_startup.py": "4af80bd96df85a2d84374a39050382c8e68ad6d082f141ff1eb88c7801f1e3c7",
+    "tools/firmware/simulate_audio_haptics.py": "41f8d3118838d2e942cf80e81c190b21966c9675136522596ba9d85f259351c7",
+    "tools/firmware/run_simulator_suite.py": "9aa5593c295b8beca2fe5a0f0cfd57553182b9ae99e68166d8d5e6b6a94148f3"
+  },
+  "cpu_correction": {
+    "unicorn_version": "2.1.4",
+    "affected_scope": "Shared NXP audio Replay and basic/FP instruction fixtures",
+    "old_mode": "UC_MODE_MCLASS silently forces Cortex-M33",
+    "new_mode": "UC_MODE_THUMB and explicit Cortex-M4, asserted after initialization",
+    "older_reports_predate_correction": true
+  },
+  "active_stereo_excerpt": 3000,
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-startup-i2c": true,
+    "nxp-exceptions": true,
+    "nxp-fpu-exceptions": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true
+  },
+  "basic_contracts": {
+    "checks": [
+      "msp_4_byte_alignment",
+      "msp_8_byte_alignment",
+      "psp_4_byte_alignment",
+      "psp_8_byte_alignment",
+      "return_uses_memory_frame",
+      "callee_register_corruption_is_visible",
+      "ipsr_in_handler",
+      "apsr_preserved_on_entry",
+      "active_bitmap_in_handler",
+      "mask_register_123",
+      "mask_register_126",
+      "mask_register_124",
+      "priority_zero_survives_basepri",
+      "nvic_aliases_and_three_priority_bits",
+      "aircr_write_key_and_readback",
+      "higher_priority_preempts",
+      "equal_priority_waits",
+      "same_group_subpriority_waits",
+      "pending_priority_tie",
+      "handler_mask_change_survives_return",
+      "unmask_inside_handler_preempts",
+      "faultmask_clears_on_return"
+    ],
+    "negative_controls": [
+      "invalid_stack_state",
+      "unbalanced_stack",
+      "odd_stacked_pc",
+      "wrong_return_stack",
+      "unsupported_fp_frame",
+      "unsupported_handler_fp",
+      "instruction_budget",
+      "unsupported_subpriority_only_basepri"
+    ],
+    "preemption_traces": {
+      "higher_priority_preempts": [
+        {
+          "event": "entry",
+          "irq": 17,
+          "frame": "0x20002fe0",
+          "return": "0xfffffff9"
+        },
+        {
+          "event": "entry",
+          "irq": 9,
+          "frame": "0x20002fc0",
+          "return": "0xfffffff1"
+        },
+        {
+          "event": "return",
+          "irq": 9,
+          "pc": "0x2006"
+        },
+        {
+          "event": "return",
+          "irq": 17,
+          "pc": "0x100"
+        }
+      ],
+      "equal_priority_waits": [
+        {
+          "event": "entry",
+          "irq": 17,
+          "frame": "0x20002fe0",
+          "return": "0xfffffff9"
+        },
+        {
+          "event": "return",
+          "irq": 17,
+          "pc": "0x100"
+        },
+        {
+          "event": "entry",
+          "irq": 9,
+          "frame": "0x20002fe0",
+          "return": "0xfffffff9"
+        },
+        {
+          "event": "return",
+          "irq": 9,
+          "pc": "0x100"
+        }
+      ],
+      "same_group_subpriority_waits": [
+        {
+          "event": "entry",
+          "irq": 17,
+          "frame": "0x20002fe0",
+          "return": "0xfffffff9"
+        },
+        {
+          "event": "return",
+          "irq": 17,
+          "pc": "0x100"
+        },
+        {
+          "event": "entry",
+          "irq": 9,
+          "frame": "0x20002fe0",
+          "return": "0xfffffff9"
+        },
+        {
+          "event": "return",
+          "irq": 9,
+          "pc": "0x100"
+        }
+      ]
+    }
+  },
+  "startup_cases": {
+    "configured": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            83
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 51,
+      "exception_returns": 51,
+      "interrupted_register_checks": 51
+    },
+    "identity_mask_low": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 80,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            80
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 51,
+      "exception_returns": 51,
+      "interrupted_register_checks": 51
+    },
+    "identity_mask_high": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 87,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "17": 51
+      },
+      "wait_events": 51,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 483,
+      "system_control_writes": 19,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            87
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 51,
+      "exception_returns": 51,
+      "interrupted_register_checks": 51
+    },
+    "identity_below_mask": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 79,
+      "first_device_configured": false,
+      "register_writes": {},
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            79
+          ],
+          [
+            107,
+            11,
+            79
+          ],
+          [
+            107,
+            11,
+            79
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 18,
+      "exception_returns": 18,
+      "interrupted_register_checks": 18
+    },
+    "identity_above_mask": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 88,
+      "first_device_configured": false,
+      "register_writes": {},
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            88
+          ],
+          [
+            107,
+            11,
+            88
+          ],
+          [
+            107,
+            11,
+            88
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 18,
+      "exception_returns": 18,
+      "interrupted_register_checks": 18
+    },
+    "wrong_identity": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 0,
+      "first_device_configured": false,
+      "register_writes": {},
+      "interrupt_counts": {
+        "17": 18
+      },
+      "wait_events": 18,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 394,
+      "system_control_writes": 14,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            0
+          ],
+          [
+            107,
+            11,
+            0
+          ],
+          [
+            107,
+            11,
+            0
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 18,
+      "exception_returns": 18,
+      "interrupted_register_checks": 18
+    },
+    "address_nack": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": false,
+      "register_writes": {},
+      "interrupt_counts": {
+        "17": 6,
+        "9": 240
+      },
+      "wait_events": 246,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 598,
+      "system_control_writes": 11,
+      "unknown_addresses": [
+        [
+          107,
+          107,
+          107
+        ],
+        []
+      ],
+      "received_bytes": [
+        [],
+        []
+      ],
+      "exception_entries": 246,
+      "exception_returns": 246,
+      "interrupted_register_checks": 246
+    },
+    "missing_interrupt": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": false,
+      "register_writes": {},
+      "interrupt_counts": {
+        "9": 240
+      },
+      "wait_events": 240,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 592,
+      "system_control_writes": 11,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [],
+        []
+      ],
+      "exception_entries": 240,
+      "exception_returns": 240,
+      "interrupted_register_checks": 240
+    },
+    "delayed_interrupt": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "9": 8,
+        "17": 51
+      },
+      "wait_events": 59,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 491,
+      "system_control_writes": 19,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            83
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 59,
+      "exception_returns": 59,
+      "interrupted_register_checks": 59
+    },
+    "timeout_then_recovery": {
+      "checkpoint": "0x2dc5c",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "9": 80,
+        "17": 51
+      },
+      "wait_events": 131,
+      "second_reply_hex": null,
+      "stock_mmio_writes": 572,
+      "system_control_writes": 20,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            83
+          ]
+        ],
+        []
+      ],
+      "exception_entries": 131,
+      "exception_returns": 131,
+      "interrupted_register_checks": 131
+    },
+    "second_peer_read": {
+      "checkpoint": "0xbd82",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "17": 51,
+        "40": 9
+      },
+      "wait_events": 60,
+      "second_reply_hex": "12345678",
+      "stock_mmio_writes": 725,
+      "system_control_writes": 23,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            83
+          ]
+        ],
+        [
+          [
+            32,
+            130,
+            18
+          ],
+          [
+            32,
+            131,
+            52
+          ],
+          [
+            32,
+            132,
+            86
+          ],
+          [
+            32,
+            133,
+            120
+          ]
+        ]
+      ],
+      "exception_entries": 60,
+      "exception_returns": 60,
+      "interrupted_register_checks": 60
+    },
+    "second_peer_byte_edges": {
+      "checkpoint": "0xbd82",
+      "synthetic_identity": 83,
+      "first_device_configured": true,
+      "register_writes": {
+        "0": 4,
+        "1": 14,
+        "2": 13,
+        "3": 65,
+        "4": 112,
+        "5": 132,
+        "6": 32,
+        "7": 203,
+        "12": 133
+      },
+      "interrupt_counts": {
+        "17": 51,
+        "40": 9
+      },
+      "wait_events": 60,
+      "second_reply_hex": "00ff807f",
+      "stock_mmio_writes": 725,
+      "system_control_writes": 23,
+      "unknown_addresses": [
+        [],
+        []
+      ],
+      "received_bytes": [
+        [
+          [
+            107,
+            11,
+            83
+          ]
+        ],
+        [
+          [
+            32,
+            130,
+            0
+          ],
+          [
+            32,
+            131,
+            255
+          ],
+          [
+            32,
+            132,
+            128
+          ],
+          [
+            32,
+            133,
+            127
+          ]
+        ]
+      ],
+      "exception_entries": 60,
+      "exception_returns": 60,
+      "interrupted_register_checks": 60
+    }
+  },
+  "fp_scope": "offline FP contexts and supplied stock Sensa CTIMER2/3 events",
+  "fp_contracts": {
+    "checks": [
+      "eager_msp_offset_0",
+      "eager_msp_offset_4",
+      "eager_psp_offset_0",
+      "eager_psp_offset_4",
+      "lazy_msp_offset_0",
+      "lazy_msp_offset_4",
+      "lazy_psp_offset_0",
+      "lazy_psp_offset_4",
+      "lazy_unused_area_untouched",
+      "return_uses_stacked_fp_memory",
+      "s16_corruption_remains_visible",
+      "nested_basic_flushes_older_lazy",
+      "nested_fp_contexts",
+      "foreground_fp_context_from_fpdscr",
+      "first_handler_fp_basic_caller_frame",
+      "fp_control_register_readback"
+    ],
+    "negative_controls": [
+      "disabled_coprocessor",
+      "reserved_cpacr",
+      "unprivileged_denied",
+      "unaligned_fp_policy",
+      "enabled_faults",
+      "aspen_disabled",
+      "extended_wrong_return",
+      "extended_unbalanced_stack",
+      "extended_corrupt_xpsr",
+      "manual_fpca_during_lazy",
+      "nonreturn_prefetch_abort",
+      "control_change_during_lazy"
+    ],
+    "nested_traces": {
+      "nested_basic_flushes_older_lazy": {
+        "interrupts": [
+          {
+            "event": "entry",
+            "irq": 17,
+            "frame": "0x20002f98",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 9,
+            "frame": "0x20002f78",
+            "return": "0xfffffff1"
+          },
+          {
+            "event": "return",
+            "irq": 9,
+            "pc": "0x2006"
+          },
+          {
+            "event": "return",
+            "irq": 17,
+            "pc": "0x100"
+          }
+        ],
+        "fp": [
+          {
+            "event": "lazy_reserved",
+            "frame": "0x20002f98"
+          },
+          {
+            "event": "lazy_saved",
+            "frame": "0x20002f98",
+            "pc": "0x2100"
+          },
+          {
+            "event": "context_created",
+            "pc": "0x2100"
+          },
+          {
+            "event": "fp_restored",
+            "frame": "0x20002f98"
+          }
+        ]
+      },
+      "nested_fp_contexts": {
+        "interrupts": [
+          {
+            "event": "entry",
+            "irq": 17,
+            "frame": "0x20002f98",
+            "return": "0xffffffe9"
+          },
+          {
+            "event": "entry",
+            "irq": 9,
+            "frame": "0x20002f30",
+            "return": "0xffffffe1"
+          },
+          {
+            "event": "return",
+            "irq": 9,
+            "pc": "0x200a"
+          },
+          {
+            "event": "return",
+            "irq": 17,
+            "pc": "0x100"
+          }
+        ],
+        "fp": [
+          {
+            "event": "lazy_reserved",
+            "frame": "0x20002f98"
+          },
+          {
+            "event": "lazy_saved",
+            "frame": "0x20002f98",
+            "pc": "0x2000"
+          },
+          {
+            "event": "context_created",
+            "pc": "0x2000"
+          },
+          {
+            "event": "lazy_reserved",
+            "frame": "0x20002f30"
+          },
+          {
+            "event": "lazy_saved",
+            "frame": "0x20002f30",
+            "pc": "0x2100"
+          },
+          {
+            "event": "context_created",
+            "pc": "0x2100"
+          },
+          {
+            "event": "fp_restored",
+            "frame": "0x20002f30"
+          },
+          {
+            "event": "fp_restored",
+            "frame": "0x20002f98"
+          }
+        ]
+      }
+    }
+  },
+  "stock_timer_cases": {
+    "eager_idle": {
+      "entries": 132,
+      "lazy_saves": 0,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    },
+    "lazy_idle": {
+      "entries": 132,
+      "lazy_saves": 20,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    },
+    "eager_0": {
+      "entries": 132,
+      "lazy_saves": 0,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    },
+    "lazy_0": {
+      "entries": 132,
+      "lazy_saves": 20,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    },
+    "eager_1": {
+      "entries": 132,
+      "lazy_saves": 0,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    },
+    "lazy_1": {
+      "entries": 132,
+      "lazy_saves": 20,
+      "stock_ram_bytes_compared": 81192,
+      "ticks": 112
+    }
+  },
+  "stock_timer_irq_entries": 792,
+  "unverified": [
+    "Whole Cortex-M4 FPU/control/fault semantics: ASPEN-off execution, FP without STKALIGN, configurable fault/debug-monitor interaction and manual lazy-state changes are explicitly rejected",
+    "Architectural IRQ delivery during the compiled DSP worker and DMA callbacks remains to be extended",
+    "Real peripheral response protocol and physical event timing",
+    "System exceptions, fault escalation and MPU",
+    "BASEPRI settings confined to subpriority bits (explicitly rejected)",
+    "Late arrival, cycle-accurate tail chaining, sleep/wake and interruptible multi-transfer instructions",
+    "Full board startup, authentic radio acquisition and physical PWM/actuator fidelity",
+    "Resident bootloader acceptance, memory placement of a flashable candidate and recovery"
+  ],
+  "local_full_reports": "TestResults/firmware-lab/suite-20261122-fpu",
+  "hardware_access": "None; local stock images and previously captured USB input only"
+}

@@ -68,6 +68,10 @@ synthetic peers and original interrupt handlers.
 The [basic Cortex-M IRQ replay](CORTEX_M_IRQ.md) separately checks
 memory-backed exception frames, mask/priority behavior and the original
 startup handlers. It retains the direct vector-call regression.
+Its bounded FP extension separately checks eager/lazy frames, nested
+preservation and the original Sensa timer vectors. Shared NXP audio
+Replay and core fixtures now assert an explicitly selected Cortex-M4;
+see the IRQ report for the corrected Unicorn CPU selection.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -75,8 +79,10 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-21 validation summary](validation/20261121-exceptions.json)
-preserves the 14-stage result, input/tool hashes and IRQ contracts.
+The [latest 2026-11-22 validation summary](validation/20261122-fpu.json)
+preserves the 15-stage result, input/tool hashes, core/FP contracts and
+six stock timer comparisons. The [basic IRQ summary](validation/20261121-exceptions.json)
+retains the earlier 14-stage result and its CPU-selection limitation.
 The [startup summary](validation/20261121-startup.json) retains the
 earlier 13-stage run and register-peer controls.
 The [earlier voice summary](validation/20261121-voice.json)

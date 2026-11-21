@@ -82,6 +82,7 @@ def main():
         ("nxp-analog", "replay_nxp_analog.py", (nxp,)),
         ("nxp-startup-i2c", "replay_nxp_startup.py", (nxp, args.dsp)),
         ("nxp-exceptions", "replay_nxp_exceptions.py", (nxp, args.dsp)),
+        ("nxp-fpu-exceptions", "replay_nxp_fpu.py", (nxp, args.dsp)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )

@@ -1,6 +1,6 @@
 # Handoff: where the work stands (for any AI tool)
 
-Updated 2026-11-21. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
+Updated 2026-11-22. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
 Cursor…). This page says **what was done, where it lives, what phase we are in and what comes next**. Rules stay
 in [AGENTS.md](../AGENTS.md); behaviour facts in [STATUS.md](STATUS.md); every test and its result in
 [research/EXPERIMENTS.md](research/EXPERIMENTS.md). Update this page when the phase changes.
@@ -90,12 +90,23 @@ documents `cortex_m_irq.py` and `replay_nxp_exceptions.py`. This path uses
 memory-backed basic MSP/PSP frames and original EXC_RETURN instead of
 whole-context restore. It checks masks, nested priority and pending
 deferral, then runs the same 12 stock/candidate startup pairs. Keep the
-direct-call regression. FP/lazy stacking, system exceptions and authentic
-peripheral event timing remain open; unsupported cases fail explicitly.
-The [IRQ validation summary](firmware/validation/20261121-exceptions.json)
-is now the latest full-suite run: 14/14 stages, 22 core checks, eight
-guards and 2,006 balanced entries/returns across 12 stock/candidate pairs.
-Earlier 12/13-stage summaries remain historical evidence.
+direct-call regression. The bounded FP extension (E-20261122-03) in
+`cortex_m_fpu.py` / `replay_nxp_fpu.py` now covers eager/lazy frames,
+first-use FPSCR defaults and nested preservation. Original Sensa timer
+vectors produce the same stock RAM and duty/depth trace in six cases,
+with 792 balanced entries/returns and core/FP register checks.
+The shared NXP audio Replay and core fixtures explicitly select M4 and
+assert it; Unicorn 2.1.4 silently forces M33 when MCLASS mode is used.
+See the IRQ report for translation-restart and SPSEL ordering fixes.
+The [FP validation summary](firmware/validation/20261122-fpu.json)
+is now the latest full-suite run: 15/15 stages, the prior 22 basic checks
+and eight guards plus 16 FP checks and 12 FP guards. The 12 startup
+pairs still have 2,006 balanced entries/returns.
+Next extend architectural delivery to the DMA callbacks and compiled
+DSP worker under preemption. System exceptions, general FPU-control
+changes, actual second-peer replies and physical event timing remain
+open; do not replace them with invented success values. Earlier
+12/13/14-stage summaries remain historical evidence.
 
 | Period | Result | Where |
 | --- | --- | --- |

@@ -1,9 +1,10 @@
 # Roadmap — 2026-11-08 (top section updated 2026-11-11)
 
 **Firmware lab, 2026-11-21:** [basic-frame Cortex-M IRQ replay](firmware/CORTEX_M_IRQ.md)
-and the [14-stage validation](firmware/validation/20261121-exceptions.json)
-extend the stock/candidate simulator. Next: FP/lazy frames, system
-exceptions, authentic peripheral responses and event timing. Full-device
+and the [15-stage validation](firmware/validation/20261122-fpu.json)
+extend the stock/candidate simulator, now including bounded eager/lazy
+FP frames and stock Sensa timer IRQs on an explicitly selected M4.
+Next: system exceptions, authentic peripheral responses and event timing. Full-device
 equivalence, image placement, bootloader acceptance and recovery remain open.
 
 **2026-11-11:**

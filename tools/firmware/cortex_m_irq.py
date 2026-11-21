@@ -31,6 +31,7 @@ class CortexMInterrupts(InterruptEnableModel):
         self.priorities = bytearray(64)
         self.trace, self.frames, self.servicing, self.preempt = [], [], False, None
         self.instructions = 0
+        self.context_restart = False
         cpu.mem_write(CCR, struct.pack("<I", 0x200))
         cpu.hook_add(UC_HOOK_MEM_READ, self.read_nvic, begin=ISPR, end=IPR + 63)
         cpu.hook_add(UC_HOOK_MEM_WRITE, self.write_nvic, begin=ISPR, end=IPR + 63)
@@ -117,7 +118,7 @@ class CortexMInterrupts(InterruptEnableModel):
         verify(self.pending & (1 << irq) and self.allows(cpu, irq), "Attempt to enter a masked/nonpending IRQ")
         ipsr, control = cpu.reg_read(UC_ARM_REG_IPSR), cpu.reg_read(UC_ARM_REG_CONTROL)
         verify(ipsr == (self.active[-1] + 16 if self.active else 0), "IPSR and active IRQ stack disagree")
-        verify(not control & 4, "Floating-point exception frames are not implemented")
+        frame_size = self.frame_size(control)
         use_psp = not ipsr and bool(control & 2)
         stack_register = UC_ARM_REG_PSP if use_psp else UC_ARM_REG_MSP
         stack = cpu.reg_read(stack_register)
@@ -128,17 +129,20 @@ class CortexMInterrupts(InterruptEnableModel):
         verify(frame[-1] & 0x1000000, "Interrupted context is not Thumb state")
         frame[-2] &= ~1
         frame[-1] = frame[-1] & ~0x200 | (0x200 if padding else 0)
-        address = stack - 32 - padding
+        address = stack - frame_size - padding
         vtor, = struct.unpack("<I", cpu.mem_read(VTOR, 4))
         vector, = struct.unpack("<I", cpu.mem_read(vtor + (irq + 16) * 4, 4))
         verify(vector & 1 and vector < 0xFFFFFF00, "Invalid Thumb IRQ vector")
         cpu.mem_write(address, struct.pack("<8I", *frame))
+        self.stack_extension(address, control, ipsr)
         cpu.reg_write(stack_register, address)
         self.pending &= ~(1 << irq)
         exc_return = 0xFFFFFFF1 if ipsr else (0xFFFFFFFD if use_psp else 0xFFFFFFF9)
+        if frame_size == 104:
+            exc_return &= ~0x10
         self.frames.append((irq, stack_register, address, exc_return))
         self.active.append(irq)
-        cpu.reg_write(UC_ARM_REG_CONTROL, control & ~2)
+        cpu.reg_write(UC_ARM_REG_CONTROL, control & ~6)
         cpu.reg_write(UC_ARM_REG_PC, vector)
         # Exception entry preserves APSR flags and clears interrupted IT state.
         cpu.reg_write(UC_ARM_REG_XPSR, frame[-1] & 0xF80F0000 | 0x1000000 | (irq + 16))
@@ -146,7 +150,10 @@ class CortexMInterrupts(InterruptEnableModel):
         self.trace.append({"event": "entry", "irq": irq, "frame": hex(address), "return": hex(exc_return)})
 
     def exception_return(self, cpu, number, data):
-        verify(self.servicing and number == 8 and self.frames, f"Unmodeled Unicorn exception {number}")
+        # M33's EXCP_EXCEPTION_EXIT is 8. Explicit M4 in Unicorn 2.1.4
+        # reports a prefetch abort (3) at the EXC_RETURN token instead.
+        # The exact token and active frame must still match below.
+        verify(self.servicing and number in (3, 8) and self.frames, f"Unmodeled Unicorn exception {number}")
         irq, stack_register, address, expected = self.frames[-1]
         returned = cpu.reg_read(UC_ARM_REG_PC) | 1
         verify(returned == expected, f"Invalid EXC_RETURN {returned:#x}; expected {expected:#x}")
@@ -155,33 +162,55 @@ class CortexMInterrupts(InterruptEnableModel):
         parent = self.active[-2] + 16 if len(self.active) > 1 else 0
         verify(frame[7] & 0x1000000 and frame[7] & 0x1FF == parent, "Invalid stacked execution state")
         verify(frame[6] % 2 == 0, "Unaligned stacked PC")
+        frame_size = self.unstack_extension(address, expected)
         for register, value in zip(FRAME_REGISTERS[:-2], frame[:-2]):
             cpu.reg_write(register, value)
-        cpu.reg_write(stack_register, address + 32 + (4 if frame[7] & 0x200 else 0))
+        cpu.reg_write(stack_register, address + frame_size + (4 if frame[7] & 0x200 else 0))
         control = cpu.reg_read(UC_ARM_REG_CONTROL) & ~2
         if not parent and expected & 4:
             control |= 2
-        cpu.reg_write(UC_ARM_REG_CONTROL, control)
+        control = self.return_control(control, expected)
         cpu.reg_write(UC_ARM_REG_FAULTMASK, 0)
         cpu.reg_write(UC_ARM_REG_PC, frame[6] | 1)
         cpu.reg_write(UC_ARM_REG_XPSR, frame[7] & ~0x200)
+        # CONTROL.SPSEL writes in Handler mode are ignored on M4. Restore
+        # the returning mode before selecting the thread's stack.
+        cpu.reg_write(UC_ARM_REG_CONTROL, control)
         self.frames.pop()
         self.active.pop()
         self.trace.append({"event": "return", "irq": irq, "pc": hex(frame[6])})
         cpu.emu_stop()
 
     def before_instruction(self, cpu, pc, size, data):
+        if self.servicing:
+            self.instructions += 1
+            irq = self.choose()
+            if irq is not None:
+                self.preempt = irq
+                cpu.emu_stop()
+                return
+        self.instruction_context(cpu, pc, size)
+
+    def instruction_context(self, cpu, pc, size):
         if not self.servicing:
             return
-        self.instructions += 1
         if size == 4:
             first, second = struct.unpack("<HH", cpu.mem_read(pc, 4))
             verify(not (first & 0xEC00 == 0xEC00 and second & 0xF00 in (0xA00, 0xB00)),
                    "FP instruction in handler requires an unimplemented FP frame model")
-        irq = self.choose()
-        if irq is not None:
-            self.preempt = irq
-            cpu.emu_stop()
+
+    def frame_size(self, control):
+        verify(not control & 4, "Floating-point exception frames are not implemented")
+        return 32
+
+    def stack_extension(self, address, control, ipsr):
+        pass
+
+    def unstack_extension(self, address, expected):
+        return 32
+
+    def return_control(self, control, expected):
+        return control
 
     def service(self, instruction_limit=20000):
         verify(not self.servicing and not self.active, "Nested service API call")
@@ -197,8 +226,9 @@ class CortexMInterrupts(InterruptEnableModel):
                 remaining = instruction_limit - self.instructions
                 verify(remaining > 0, "IRQ instruction budget exhausted")
                 self.preempt = None
+                self.context_restart = False
                 self.cpu.emu_start(self.cpu.reg_read(UC_ARM_REG_PC) | 1, 0, count=remaining)
-                verify(self.preempt is not None or not self.active or
+                verify(self.preempt is not None or self.context_restart or not self.active or
                        self.trace[-1]["event"] == "return", "IRQ instruction budget exhausted")
             return entries
         finally:

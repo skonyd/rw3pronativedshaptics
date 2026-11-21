@@ -113,7 +113,14 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   peer and its response protocol before continuing its status parser.
   E-20261121-08 adds modeled MSP/PSP basic exception entry/return,
   pending/active aliases, mask checks, priority grouping and preemption.
-  It keeps the original direct-call regression separate. FP/lazy frames,
+  It keeps the original direct-call regression separate. E-20261122-03
+  adds bounded eager/lazy FP frames and the stock CTIMER2/3 Sensa vectors.
+  It also corrects Unicorn's forced M33 selection in the shared NXP
+  Replay and core fixtures; the selected CPU is now asserted as M4.
+  Original timer duty/depth and stock RAM match the direct-call baseline
+  in six cases, with 792 balanced entries/returns and full FP register
+  preservation checks. Extend this to preemption during the compiled
+  DSP worker and actual DMA handlers. General FPU-control manipulation,
   system exceptions/fault escalation, peripheral event clocks, late
   arrival and cycle-accurate tail chaining remain open. Validate actual
   timing independently; basic-frame replay is not full NVIC fidelity.

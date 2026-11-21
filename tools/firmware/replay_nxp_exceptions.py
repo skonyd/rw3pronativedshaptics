@@ -7,6 +7,7 @@ import struct
 
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB
 from unicorn.arm_const import (
+    UC_CPU_ARM_CORTEX_M4,
     UC_ARM_REG_BASEPRI, UC_ARM_REG_CONTROL, UC_ARM_REG_FAULTMASK, UC_ARM_REG_IPSR,
     UC_ARM_REG_LR, UC_ARM_REG_MSP, UC_ARM_REG_PC, UC_ARM_REG_PRIMASK, UC_ARM_REG_PSP,
     UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
@@ -24,12 +25,14 @@ GPRS = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R
         UC_ARM_REG_R10, UC_ARM_REG_R11, UC_ARM_REG_R12)
 
 
-def fixture(code="99207047"):
-    cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+def fixture(code="99207047", *, model=CortexMInterrupts):
+    cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+    cpu.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M4)
+    verify(cpu.ctl_get_cpu_model() == UC_CPU_ARM_CORTEX_M4, "Fixture requires Cortex-M4")
     cpu.mem_map(0, 0x4000)
     cpu.mem_map(0x20000000, 0x4000)
     cpu.mem_map(0xE000E000, 4096)
-    nvic = CortexMInterrupts(cpu)
+    nvic = model(cpu)
     cpu.mem_write(VTOR, struct.pack("<I", 0x1000))
     for irq, entry in ((17, 0x2001), (9, 0x2101)):
         cpu.mem_write(0x1000 + (irq + 16) * 4, struct.pack("<I", entry))

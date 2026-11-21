@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-21. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-22. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Firmware lab
@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 14 stages passed with the local pinned images on 2026-11-21,
+All 15 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261121-exceptions.json)
+The [public validation summary](firmware/validation/20261122-fpu.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -174,9 +174,21 @@ priority nesting and deferral. The old direct-call path remains separate.
 Twenty-two core checks and eight invalid/unsupported controls pass;
 the same 12 stock/candidate startup scenarios also pass with frame
 delivery and per-interrupt register preservation. Across those pairs,
-2,006 entries and 2,006 returns balance. FP/lazy frames,
-system exceptions, physical event timing and full NVIC cycle behavior
-remain unimplemented. No whole-device equivalence follows.
+2,006 entries and 2,006 returns balance.
+The additional bounded FP model covers eager/lazy MSP/PSP frames,
+memory-backed S0-S15/FPSCR restore, visible S16 corruption and nested
+preservation. Sixteen checks and 12 rejected invalid/unsupported cases
+pass. The original Sensa CTIMER2/3 vectors run in idle/left/right scenes
+with both policies: 792 balanced entries/returns, preserved core/FP
+registers, identical 112 duty/depth snapshots per case and 81,192 stock
+RAM bytes matching the direct-call baseline. Underrun hold, recovery
+and opposite-output isolation are retained.
+Unicorn 2.1.4's MCLASS flag was found to force M33 despite an M4 model
+request. The shared NXP audio Replay and core fixtures now explicitly
+select and assert M4. Earlier reports predate this correction.
+System exceptions, general FPU-control manipulation, physical event
+timing and full NVIC cycle behavior remain open. The new FP model has
+explicit policy bounds; no whole-device equivalence follows.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

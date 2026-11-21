@@ -73,8 +73,9 @@ variant, with interrupted-register checks on every return.
 
 - Peripheral event arrivals and timer pulses are still supplied by the
   harness; this is not a bus-clock or physical interrupt-latency proof.
-- FP/lazy stacking, system exceptions, fault escalation and MPU behavior
-  remain open. Executed FP instructions in these handlers fail clearly.
+- The basic model rejects FP frames/instructions. The bounded FP extension
+  below covers selected eager/lazy paths; system exceptions, fault
+  escalation and MPU behavior remain open.
 - Nonzero BASEPRI values whose implemented bits are all subpriority
   are rejected pending further architectural validation.
 - Late arrival, cycle-accurate tail chaining, sleep/wake and interrupted
@@ -84,3 +85,86 @@ variant, with interrupted-register checks on every return.
   board wiring, bootloader acceptance and recovery remain open.
 
 No device access or firmware flashing is performed by this replay.
+
+## FP context continuation (2026-11-22)
+
+`cortex_m_fpu.py` adds an opt-in `CortexMFpuInterrupts` model. The basic
+model above retains its explicit FP rejection tests. Run the new stage:
+
+```powershell
+python -B tools/firmware/replay_nxp_fpu.py <Dev2FW.bin> <audio_haptics.bin>
+```
+
+An active FP caller receives a 104-byte frame, plus alignment padding.
+R0–xPSR occupy offsets 0–28; S0–S15 occupy 32–92, FPSCR is at 96 and
+offset 100 is reserved. The reserved word is left untouched. Extended
+EXC_RETURN values are `FFFFFFE1/E9/ED`. S16–S31 are **not** automatically
+restored; the stock compiler-generated handler must preserve them.
+
+With lazy preservation, only the basic words are initially written.
+FPCAR points to offset 32 and FPCCR.LSPACT records the reservation.
+The first executed FP instruction saves the caller's low FP registers
+before changing them. A nested FP handler can flush an older thread
+reservation even when its immediate parent uses a basic frame. If no
+handler uses FP, return cancels the reservation without reading or
+writing those FP slots. A new automatic context initializes FPSCR from
+the bounded FPDSCR fields. Foreground execution with this model must
+use `execute`, which handles the same bounded translation restarts as
+IRQ service.
+
+The architectural frame layout was checked visually against figure 2
+of [Arm DAI0298A, Cortex-M4(F) Lazy Stacking and Context Switching](https://documentation-service.arm.com/static/5f0352c0cafe527e86f5bc66).
+The [Arm generic user guide](https://documentation-service.arm.com/static/5f2ac4ab60a93e65927bbdbf)
+defines FPCCR, FPCAR, FPDSCR and CPACR. QEMU's original
+[FP context translator](https://github.com/qemu/qemu/blob/master/target/arm/tcg/translate-vfp.c)
+and [exception implementation](https://github.com/qemu/qemu/blob/master/target/arm/tcg/m_helper.c)
+were used as an additional implementation cross-check; no QEMU code is
+copied into this model.
+
+### Corrected Unicorn CPU selection
+
+Unicorn 2.1.4 forcibly chooses Cortex-M33 when `UC_MODE_MCLASS` is set,
+even after `ctl_set_cpu_model(CORTEX_M4)`. This was reproduced locally
+and confirmed in its [CPU initialization source](https://github.com/unicorn-engine/unicorn/blob/2.1.4/qemu/target/arm/cpu.c#L2113).
+Our shared NXP audio `Replay` and core fixtures now select Thumb mode,
+explicitly select M4, and assert the resulting CPU model. Previous
+validation reports predate this correction; their CPU setting alone
+did not establish an M4 run. Other standalone replay helpers are not
+claimed to have changed CPU models by this increment.
+
+Explicit M4 reports a prefetch-abort trap at EXC_RETURN in this Unicorn
+version. The external IRQ model handles it only with an active frame
+and an exact expected return token. A non-return prefetch abort still
+fails. CONTROL.SPSEL restoration now follows restoration of the
+returning mode, because M4 ignores that write while in Handler mode.
+First-FP context creation also restarts translation before executing
+the instruction; otherwise Unicorn's previously translated context
+initialization could overwrite the modeled FPDSCR value.
+
+### Validation and bounds
+
+Sixteen original instruction-fixture checks cover eager/lazy MSP and
+PSP frames, both incoming stack alignments, untouched lazy slots,
+memory-backed FP return, visible S16 corruption, two nesting patterns,
+foreground/handler context creation and control-register readback.
+Twelve controls reject invalid return tokens and frames, disabled or
+reserved CPACR access, unprivileged access denial, unsupported policies,
+manual FPCA changes and FPU-control changes during lazy preservation.
+
+The original CTIMER2 (IRQ36) and CTIMER3 (IRQ13) vectors also run with
+real exception-return instructions. Idle, left transient and right
+transient scenes each use both eager and lazy preservation: 792 total
+entries/returns. Every return checks general registers, SP/LR/PC/xPSR,
+all 32 FP registers and FPSCR. Each scene compares 112 duty/depth snapshots and
+81,192 stock RAM bytes against the retained direct-call baseline.
+The scene includes eight suppressed refills, duty hold at underrun,
+recovery and opposite-output isolation. Events remain harness supplied;
+the tests do not measure physical interrupt latency or PWM timing.
+
+The new model deliberately requires STKALIGN for FP frames, ASPEN for
+executed FP instructions, and disabled configurable faults/debug
+monitor for lazy reservation. CPACR failures stop the replay rather
+than emulate NOCP escalation. Manual lazy-state/control manipulation,
+system exceptions, MPU faults, cycle timing and full board startup
+remain open. This is a bounded FP model, not complete Cortex-M4 or
+whole-controller equivalence.
