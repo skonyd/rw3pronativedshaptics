@@ -25,16 +25,18 @@ public sealed class GameSurface : FrameworkElement
 
     private static readonly Typeface Face = new("Segoe UI");
     private static readonly Typeface Bold = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
-    private static readonly Brush Bg = new SolidColorBrush(Color.FromRgb(12, 18, 32));
-    private static readonly Brush Panel = new SolidColorBrush(Color.FromRgb(22, 32, 54));
-    private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(61, 123, 255));
-    private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(61, 214, 140));
-    private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(255, 107, 107));
-    private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(255, 181, 71));
-    private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(147, 162, 191));
+    // RW3's palette (Theme.xaml): card #121C31, card hover #18243D, line #22304D, muted #93A2BF, accent #3D7BFF
+    private static readonly Brush Bg = new SolidColorBrush(Color.FromRgb(0x12, 0x1C, 0x31));
+    private static readonly Brush Panel = new SolidColorBrush(Color.FromRgb(0x18, 0x24, 0x3D));
+    private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(0x3D, 0x7B, 0xFF));
+    private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C));
+    private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+    private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xFF, 0xB5, 0x47));
+    private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x93, 0xA2, 0xBF));
+    private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xEE, 0xF3, 0xFF));
     private static readonly Brush Glass = new SolidColorBrush(Color.FromRgb(60, 170, 90));
     private static readonly Brush GoldB = new SolidColorBrush(Color.FromRgb(255, 200, 40));
-    private static readonly Pen Line = new(new SolidColorBrush(Color.FromRgb(70, 90, 130)), 2);
+    private static readonly Pen Line = new(new SolidColorBrush(Color.FromRgb(0x22, 0x30, 0x4D)), 2);
     private static readonly Pen Cross = new(Brushes.White, 2);
     private static readonly Pen Shelf = new(new SolidColorBrush(Color.FromRgb(120, 85, 50)), 6);
 
@@ -51,7 +53,7 @@ public sealed class GameSurface : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        dc.DrawRectangle(Bg, null, new Rect(0, 0, W, H));
+        dc.DrawRoundedRectangle(Bg, null, new Rect(0, 0, W, H), 14, 14);   // an RW3 card
         switch (Mode)
         {
             case Screen.Game: DrawGame(dc); break;
@@ -182,7 +184,7 @@ public sealed class GameSurface : FrameworkElement
                 TestAnswer.Yes => ("✓", Good), TestAnswer.No => ("✗", Bad), TestAnswer.Skipped => ("–", Muted),
                 TestAnswer.NotAvailable => ("çıkış kapalı", Muted), _ => (available ? "" : "çıkış kapalı", Muted)
             };
-            Text(dc, $"{i + 1,2}. {t.Title}", 24 * S, y, 14, sel ? Brushes.White : available ? Brushes.Gainsboro : Muted, sel);
+            Text(dc, $"{i + 1,2}. {t.Title}", 24 * S, y, 14, sel ? Brushes.White : available ? Ink : Muted, sel);
             Text(dc, mark, W * .55, y, 14, brush, true, TextAlignment.Right);
             y += rowH;
         }
@@ -196,7 +198,7 @@ public sealed class GameSurface : FrameworkElement
             "asking" => $"{cur.Ask}\n\n{A} evet   {B} hayır   {X} tekrar   {Y} atla",
             _ => $"{A} ile çal."
         };
-        Text(dc, phase, px + 16 * S, 140 * S, 15, GuidedPhase == "asking" ? Warn : Brushes.Gainsboro, false, TextAlignment.Left, pw - 32 * S);
+        Text(dc, phase, px + 16 * S, 140 * S, 15, GuidedPhase == "asking" ? Warn : Ink, false, TextAlignment.Left, pw - 32 * S);
         int yes = Answers.Values.Count(a => a == TestAnswer.Yes), no = Answers.Values.Count(a => a == TestAnswer.No);
         Text(dc, $"Sonuç: {yes} evet · {no} hayır · {Answers.Count}/{FeedbackTests.All.Length} yanıtlandı", px + 16 * S, 300 * S, 14, Muted);
     }

@@ -25,7 +25,7 @@ public sealed class MainWindow : Window
     private readonly ComboBox _endpoint = new() { MinWidth = 380, Margin = new Thickness(0, 4, 0, 0) };
     private readonly TextBlock _devices = new() { Foreground = Brushes.Gainsboro, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12.5 };
     private readonly TextBlock _reportInfo = new() { Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
-    private readonly ScrollViewer _setup;
+    private readonly Grid _setup;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private double _last;
     private bool _fullscreen;
@@ -46,97 +46,184 @@ public sealed class MainWindow : Window
         (Out.Ds4, "PS4 · DualShock 4 rumble + ışık", "PS4 kolu destekleyen oyunlar gibi: iki motor ve ışık çubuğu (rapor 0x05)."),
     };
 
+    // ── RW3-style chrome: header with tabs and a status badge, cards, footer ──
+    private readonly Dictionary<Screen, RadioButton> _tabs = new();
+    private readonly Dictionary<PadProfile, RadioButton> _tiles = new();
+    private readonly StackPanel _conn = new();
+    private readonly TextBlock _badgeText = new() { Text = "Kol bekleniyor", FontWeight = FontWeights.SemiBold };
+    private readonly System.Windows.Shapes.Ellipse _badgeDot = new() { Width = 9, Height = 9, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _profileHint = new();
+    private bool _syncingTabs;
+
+    private static Brush B(string key) => (Brush)Application.Current.Resources[key];
+    private static Style S(string key) => (Style)Application.Current.Resources[key];
+
     public MainWindow(string[] args)
     {
-        Title = "Şişe Atışı · RW3 test poligonu";
-        Width = 1280; Height = 760; MinWidth = 640; MinHeight = 400;
-        Background = new SolidColorBrush(Color.FromRgb(12, 18, 32));
+        Title = "Şişe Atışı · RW3 test oyunu";
+        Width = 1180; Height = 860; MinWidth = 760; MinHeight = 560;
+        Background = new SolidColorBrush(Color.FromRgb(0x0B, 0x12, 0x22));
+        Foreground = new SolidColorBrush(Color.FromRgb(0xEE, 0xF3, 0xFF));
+        FontFamily = new FontFamily("Segoe UI"); FontSize = 13;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        _profileHint.Style = S("Hint"); _profileHint.Margin = new Thickness(2, 8, 0, 8);
+        _tableInfo.Style = S("Hint"); _rw3Info.Style = S("Hint"); _reportInfo.Style = S("Hint");
+        _badgeDot.Fill = B("Muted");
 
-        var stack = new StackPanel { Margin = new Thickness(28, 20, 28, 20), MaxWidth = 1000 };
-        stack.Children.Add(new TextBlock { Text = "Şişe Atışı", FontSize = 30, FontWeight = FontWeights.Bold, Foreground = Brushes.White });
-        stack.Children.Add(new TextBlock
+        // header: title · tabs · badge (as on RW3's main window)
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 18) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        title.Children.Add(new TextBlock { Text = "Şişe Atışı", FontSize = 22, FontWeight = FontWeights.Bold });
+        title.Children.Add(new TextBlock { Text = "RW3 test oyunu • Xbox ve DualSense destekli", Style = S("Hint") });
+        header.Children.Add(title);
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var (screen, text) in new[] { (Screen.Setup, "Hazırlık"), (Screen.Game, "Oyun"), (Screen.PadTest, "Tuş testi"), (Screen.Guided, "Geri bildirim testi") })
         {
-            Text = "RW3 test poligonu: oyun kolu gerçek bir oyunun yaptığı gibi sürer, gönderdiği her geri bildirimi kaydeder. Çıkışları seç (birden fazla olabilir), sonra oyunu ya da testleri başlat. F11 / View: tam ekran · Esc: bu ekrana dön.",
-            Foreground = Brushes.Gainsboro, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 14)
-        });
-        stack.Children.Add(Header("Bulunan kollar ve çıkışlar"));
-        stack.Children.Add(_devices);
-        var rescan = MakeButton("↻ Yeniden tara", (_, _) => ScanDevices());
-        rescan.HorizontalAlignment = HorizontalAlignment.Left; rescan.Margin = new Thickness(0, 6, 0, 0);
-        stack.Children.Add(rescan);
-        // ── quick table: the pad the game "supports" and its feedback rows (like RW3's matrix) ──
-        stack.Children.Add(Header("Hızlı ayar: oyun hangi kolu destekliyor?"));
-        stack.Children.Add(Muted("Bir sütun seç: oyun o kolu destekleyen gerçek bir oyun gibi davranır (Xbox One/Series → GameInput, Xbox 360 → XInput, PS4 → DualShock 4 raporu, DualSense → adaptif tetik + HD haptik). Hücreye tıkla: satırı aç/kapat; o kolda olmayan satır en yakın destekleyen kola geçer. RW3'te de aynı kolu seç."));
-        var rw3Row = new WrapPanel { Margin = new Thickness(0, 6, 0, 6) };
-        rw3Row.Children.Add(MakeButton("⇄ RW3'teki seçimi kullan", (_, _) => UseRw3Choice()));
-        rw3Row.Children.Add(_rw3Info);
-        stack.Children.Add(rw3Row);
-        stack.Children.Add(new Border { Child = _table, Background = new SolidColorBrush(Color.FromRgb(15, 24, 41)), CornerRadius = new CornerRadius(10), Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 4) });
-        stack.Children.Add(_tableInfo);
+            var tab = new RadioButton { Content = text, GroupName = "Tabs", Style = S("TabButton"), IsChecked = screen == Screen.Setup };
+            tab.Checked += (_, _) => { if (!_syncingTabs) Enter(screen); };
+            _tabs[screen] = tab; tabs.Children.Add(tab);
+        }
+        var tabBar = new Border { Child = tabs, HorizontalAlignment = HorizontalAlignment.Center, Background = new SolidColorBrush(Color.FromRgb(0x10, 0x1A, 0x2E)), CornerRadius = new CornerRadius(12), Padding = new Thickness(5) };
+        Grid.SetColumn(tabBar, 1); header.Children.Add(tabBar);
+        var badgeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        badgeRow.Children.Add(_badgeDot); badgeRow.Children.Add(_badgeText);
+        var badge = new Border { Child = badgeRow, Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x27, 0x40)), CornerRadius = new CornerRadius(20), Padding = new Thickness(14, 7, 14, 7), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(badge, 2); header.Children.Add(badge);
+
+        // left: connections (as RW3's "Bağlantılar")
+        var left = new DockPanel();
+        left.Children.Add(DockTop(new TextBlock { Text = "Bağlantılar", Style = S("CardTitle") }));
+        left.Children.Add(DockTop(new TextBlock { Text = "Oyunun gördüğü kollar ve çıkışlar.", Style = S("Hint"), Margin = new Thickness(0, 0, 0, 14) }));
+        var rescan = new Button { Content = "↻  Yeniden tara", Style = S("SmallBtn"), HorizontalAlignment = HorizontalAlignment.Left };
+        rescan.Click += (_, _) => ScanDevices();
+        DockPanel.SetDock(rescan, Dock.Bottom); left.Children.Add(rescan);
+        var details = new Expander { Header = "Ayrıntı", Content = _devices, Margin = new Thickness(0, 6, 0, 10), Foreground = B("Muted") };
+        _devices.FontSize = 11; _devices.Foreground = B("Muted");
+        DockPanel.SetDock(details, Dock.Bottom); left.Children.Add(details);
+        left.Children.Add(_conn);
+        var leftCard = new Border { Style = S("CardBorder"), Child = left };
+
+        // right: cards
+        var right = new StackPanel { Margin = new Thickness(0, 0, 10, 0) };
+        // 1 · which pad the game supports (RW3's selector + matrix, from the game's side)
+        var tiles = new System.Windows.Controls.Primitives.UniformGrid { Columns = 6 };
+        foreach (var p in Profiles)
+        {
+            var (label, sub) = TileText(p);
+            var tileBody = new StackPanel();
+            tileBody.Children.Add(new TextBlock { Text = "", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center });
+            tileBody.Children.Add(new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 3, 0, 0) });
+            tileBody.Children.Add(new TextBlock { Text = sub, FontSize = 10.5, Opacity = .75, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            var tile = new RadioButton { GroupName = "Profile", Style = S("OutputTile"), Content = tileBody, Tag = p };
+            System.Windows.Automation.AutomationProperties.SetName(tile, label);
+            tile.Checked += (_, _) => { if (!_syncingTabs) SelectProfile(p); };
+            _tiles[p] = tile; tiles.Children.Add(tile);
+        }
+        var rw3Row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        var useRw3 = new Button { Content = "⇄  RW3'teki seçimi kullan", Style = S("SmallBtn") };
+        useRw3.Click += (_, _) => UseRw3Choice();
+        rw3Row.Children.Add(useRw3); rw3Row.Children.Add(_rw3Info); _rw3Info.VerticalAlignment = VerticalAlignment.Center;
+        var matrix = new StackPanel();
+        matrix.Children.Add(_table);
+        matrix.Children.Add(new TextBlock { Text = "● açık · ○ kapalı · ✓ o kolda var · — yok. Başka bir kolun hücresine tıklayınca o kola geçilir.", Style = S("Hint"), FontSize = 11.5, Margin = new Thickness(4, 6, 0, 0) });
+        matrix.Children.Add(_tableInfo); _tableInfo.FontSize = 11.5; _tableInfo.Margin = new Thickness(4, 2, 0, 0);
         var manual = new StackPanel();
-        foreach (var (flag, title, hint) in Outputs)
+        foreach (var (flag, text, hint) in Outputs)
         {
-            var cb = new CheckBox { Content = title, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            var cb = new CheckBox { Content = text, Foreground = Foreground, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             cb.Click += (_, _) => { _cfg.ManualOutputs = Chosen(); _cfg.Save(); RefreshTable(); };
             _outBoxes[flag] = cb;
             manual.Children.Add(cb);
-            manual.Children.Add(Muted(hint, 22));
+            manual.Children.Add(new TextBlock { Text = hint, Style = S("Hint"), Margin = new Thickness(22, 0, 0, 0) });
         }
-        manual.Children.Add(new TextBlock { Text = "DualSense ses uç noktası (HD haptik / hoparlör):", Foreground = Brushes.Gainsboro, Margin = new Thickness(0, 10, 0, 0) });
+        manual.Children.Add(new TextBlock { Text = "DualSense ses uç noktası (HD haptik / hoparlör):", Style = S("Hint"), Margin = new Thickness(0, 10, 0, 0) });
         manual.Children.Add(_endpoint);
-        stack.Children.Add(new Expander { Header = "Gelişmiş: çıkışları elle seç (tablo yerine)", Content = manual, Foreground = Brushes.White, Margin = new Thickness(0, 8, 0, 0) });
+        right.Children.Add(Card("Oyunun desteklediği kol",
+            "Oyun bu kolu destekleyen gerçek bir oyun gibi davranır. RW3'teki 'Oyuna görünen kol' ile aynısını seç; ⇄ düğmesi bunu kendisi yapar.",
+            new Border { Background = new SolidColorBrush(Color.FromRgb(0x0B, 0x12, 0x22)), CornerRadius = new CornerRadius(14), Padding = new Thickness(5, 6, 5, 6), Child = tiles, Margin = new Thickness(0, 4, 0, 0) },
+            _profileHint,
+            new Border { Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x18, 0x29)), CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 8, 10, 8), BorderBrush = B("Line"), BorderThickness = new Thickness(1), Child = matrix },
+            rw3Row,
+            new Expander { Header = "Gelişmiş: çıkışları elle seç (tablo yerine)", Content = manual, Foreground = Foreground, Margin = new Thickness(0, 10, 0, 0) }));
 
-        // ── weapons ──
-        stack.Children.Add(Header("Silahlar (LB/RB ile aralarında geçilir)"));
+        // 2 · weapons
+        var weapons = new StackPanel();
         for (int w = 0; w < RangeGame.Weapons.Length; w++)
         {
             int k = w;
-            var cb = new CheckBox { Content = RangeGame.Weapons[w].Name, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), IsChecked = _cfg.Loadout[w] };
+            var cb = new CheckBox { Content = RangeGame.Weapons[w].Name, Foreground = Foreground, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0), IsChecked = _cfg.Loadout[w] };
             cb.Click += (_, _) => { _cfg.Loadout[k] = cb.IsChecked == true; if (!_cfg.Loadout.Any(x => x)) { _cfg.Loadout[k] = true; cb.IsChecked = true; } _cfg.Save(); };
-            stack.Children.Add(cb);
-            stack.Children.Add(Muted(RangeGame.Weapons[w].Feel, 22));
+            weapons.Children.Add(cb);
+            weapons.Children.Add(new TextBlock { Text = RangeGame.Weapons[w].Feel, Style = S("Hint"), Margin = new Thickness(22, 0, 0, 0) });
         }
+        right.Children.Add(Card("Silahlar", "Oyunda LB/RB ile aralarında geçilir. Her birinin DualSense tetik efekti ve avuç haptiği ayrıdır.", weapons));
 
-        // ── game settings, as real games offer them ──
-        stack.Children.Add(Header("Oyun ayarları"));
-        var trig = new ComboBox { ItemsSource = new[] { "Kapalı", "Zayıf", "Orta", "Güçlü" }, SelectedIndex = (int)_cfg.Triggers, MinWidth = 140 };
+        // 3 · game settings
+        var settings = new StackPanel();
+        var trig = new ComboBox { ItemsSource = new[] { "Kapalı", "Zayıf", "Orta", "Güçlü" }, SelectedIndex = (int)_cfg.Triggers, MinWidth = 140, HorizontalAlignment = HorizontalAlignment.Left };
         trig.SelectionChanged += (_, _) => { _cfg.Triggers = (TriggerIntensity)Math.Max(0, trig.SelectedIndex); _cfg.Save(); };
-        stack.Children.Add(Row("Tetik efekti yoğunluğu", trig));
-        stack.Children.Add(Slider("HD haptik seviyesi", 0, 200, _cfg.HapticPercent, v => _cfg.HapticPercent = v));
-        stack.Children.Add(Slider("Titreşim (rumble) seviyesi", 0, 100, _cfg.RumblePercent, v => _cfg.RumblePercent = v));
-        stack.Children.Add(Slider("Müzik sesi", 0, 100, _cfg.MusicPercent, v => _cfg.MusicPercent = v));
-        stack.Children.Add(Slider("Efekt sesi", 0, 100, _cfg.SfxPercent, v => _cfg.SfxPercent = v));
-        var round = new ComboBox { ItemsSource = new[] { "30 sn", "60 sn", "90 sn", "120 sn", "300 sn" }, MinWidth = 140 };
+        settings.Children.Add(Row("Tetik efekti yoğunluğu", trig));
+        settings.Children.Add(Slider("HD haptik seviyesi", 0, 200, _cfg.HapticPercent, v => _cfg.HapticPercent = v));
+        settings.Children.Add(Slider("Titreşim (rumble) seviyesi", 0, 100, _cfg.RumblePercent, v => _cfg.RumblePercent = v));
+        settings.Children.Add(Slider("Müzik sesi", 0, 100, _cfg.MusicPercent, v => _cfg.MusicPercent = v));
+        settings.Children.Add(Slider("Efekt sesi", 0, 100, _cfg.SfxPercent, v => _cfg.SfxPercent = v));
+        var round = new ComboBox { ItemsSource = new[] { "30 sn", "60 sn", "90 sn", "120 sn", "300 sn" }, MinWidth = 140, HorizontalAlignment = HorizontalAlignment.Left };
         int[] rounds = { 30, 60, 90, 120, 300 };
         round.SelectedIndex = Math.Max(0, Array.IndexOf(rounds, _cfg.RoundSeconds));
         round.SelectionChanged += (_, _) => { _cfg.RoundSeconds = rounds[Math.Max(0, round.SelectedIndex)]; _cfg.Save(); };
-        stack.Children.Add(Row("Tur süresi", round));
-        var invert = new CheckBox { Content = "Ters Y ekseni", Foreground = Brushes.White, IsChecked = _cfg.InvertY, Margin = new Thickness(0, 6, 0, 0) };
+        settings.Children.Add(Row("Tur süresi", round));
+        var invert = new CheckBox { Content = "Ters Y ekseni", Foreground = Foreground, IsChecked = _cfg.InvertY, Margin = new Thickness(0, 10, 0, 0) };
         invert.Click += (_, _) => { _cfg.InvertY = invert.IsChecked == true; _cfg.Save(); };
-        stack.Children.Add(invert);
-        _gyro.IsChecked = _cfg.GyroAim;
+        settings.Children.Add(invert);
+        _gyro.Foreground = Foreground; _gyro.IsChecked = _cfg.GyroAim;
         _gyro.Click += (_, _) => { _cfg.GyroAim = _gyro.IsChecked == true; _cfg.Save(); };
-        stack.Children.Add(_gyro);
-        stack.Children.Add(Header("Başlat"));
-        var go = new WrapPanel();
-        go.Children.Add(MakeButton("▶  Oyunu başlat", (_, _) => Enter(Screen.Game), true));
-        go.Children.Add(MakeButton("🎮  Tuş testi", (_, _) => Enter(Screen.PadTest)));
-        go.Children.Add(MakeButton("📳  Geri bildirim testi (rehberli)", (_, _) => Enter(Screen.Guided)));
-        go.Children.Add(MakeButton("📄  Raporu kaydet ve aç", (_, _) => SaveReport(true)));
-        stack.Children.Add(go);
-        stack.Children.Add(_reportInfo);
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Kolla gezinme: ▲▼ seç, A / ✕ işaretle veya bas. RW3'te 'Oyuna görünen kol' seçimine göre oyun gerçek kolu ya da RW3'ün sanal kolunu görür; RW3 kaydı da rapora eklenir.",
-            Foreground = new SolidColorBrush(Color.FromRgb(147, 162, 191)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0)
-        });
-        _setup = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        settings.Children.Add(_gyro);
+        right.Children.Add(Card("Oyun ayarları", "Gerçek oyunlardaki gibi; RW3'ün farklı seviyelere tepkisini denemek için de.", settings));
 
-        var root = new Grid();
-        root.Children.Add(_surface);
-        root.Children.Add(_setup);
+        // 4 · start
+        var go = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var play = new Button { Content = "▶  Oyunu başlat", Style = S("PrimaryBtn"), Margin = new Thickness(0, 0, 8, 6) };
+        play.Click += (_, _) => Enter(Screen.Game);
+        var padTest = new Button { Content = "🎮  Tuş testi", Style = S("Btn"), Margin = new Thickness(0, 0, 8, 6) };
+        padTest.Click += (_, _) => Enter(Screen.PadTest);
+        var guided = new Button { Content = "📳  Geri bildirim testi", Style = S("Btn"), Margin = new Thickness(0, 0, 8, 6) };
+        guided.Click += (_, _) => Enter(Screen.Guided);
+        var report = new Button { Content = "📄  Raporu kaydet ve aç", Style = S("SmallBtn"), Margin = new Thickness(0, 0, 8, 6), VerticalAlignment = VerticalAlignment.Center };
+        report.Click += (_, _) => SaveReport(true);
+        go.Children.Add(play); go.Children.Add(padTest); go.Children.Add(guided); go.Children.Add(report);
+        right.Children.Add(Card("Başlat", "Oyun kapanınca rapor kendiliğinden yazılır; aynı dakikalardaki RW3 kaydı da eklenir.", go, _reportInfo));
+
+        var rightScroll = new ScrollViewer { Content = right, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Focusable = false };
+        var setup = new Grid();
+        setup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(270) });
+        setup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
+        setup.ColumnDefinitions.Add(new ColumnDefinition());
+        setup.Children.Add(leftCard);
+        Grid.SetColumn(rightScroll, 2); setup.Children.Add(rightScroll);
+        _setup = setup;
+
+        var footer = new Grid { Margin = new Thickness(0, 16, 0, 0) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition());
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        footer.Children.Add(new TextBlock { Text = "Oyun kolu gerçek bir oyun gibi sürer ve gönderdiği her geri bildirimi kaydeder. Ses dosyası yoktur; sesler ve haptikler kodla üretilir.", Style = S("Hint"), VerticalAlignment = VerticalAlignment.Center });
+        var chip = new Border { Background = new SolidColorBrush(Color.FromRgb(0x10, 0x1A, 0x2E)), CornerRadius = new CornerRadius(10), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(12, 0, 0, 0),
+            Child = new TextBlock { Text = "LB/RB sekme · ▲▼ gezin · A seç · F11 tam ekran · Esc geri", Foreground = B("Muted") } };
+        Grid.SetColumn(chip, 1); footer.Children.Add(chip);
+
+        var content = new Grid();
+        content.Children.Add(_surface);
+        content.Children.Add(_setup);
         _surface.Visibility = Visibility.Collapsed;
+        var root = new Grid { Margin = new Thickness(28, 20, 28, 22) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition());
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.Children.Add(header);
+        Grid.SetRow(content, 1); root.Children.Add(content);
+        Grid.SetRow(footer, 2); root.Children.Add(footer);
         Content = root;
         _surface.Input = _input; _surface.Fb = _fb;
 
@@ -145,18 +232,40 @@ public sealed class MainWindow : Window
         Loaded += (_, _) => { _ = Task.Run(Synth.Warm); ScanDevices(); CompositionTarget.Rendering += Frame; _log.Event("app-start", new { args }); };
     }
 
-    private static TextBlock Header(string text) => new() { Text = text, FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(0, 16, 0, 6) };
+    private static UIElement DockTop(UIElement e) { DockPanel.SetDock(e, Dock.Top); return e; }
 
-    private static Button MakeButton(string text, RoutedEventHandler click, bool primary = false)
+    /// <summary>An RW3 card: title, hint, then the content.</summary>
+    private static Border Card(string title, string? hint, params UIElement[] children)
     {
-        var b = new Button
-        {
-            Content = text, Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 6), FontSize = 14,
-            Background = primary ? new SolidColorBrush(Color.FromRgb(61, 123, 255)) : new SolidColorBrush(Color.FromRgb(34, 48, 77)),
-            Foreground = Brushes.White, BorderThickness = new Thickness(0)
-        };
-        b.Click += click;
-        return b;
+        var p = new StackPanel();
+        p.Children.Add(new TextBlock { Text = title, Style = S("CardTitle") });
+        if (hint != null) p.Children.Add(new TextBlock { Text = hint, Style = S("Hint"), Margin = new Thickness(0, 0, 0, 6) });
+        foreach (var c in children) p.Children.Add(c);
+        return new Border { Style = S("CardBorder"), Child = p, Margin = new Thickness(0, 0, 0, 14) };
+    }
+
+    private static (string Label, string Sub) TileText(PadProfile p) => p switch
+    {
+        PadProfile.Native => ("Bağlı kol", "RW3'süz"),
+        PadProfile.Physical => ("Wolverine", GameConfig.Wolverine switch { WolverineMode.Pc => "kendisi · PC modu", WolverineMode.Xbox => "kendisi · Xbox modu", _ => "kolun kendisi" }),
+        PadProfile.Xbox360 => ("Xbox 360", "XInput"),
+        PadProfile.XboxSeries => ("Xbox Series", "tetikli"),
+        PadProfile.DualShock4 => ("PS4", "DualShock 4"),
+        _ => ("DualSense", "PS5")
+    };
+
+    /// <summary>One connection line, like RW3's: coloured dot, name, short state.</summary>
+    private void Conn(bool? ok, string name, string hint)
+    {
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+        g.ColumnDefinitions.Add(new ColumnDefinition());
+        g.Children.Add(new System.Windows.Shapes.Ellipse { Width = 11, Height = 11, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 0, 0), Fill = ok == true ? B("Good") : ok == false ? B("Bad") : B("Muted") });
+        var t = new StackPanel();
+        t.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold });
+        t.Children.Add(new TextBlock { Text = hint, Style = S("Hint") });
+        Grid.SetColumn(t, 1); g.Children.Add(t);
+        _conn.Children.Add(g);
     }
 
     private static TextBlock Muted(string text, double indent = 0) => new()
@@ -228,51 +337,61 @@ public sealed class MainWindow : Window
         RefreshTable();
     }
 
-    private static readonly Brush CellAccent = new SolidColorBrush(Color.FromRgb(61, 123, 255));
-    private static readonly Brush CellPanel = new SolidColorBrush(Color.FromRgb(34, 48, 77));
-    private static readonly Brush CellCurrent = new SolidColorBrush(Color.FromRgb(23, 36, 67));
-    private static readonly Brush CellMuted = new SolidColorBrush(Color.FromRgb(147, 162, 191));
-
-    /// <summary>Draws the quick table and syncs the manual output checkboxes with it.</summary>
+    /// <summary>Draws the matrix exactly like RW3's (row label + hint, one column per pad, MatrixCell buttons), syncs the
+    /// tiles and the manual output checkboxes.</summary>
     private void RefreshTable()
     {
+        bool table = _cfg.ManualOutputs == null;
+        _syncingTabs = true;
+        try
+        {
+            foreach (var (p, tile) in _tiles)
+            {
+                tile.IsChecked = table && p == _cfg.Profile;
+                if (tile.Content is StackPanel sp && sp.Children.Count > 2 && sp.Children[2] is TextBlock sub) sub.Text = TileText(p).Sub;
+            }
+        }
+        finally { _syncingTabs = false; }
+        _profileHint.Text = table ? ProfileText(_cfg.Profile) : "Elle seçilmiş çıkışlar kullanılıyor; bir kolu ya da hücreyi seçince tabloya dönülür.";
+
         var g = _table;
         g.Children.Clear(); g.ColumnDefinitions.Clear(); g.RowDefinitions.Clear();
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
-        foreach (var _ in Profiles) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star), MinWidth = 150 });
+        foreach (var _ in Profiles) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MaxWidth = 92 });
         g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        bool table = _cfg.ManualOutputs == null;
         for (int c = 0; c < Profiles.Length; c++)
         {
-            var p = Profiles[c];
-            var head = new Button
+            var p = Profiles[c]; bool cur = table && p == _cfg.Profile;
+            var head = new TextBlock
             {
-                Content = new TextBlock { Text = GameConfig.Label(p), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center }, Margin = new Thickness(3), Padding = new Thickness(4, 6, 4, 6), FontWeight = FontWeights.SemiBold,
-                Background = p == _cfg.Profile && table ? CellAccent : CellPanel, Foreground = Brushes.White, BorderThickness = new Thickness(0)
+                Text = TileText(p).Label, FontSize = 11.5, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
+                FontWeight = cur ? FontWeights.Bold : FontWeights.Normal, Foreground = cur ? Brushes.White : B("Muted"), Margin = new Thickness(2, 0, 2, 4)
             };
-            head.Click += (_, _) => SelectProfile(p);
-            Grid.SetColumn(head, c + 1);
-            g.Children.Add(head);
+            Grid.SetColumn(head, c + 1); g.Children.Add(head);
         }
         for (int r = 0; r < Rows.Length; r++)
         {
             var f = Rows[r];
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var label = new TextBlock { Text = GameConfig.Label(f), Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
+            var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 2, 8, 2) };
+            label.Children.Add(new TextBlock { Text = GameConfig.Label(f), FontWeight = FontWeights.SemiBold, FontSize = 12.5 });
+            label.Children.Add(new TextBlock { Text = GameConfig.Sub(f), Foreground = B("Muted"), FontSize = 11, TextWrapping = TextWrapping.Wrap });
             Grid.SetRow(label, r + 1); g.Children.Add(label);
             for (int c = 0; c < Profiles.Length; c++)
             {
                 var p = Profiles[c];
-                bool supported = GameConfig.Supports(p, f), current = p == _cfg.Profile && table, on = current && _cfg.Features.HasFlag(f);
+                bool supported = GameConfig.Supports(p, f), current = table && p == _cfg.Profile, on = current && _cfg.Features.HasFlag(f);
                 var cell = new Button
                 {
+                    Style = S("MatrixCell"), BorderBrush = B("Line"),
                     Content = supported ? (current ? (on ? "●" : "○") : "✓") : "—",
-                    Margin = new Thickness(3), Padding = new Thickness(0, 5, 0, 5), FontSize = 15, BorderThickness = new Thickness(1), BorderBrush = CellPanel,
-                    Background = on ? CellAccent : current ? CellCurrent : Brushes.Transparent,
-                    Foreground = on ? Brushes.White : CellMuted,
-                    ToolTip = !supported ? $"{GameConfig.Label(p)} kolunda yok · tıkla: {GameConfig.Label(BestFor(f, p))} kola geç ve aç"
-                        : current ? (on ? "Açık · tıkla: kapat" : "Kapalı · tıkla: aç") : $"tıkla: {GameConfig.Label(p)} kola geç ve aç"
+                    Background = on ? B("Accent") : current ? new SolidColorBrush(Color.FromRgb(0x17, 0x24, 0x43)) : Brushes.Transparent,
+                    Foreground = on ? Brushes.White : B("Muted"),
+                    FontSize = on ? 17 : 14,
+                    ToolTip = !supported ? $"{TileText(p).Label} kolunda yok · tıkla: {TileText(BestFor(f, p)).Label} koluna geç ve aç"
+                        : current ? (on ? "Açık · tıkla: kapat" : "Kapalı · tıkla: aç") : $"{TileText(p).Label} kolunda var · tıkla: o kola geç ve aç"
                 };
+                System.Windows.Automation.AutomationProperties.SetName(cell, $"{GameConfig.Label(f)} · {TileText(p).Label}");
                 cell.Click += (_, _) => ClickCell(p, f);
                 Grid.SetRow(cell, r + 1); Grid.SetColumn(cell, c + 1);
                 g.Children.Add(cell);
@@ -280,19 +399,26 @@ public sealed class MainWindow : Window
         }
         var outs = EffectiveOutputs();
         foreach (var (flag, cb) in _outBoxes) cb.IsChecked = (outs & flag) != 0;
-        _tableInfo.Text = !table
-            ? "Elle seçilmiş çıkışlar kullanılıyor (tablodan bir hücreye tıklayınca tabloya döner): " + outs
-            : _cfg.Profile == PadProfile.Native
-                ? NativeNote() + $" · çıkışlar: {outs}"
-            : _cfg.Profile == PadProfile.Physical
-                ? GameConfig.Wolverine switch
+        _tableInfo.Text = !table ? "Çıkışlar: " + outs
+            : _cfg.Profile == PadProfile.Native ? NativeNote() + $" · çıkışlar: {outs}"
+            : _cfg.Profile == PadProfile.Physical ? GameConfig.Wolverine switch
                 {
-                    WolverineMode.Pc => "Wolverine PC modunda: Windows onu Xbox 360 kolu olarak görür, oyun XInput ile iki gövde motorunu sürer. Tetik motorları PC modunda yok (tetik satırı kapalı). RW3'ün sesten avuç titreşimi USB Sensa ile çalışır, oyun öndeyken de susmaz.",
-                    WolverineMode.Xbox => "Wolverine Xbox modunda: oyun GameInput ile gövde + tetik motorlarını sürer (Game Pass oyunları gibi) ve kolu tutar. Oyun öndeyken Windows RW3'ün avuç karelerini susturabilir: bu sütun tam olarak bunu test eder.",
+                    WolverineMode.Pc => "Wolverine PC modunda: Windows onu Xbox 360 kolu olarak görür, oyun XInput ile iki gövde motorunu sürer. Tetik motorları PC modunda yok. RW3'ün sesten avuç titreşimi oyun öndeyken de susmaz.",
+                    WolverineMode.Xbox => "Wolverine Xbox modunda: oyun GameInput ile gövde + tetik motorlarını sürer ve kolu tutar (Game Pass oyunları gibi). Oyun öndeyken Windows avuçları susturabilir: bu sütun tam olarak bunu test eder.",
                     _ => "Wolverine bağlı değil: kolu bağla ve ↻ Yeniden tara."
                 } + $" · çıkışlar: {outs}"
-                : $"Oyun şöyle davranacak: {GameConfig.Label(_cfg.Profile)} destekli oyun · çıkışlar: {outs}";
+            : $"Çıkışlar: {outs}";
     }
+
+    private static string ProfileText(PadProfile p) => p switch
+    {
+        PadProfile.Native => "RW3 yokmuş gibi: bağlı gerçek kollar (kendi DualSense'in, Xbox kolun, PS4 kolun) kendi yollarıyla sürülür; RW3'ün sanal kolları yok sayılır. Karşılaştırma için referans.",
+        PadProfile.Physical => "Oyun Wolverine'i olduğu gibi kullanır (RW3'te 'Kolun kendisi'). Xbox modunda gövde + tetik motorları, PC modunda iki gövde motoru.",
+        PadProfile.Xbox360 => "Xbox 360 kolu destekleyen bir oyun: XInput, iki gövde motoru. Tetik titreşimi yoktur.",
+        PadProfile.XboxSeries => "Xbox One / Series kolu destekleyen bir oyun: GameInput ile gövde + tetik motorları.",
+        PadProfile.DualShock4 => "PS4 kolu destekleyen bir oyun: rumble ve ışık çubuğu. Tetik titreşimi yoktur.",
+        _ => "DualSense destekleyen bir oyun: adaptif tetikler, ışık, LED'ler ve HD haptik (ses kanalı 3/4)."
+    };
 
     private Out Chosen() => _outBoxes.Where(kv => kv.Value.IsChecked == true).Aggregate(Out.None, (a, kv) => a | kv.Key);
 
@@ -369,6 +495,20 @@ public sealed class MainWindow : Window
         if (_fb.DualSenses.Count == 0) sb.AppendLine("DualSense   HID yok (adaptif tetik / ışık kullanılamaz)");
         if (_input.Sources.Count == 0) sb.AppendLine("Hiç kol bulunamadı. Kolu bağla ve ↻ Yeniden tara.");
         _devices.Text = sb.ToString().TrimEnd();
+        _conn.Children.Clear();
+        Conn(GameConfig.Wolverine != WolverineMode.None ? true : null, "Wolverine V3 Pro", GameConfig.Wolverine switch
+        {
+            WolverineMode.Pc => "PC modunda: Xbox 360 kolu gibi görünür, tetik motoru yok.",
+            WolverineMode.Xbox => "Xbox modunda: Xbox One/Series kolu, tetik motorları var.",
+            _ => "Bağlı değil."
+        });
+        Conn(_fb.XPads.Count > 0 ? true : null, "Xbox kolu (XInput)", _fb.XPads.Count > 0 ? string.Join(", ", _fb.XPads.Select(x => x.Name)) : "Yok.");
+        int giXbox = _fb.GameInput?.Devices.Count(d => !d.Sony) ?? 0;
+        Conn(giXbox > 0 ? true : null, "Xbox kolu (GameInput)", giXbox > 0 ? $"{giXbox} kol · rumble + tetik motorları" : "Yok: tetik motorları bu yoldan sürülemez.");
+        Conn(_fb.DualSenses.Count > 0 ? true : null, "DualSense", _fb.DualSenses.Count > 0 ? string.Join(", ", _fb.DualSenses.Select(d => d.Name)) : "Yok (USB kablo gerekli).");
+        Conn(eps.Count > 0 ? true : null, "DualSense ses (HD haptik)", eps.Count > 0 ? string.Join(", ", eps.Select(e => e.Name)) : "Yok.");
+        if (_fb.Ds4s.Count > 0) Conn(true, "PS4 kolu", string.Join(", ", _fb.Ds4s.Select(d => d.Name)));
+        Conn(_fb.Speakers?.Error == null ? true : false, "Hoparlör / kulaklık", _fb.Speakers?.Device ?? "Varsayılan ses aygıtı");
         _fb.Speakers ??= new SpeakerOutput();
         if (!_devicesOpen) { _fb.Speakers.Start(); _devicesOpen = true; }
         _log.Event("devices", sb.ToString());
@@ -405,6 +545,8 @@ public sealed class MainWindow : Window
     private void Enter(Screen s)
     {
         _screen = s;
+        _syncingTabs = true;
+        try { if (_tabs.TryGetValue(s, out var tab)) tab.IsChecked = true; } finally { _syncingTabs = false; }
         ApplyOutputs();
         _setup.Visibility = s == Screen.Setup ? Visibility.Visible : Visibility.Collapsed;
         _surface.Visibility = s == Screen.Setup ? Visibility.Collapsed : Visibility.Visible;
@@ -439,6 +581,14 @@ public sealed class MainWindow : Window
         _input.Poll();
         foreach (var b in Buttons.All) if (_input.Pressed(b)) { _log.Count("button " + b); if (_screen == Screen.PadTest) _surface.Presses[b] = _surface.Presses.GetValueOrDefault(b) + 1; }
         if (_input.Pressed(Btn.View) && _screen is Screen.Game or Screen.Guided) ToggleFullscreen();
+        _badgeText.Text = _input.Active != null ? "Giriş: " + _input.Active.Name : "Kol bekleniyor";
+        _badgeDot.Fill = _input.Active != null ? B("Good") : B("Muted");
+        if (_screen == Screen.Setup && IsActive && (_input.Pressed(Btn.RB) || _input.Pressed(Btn.LB)))
+        {
+            var order = new[] { Screen.Setup, Screen.Game, Screen.PadTest, Screen.Guided };
+            Enter(order[(Array.IndexOf(order, _screen) + (_input.Pressed(Btn.RB) ? 1 : order.Length - 1)) % order.Length]);
+            return;
+        }
         switch (_screen)
         {
             case Screen.Setup:
@@ -477,6 +627,7 @@ public sealed class MainWindow : Window
         if (_input.Pressed(Btn.A))
         {
             if (Keyboard.FocusedElement is CheckBox cb) cb.IsChecked = cb.IsChecked != true;
+            else if (Keyboard.FocusedElement is RadioButton rb) rb.IsChecked = true;
             else if (Keyboard.FocusedElement is Button b) b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
     }

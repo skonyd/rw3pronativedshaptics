@@ -8,6 +8,8 @@ public static class Program
     public static void Main(string[] args)
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+        // RW3's own theme (src/RW3ProNativeDSHaptics/Theme.xaml, linked): same colors, cards, buttons and tabs as RW3.
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/RW3TestRange;component/Theme.xaml") });
         app.DispatcherUnhandledException += (_, e) =>
         {
             SessionLog.Current?.Event("crash", new { error = e.Exception.ToString() });

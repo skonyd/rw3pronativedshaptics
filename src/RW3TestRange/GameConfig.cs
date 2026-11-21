@@ -126,10 +126,21 @@ public sealed class GameConfig
         PadProfile.DualShock4 => "PS4", PadProfile.Native => "Bağlı kol (RW3'süz)", _ => "DualSense"
     };
 
+    /// <summary>Row names as on RW3's matrix (where a row means the same thing).</summary>
     public static string Label(GameFeature f) => f switch
     {
-        GameFeature.Music => "Müzik", GameFeature.Sfx => "Efekt sesleri", GameFeature.HdHaptics => "HD haptik",
-        GameFeature.Rumble => "Rumble", GameFeature.Triggers => "Tetik titreşimi / efekti", _ => f.ToString()
+        GameFeature.Music => "Müzik", GameFeature.Sfx => "Efekt sesleri", GameFeature.HdHaptics => "Oyunun HD haptiği",
+        GameFeature.Rumble => "Oyunun rumble titreşimi", GameFeature.Triggers => "Oyunun tetik titreşimi", _ => f.ToString()
+    };
+
+    public static string Sub(GameFeature f) => f switch
+    {
+        GameFeature.Music => "RW3'ün sesten avuç titreşimi bunu çalar",
+        GameFeature.Sfx => "Silah, cam, patlama sesleri",
+        GameFeature.HdHaptics => "Avuçlarda; DualSense HD haptiği",
+        GameFeature.Rumble => "Gövde motorlarında",
+        GameFeature.Triggers => "Tetik içi motorlar · DualSense adaptif tetik",
+        _ => ""
     };
 
     /// <summary>Trigger effect strength 1..8 scaled by the intensity setting (0 = effect off).</summary>

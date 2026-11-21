@@ -14,6 +14,8 @@
     <Version>0.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <!-- RW3's theme, shared so the game looks like RW3's main window -->
+    <Page Include="..\RW3ProNativeDSHaptics\Theme.xaml" Link="Theme.xaml" />
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 </Project>

@@ -109,10 +109,10 @@ public sealed class DualSenseHid : IPadSource
             if (h.IsInvalid) continue;
             if (!Hid.Attributes(h, out ushort vid, out ushort pid) || vid != 0x054C || pid is not (0x0CE6 or 0x0DF2)) continue;
             if (!Hid.Caps(h, out ushort usagePage, out ushort usage, out _, out _) || usagePage != 1 || usage != 5) continue;
-            // HIDMaestro's virtual DualSense hangs off a software bus; a real one off USB or Bluetooth.
+            // RW3's virtual DualSense (HIDMaestro, USB/IP) sits on a software USB bus rooted at ROOT\USB; a real one on the
+            // PC's USB controller (PCI) or Bluetooth. Both have "USB" parents, so the root of the chain decides.
             string parent = Hid.ParentChain(path);
-            bool virt = !parent.Contains("USB\\", StringComparison.OrdinalIgnoreCase) && !parent.Contains("BTH", StringComparison.OrdinalIgnoreCase);
-            list.Add(new DualSenseHid(path, virt) { ParentIds = parent });
+            list.Add(new DualSenseHid(path, Hid.IsSoftwareDevice(parent)) { ParentIds = parent });
         }
         return list;
     }
@@ -240,7 +240,7 @@ internal static class Hid
             if (CM_Locate_DevNode(out uint node, id, 0) != 0) return id;
             var parts = new List<string> { id };
             var buf = new char[400];
-            for (int i = 0; i < 4 && CM_Get_Parent(out uint parent, node, 0) == 0; i++)
+            for (int i = 0; i < 8 && CM_Get_Parent(out uint parent, node, 0) == 0; i++)
             {
                 if (CM_Get_Device_ID(parent, buf, buf.Length, 0) != 0) break;
                 parts.Add(new string(buf).TrimEnd((char)0));
@@ -274,6 +274,17 @@ internal static class Hid
             }
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
+    /// <summary>True when the device chain ends at a software root (virtual bus) rather than hardware (PCI / ACPI / BTH).</summary>
+    public static bool IsSoftwareDevice(string chain)
+    {
+        var ids = chain.Split(" ← ");
+        if (ids.Any(id => id.Contains("HIDMAESTRO", StringComparison.OrdinalIgnoreCase))) return true;
+        bool hardware = ids.Any(id => id.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) || id.StartsWith(@"ACPI\", StringComparison.OrdinalIgnoreCase)
+                                       || id.StartsWith("BTH", StringComparison.OrdinalIgnoreCase));
+        bool software = ids.Any(id => id.StartsWith(@"ROOT\", StringComparison.OrdinalIgnoreCase) || id.StartsWith(@"SWD\", StringComparison.OrdinalIgnoreCase));
+        return software && !hardware;
     }
 
     public static SafeFileHandle Open(string path, uint access) => CreateFile(path, access, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
@@ -362,7 +373,7 @@ public sealed class DualShock4Hid : IPadSource
             if (!Hid.Attributes(h, out ushort vid, out ushort pid) || vid != 0x054C || pid is not (0x05C4 or 0x09CC or 0x0BA0)) continue;
             if (!Hid.Caps(h, out ushort page, out ushort usage, out _, out _) || page != 1 || usage != 5) continue;
             string parent = Hid.ParentChain(path);
-            list.Add(new DualShock4Hid(path) { ParentIds = parent, Virtual = !parent.Contains("USB\\", StringComparison.OrdinalIgnoreCase) && !parent.Contains("BTH", StringComparison.OrdinalIgnoreCase) });
+            list.Add(new DualShock4Hid(path) { ParentIds = parent, Virtual = Hid.IsSoftwareDevice(parent) });
         }
         return list;
     }

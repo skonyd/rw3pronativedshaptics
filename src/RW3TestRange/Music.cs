@@ -33,10 +33,11 @@ public sealed class MusicGenerator
     private int _lastStep = -1;
 
     // bass voice
-    private double _bassPh, _bassHz = 55, _bassEnv; private readonly Biquad _bassLp = Biquad.LowPass(400, 1.1);
+    private double _bassPh, _bassHz = 55, _bassEnv, _bassAmp; private bool _bassGate;
+    private readonly Biquad _bassLp = Biquad.LowPass(400, 1.1);
     // pad: 3 notes × 2 detuned saws, crossfading envelope
     private readonly double[] _padPh = new double[6]; private double[] _padHz = new double[3]; private double _padEnv;
-    private readonly Biquad _padLpL = Biquad.LowPass(1300), _padLpR = Biquad.LowPass(1300);
+    private readonly Biquad _padLpL = Biquad.LowPass(850), _padLpR = Biquad.LowPass(850);
     // lead
     private double _leadPh, _leadHz = 440, _leadTarget = 440, _leadEnv, _vib; private bool _leadOn;
     private readonly Biquad _leadLp = Biquad.LowPass(2600);
@@ -77,7 +78,9 @@ public sealed class MusicGenerator
         if (s == 14) _hits.Add((_openHat, 0, .12f, .3f, .1f));
         // bass
         int b = BassSteps[s];
-        if (b >= 0) { _bassHz = Midi(Roots[chord] + b); _bassEnv = 1; }
+        // a rest closes the note (the bass kept sounding at 35 % between notes = a drone)
+        if (b >= 0) { _bassHz = Midi(Roots[chord] + b); _bassEnv = 1; _bassGate = true; } else _bassGate = false;
+        if (s == 0) _padEnv = Math.Min(_padEnv, .25);   // the pad breathes: re-swells at every bar
         // pad follows the chord each bar
         if (s == 0) _padHz = Chords[chord].Select(Midi).ToArray();
         // lead in bars 2-3 and 6-7
@@ -109,22 +112,25 @@ public sealed class MusicGenerator
             }
 
             // bass: saw, envelope-driven low-pass (pluck)
-            _bassEnv *= .99985;
-            if (_n % 32 == 0) _bassLp.SetLowPass(180 + 900 * _bassEnv * _bassEnv, 1.2);
-            float bass = _bassLp.Process(Saw(ref _bassPh, _bassHz)) * (float)(.35 + .65 * _bassEnv) * .42f;
+            _bassEnv *= .9997;
+            if (_n % 32 == 0) _bassLp.SetLowPass(160 + 1000 * _bassEnv * _bassEnv, 1.1);
+            // amplitude: fast attack, decay towards a sustain while the note is held, quick release on a rest
+            double bassTarget = _bassGate ? .35 + .65 * _bassEnv : 0;
+            _bassAmp += (bassTarget - _bassAmp) * (bassTarget > _bassAmp ? .02 : .0015);
+            float bass = _bassLp.Process(Saw(ref _bassPh, _bassHz)) * (float)_bassAmp * .45f;
             l += bass; r += bass;
 
             // pad: slow swell each bar, slightly detuned pairs spread left/right
             int stepInBar = step % 16;
-            double target = stepInBar < 15 ? 1 : .55;
-            _padEnv += (target - _padEnv) * .00006;
+            double target = stepInBar < 8 ? 1 : .45;     // swell, then settle: a pad that moves, not a held tone
+            _padEnv += (target - _padEnv) * .00005;
             float pl = 0, pr = 0;
             for (int k = 0; k < 3; k++)
             {
                 pl += Saw(ref _padPh[2 * k], _padHz[k] * .997);
                 pr += Saw(ref _padPh[2 * k + 1], _padHz[k] * 1.003);
             }
-            pl = _padLpL.Process(pl) * (float)_padEnv * .055f; pr = _padLpR.Process(pr) * (float)_padEnv * .055f;
+            pl = _padLpL.Process(pl) * (float)_padEnv * .032f; pr = _padLpR.Process(pr) * (float)_padEnv * .032f;
             l += pl; r += pr; send += (pl + pr) * .6f;
 
             // lead: glide + vibrato, decaying notes, ping-pong delay
