@@ -22,7 +22,7 @@ public sealed class RangeGame
         new("Pompalı", 6, 0, false, .05, 255, 70, 30, 1.0,
             "R2: sert, erken silah tıkı (0x25 güç 8). Avuç: derin patlama + pompa çift tık. İki gövde motoru."),
         new("Yay", 1, 0, false, 0, 200, 60, 255, .4,
-            "R2: yay efekti (0x22), çektikçe direnç, bırakınca geri tepme. Avuç: gerilim uğultusu yükselir, bırakışta şak."),
+            "L2 ya da R2 ile çek: iki tetikte de yay efekti (0x22), çektikçe direnç, bırakınca geri tepme. Gerilim çektiğin taraftaki tetik motorunda ve avuçta yükselir, bırakışta şak."),
         new("Arbalet", 1, 0, false, .002, 255, 230, 120, 2.0,
             "R2: en geç ve en sert tık (0x25, bölge 5→8). Doldururken L2 dirençli kurma, avuçta kurma tıkırtıları."),
     };
@@ -115,6 +115,7 @@ public sealed class RangeGame
     private TriggerFx L2Now() =>
         _cfg.Triggers == TriggerIntensity.Off ? TriggerFx.Off
         : Reloading && WeaponIndex == 4 ? TriggerFx.Feedback(0, _cfg.Strength(6))
+        : WeaponIndex == 3 ? R2For(3, true)          // the bow can be drawn with either trigger
         : Aiming ? TriggerFx.Feedback(2, _cfg.Strength(4)) : TriggerFx.Off;
 
     private void UpdateLights()
@@ -142,7 +143,7 @@ public sealed class RangeGame
         if (TimeLeft <= 0) { TimeLeft = 0; Over = true; _fb.StopAll(); _fb.Light(255, 255, 255, 0b11111, "round over"); SessionLog.Current?.Event("round-end", new { Score, Shots, Hits }); SessionLog.Current?.Note($"Tur bitti: skor {Score}, atış {Shots}, isabet {Hits}"); return; }
 
         // aim: left stick fast, right stick fine, L2 = aim down sights (slower, L2 resistance on a DualSense)
-        bool aimNow = s.LT > .35f;
+        bool aimNow = s.LT > .35f && WeaponIndex != 3;   // with the bow, L2 draws the string instead of aiming
         if (aimNow != Aiming)
         {
             Aiming = aimNow;
@@ -265,17 +266,24 @@ public sealed class RangeGame
         UpdateLights();
     }
 
+    private bool _bowLeft;
+
+    /// <summary>Bow: drawn with whichever trigger is pulled further (both carry the bow effect); tension and release go to
+    /// that side's trigger motor and palm.</summary>
     private void Bow(double dt, PadState s)
     {
-        if (s.RT > .15f && !Reloading)
+        float pull = Math.Max(s.LT, s.RT);
+        if (pull > .15f && !Reloading)
         {
-            _bowDraw = s.RT; _bowMax = Math.Max(_bowMax, s.RT);
+            if (_bowMax == 0) _bowLeft = s.LT > s.RT;
+            _bowDraw = pull; _bowMax = Math.Max(_bowMax, pull);
             _bowTick -= dt;
             if (_bowTick <= 0)
             {
                 _bowTick = .12;
-                _fb.Haptic(Synth.HTension((float)_bowDraw), "bow tension", .6f + .4f * (float)_bowDraw);
-                _fb.Rumble(0, .15f * (float)_bowDraw, .14, rt: .6f * (float)_bowDraw);
+                float side = _bowLeft ? -.7f : .7f, t = (float)_bowDraw;
+                _fb.Haptic(Synth.HPunch(60 + 40 * t, .12, side, .25f + .5f * t, 4), "bow tension", .6f + .4f * t);
+                _fb.Rumble(_bowLeft ? .15f * t : 0, _bowLeft ? 0 : .15f * t, .14, lt: _bowLeft ? .6f * t : 0, rt: _bowLeft ? 0 : .6f * t);
             }
             return;
         }
@@ -284,9 +292,10 @@ public sealed class RangeGame
             Shots++; Flash = .04;
             float pan = PanOf(CrossX);
             _fb.Sound(Synth.Shot(3, pan * .5f), "bow release");
-            _fb.Haptic(Synth.Mix(Synth.HShot(3), Synth.HPunch(260, .03, .6f, .7f * (float)_bowMax, 130)), "bow release");
-            _fb.Rumble(.2f, .5f, .12, rt: .9f, why: "bow release");
-            Say($"Yay bırakıldı (güç %{_bowMax * 100:0}) · R2 yay efekti · sağ tetik motoru");
+            float side = _bowLeft ? -.6f : .6f;
+            _fb.Haptic(Synth.Mix(Synth.HPunch(180, .15, side, .6f, 25), Synth.HPunch(260, .03, side, .7f * (float)_bowMax, 130)), "bow release");
+            _fb.Rumble(_bowLeft ? .5f : .2f, _bowLeft ? .2f : .5f, .12, lt: _bowLeft ? .9f : 0, rt: _bowLeft ? 0 : .9f, why: _bowLeft ? "bow release (L2)" : "bow release (R2)");
+            Say($"Yay bırakıldı (güç %{_bowMax * 100:0}) · {(_bowLeft ? "L2" : "R2")} yay efekti · {(_bowLeft ? "sol" : "sağ")} tetik motoru");
             HitAt(CrossX, CrossY, .02 + .03 * _bowMax);
         }
         _bowMax = 0; _bowDraw = 0;

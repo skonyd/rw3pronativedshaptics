@@ -85,6 +85,8 @@ public sealed class DualSenseHid : IPadSource
     private int _outLen = 48;
     public bool Bluetooth { get; private set; }
     public string ParentIds { get; private init; } = "";
+    /// <summary>Device container: the pad's audio endpoint (HD haptics) has the same one.</summary>
+    public Guid? Container { get; private init; }
     public long InputReports { get; private set; }
     public long OutputReports { get; private set; }
     public string? Error { get; private set; }
@@ -112,7 +114,7 @@ public sealed class DualSenseHid : IPadSource
             // RW3's virtual DualSense (HIDMaestro, USB/IP) sits on a software USB bus rooted at ROOT\USB; a real one on the
             // PC's USB controller (PCI) or Bluetooth. Both have "USB" parents, so the root of the chain decides.
             string parent = Hid.ParentChain(path);
-            list.Add(new DualSenseHid(path, Hid.IsSoftwareDevice(parent)) { ParentIds = parent });
+            list.Add(new DualSenseHid(path, Hid.IsSoftwareDevice(parent)) { ParentIds = parent, Container = Hid.ContainerOf(path) });
         }
         return list;
     }
@@ -274,6 +276,26 @@ internal static class Hid
             }
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct DevPropKey { public Guid Fmt; public uint Pid; }
+    [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+    private static extern int CM_Get_DevNode_PropertyW(uint node, ref DevPropKey key, out uint type, byte[]? buffer, ref uint size, uint flags);
+
+    /// <summary>The device container (DEVPKEY_Device_ContainerId) of a HID interface path's device.</summary>
+    public static Guid? ContainerOf(string path)
+    {
+        try
+        {
+            string p = path.StartsWith(@"\\?\") ? path[4..] : path;
+            int g = p.LastIndexOf("#{", StringComparison.Ordinal);
+            if (g > 0) p = p[..g];
+            if (CM_Locate_DevNode(out uint node, p.Replace('#', '\\'), 0) != 0) return null;
+            var key = new DevPropKey { Fmt = new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"), Pid = 2 };
+            uint size = 16; var buf = new byte[16];
+            return CM_Get_DevNode_PropertyW(node, ref key, out _, buf, ref size, 0) == 0 && size == 16 ? new Guid(buf) : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>True when the device chain ends at a software root (virtual bus) rather than hardware (PCI / ACPI / BTH).</summary>

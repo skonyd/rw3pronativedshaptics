@@ -100,9 +100,12 @@ public sealed class HapticOutput : IWaveProvider, IDisposable
     public float PeakR { get; private set; }
     public long FramesWritten { get; private set; }
 
-    public static List<(string Id, string Name)> Endpoints()
+    private static readonly NAudio.CoreAudioApi.PropertyKey ContainerKey = new(new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"), 2);
+
+    /// <summary>DualSense 4-channel endpoints with their device container (the same physical / virtual pad as its HID).</summary>
+    public static List<(string Id, string Name, Guid? Container)> Endpoints()
     {
-        var list = new List<(string, string)>();
+        var list = new List<(string, string, Guid?)>();
         try
         {
             using var en = new MMDeviceEnumerator();
@@ -110,7 +113,11 @@ public sealed class HapticOutput : IWaveProvider, IDisposable
                 using (d)
                     if ((d.FriendlyName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) || d.FriendlyName.Contains("Wireless Controller", StringComparison.OrdinalIgnoreCase))
                         && d.AudioClient.MixFormat.Channels == 4)
-                        list.Add((d.ID, d.FriendlyName));
+                    {
+                        Guid? container = null;
+                        try { if (d.Properties.Contains(ContainerKey) && d.Properties[ContainerKey].Value is Guid g) container = g; } catch { }
+                        list.Add((d.ID, d.FriendlyName, container));
+                    }
         }
         catch { }
         return list;

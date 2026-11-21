@@ -424,7 +424,8 @@ public sealed class MainWindow : Window
 
     private Out EffectiveOutputs() =>
         _cfg.ManualOutputs ?? (_cfg.Profile == PadProfile.Native
-            ? GameConfig.OutputsForReal(_cfg.Features, _fb.DualSenses.Any(d => !d.Virtual), HapticOutput.Endpoints().Count > 0,
+            ? GameConfig.OutputsForReal(_cfg.Features, _fb.DualSenses.Any(d => !d.Virtual),
+                HapticOutput.Endpoints().Any(e => _fb.DualSenses.Any(d => !d.Virtual && d.Container != null && d.Container == e.Container)),
                 _fb.Ds4s.Any(d => !d.Virtual), _fb.GameInput?.Devices.Any(d => !d.Sony) == true, _fb.XPads.Count > 0)
             : GameConfig.OutputsFor(_cfg.Profile, _cfg.Features));
 
@@ -486,11 +487,16 @@ public sealed class MainWindow : Window
         var eps = HapticOutput.Endpoints();
         _endpoint.ItemsSource = eps.Select(e => e.Name).ToList();
         _endpoint.Tag = eps;
-        if (eps.Count > 0) _endpoint.SelectedIndex = Math.Max(0, eps.FindIndex(e => e.Name == _cfg.EndpointName));
+        if (eps.Count > 0) _endpoint.SelectedIndex = ChooseEndpoint(eps);
         RefreshTable();
         var rw3 = GameConfig.FromRw3();
         _rw3Info.Text = rw3 != null ? "Şu an " + rw3.Value.Text : "RW3 ayarı bulunamadı.";
-        foreach (var e in eps) sb.AppendLine("Ses 4 kanal " + e.Name);
+        string Owner((string Id, string Name, Guid? Container) e)
+        {
+            var ds = _fb.DualSenses.FirstOrDefault(d => d.Container != null && d.Container == e.Container);
+            return e.Name + (ds == null ? "" : ds.Virtual ? " · RW3 sanal" : " · gerçek kol");
+        }
+        foreach (var e in eps) sb.AppendLine("Ses 4 kanal " + Owner(e));
         if (eps.Count == 0) sb.AppendLine("Ses 4 kanal DualSense uç noktası yok (HD haptik / kol hoparlörü kullanılamaz)");
         if (_fb.DualSenses.Count == 0) sb.AppendLine("DualSense   HID yok (adaptif tetik / ışık kullanılamaz)");
         if (_input.Sources.Count == 0) sb.AppendLine("Hiç kol bulunamadı. Kolu bağla ve ↻ Yeniden tara.");
@@ -506,7 +512,7 @@ public sealed class MainWindow : Window
         int giXbox = _fb.GameInput?.Devices.Count(d => !d.Sony) ?? 0;
         Conn(giXbox > 0 ? true : null, "Xbox kolu (GameInput)", giXbox > 0 ? $"{giXbox} kol · rumble + tetik motorları" : "Yok: tetik motorları bu yoldan sürülemez.");
         Conn(_fb.DualSenses.Count > 0 ? true : null, "DualSense", _fb.DualSenses.Count > 0 ? string.Join(", ", _fb.DualSenses.Select(d => d.Name)) : "Yok (USB kablo gerekli).");
-        Conn(eps.Count > 0 ? true : null, "DualSense ses (HD haptik)", eps.Count > 0 ? string.Join(", ", eps.Select(e => e.Name)) : "Yok.");
+        Conn(eps.Count > 0 ? true : null, "DualSense ses (HD haptik)", eps.Count > 0 ? string.Join(", ", eps.Select(Owner)) : "Yok.");
         if (_fb.Ds4s.Count > 0) Conn(true, "PS4 kolu", string.Join(", ", _fb.Ds4s.Select(d => d.Name)));
         Conn(_fb.Speakers?.Error == null ? true : false, "Hoparlör / kulaklık", _fb.Speakers?.Device ?? "Varsayılan ses aygıtı");
         _fb.Speakers ??= new SpeakerOutput();
@@ -529,17 +535,39 @@ public sealed class MainWindow : Window
         _fb.Speakers.MusicOn = _fb.Has(Out.Music) && _screen == Screen.Game;
         if (_fb.Has(Out.DsHaptics) || _fb.Has(Out.DsSpeaker))
         {
-            var eps = _endpoint.Tag as List<(string Id, string Name)>;
-            if (_fb.HapticOut == null && eps is { Count: > 0 } && _endpoint.SelectedIndex >= 0)
+            var eps = _endpoint.Tag as List<(string Id, string Name, Guid? Container)>;
+            if (eps is { Count: > 0 } && _cfg.ManualOutputs == null) _endpoint.SelectedIndex = ChooseEndpoint(eps);
+            string? want = eps is { Count: > 0 } && _endpoint.SelectedIndex >= 0 ? eps[_endpoint.SelectedIndex].Id : null;
+            if (_fb.HapticOut != null && want != null && _hapticEndpoint != want) { _fb.HapticOut.Dispose(); _fb.HapticOut = null; }
+            if (_fb.HapticOut == null && want != null)
             {
                 _fb.HapticOut = new HapticOutput();
-                if (!_fb.HapticOut.Start(eps[_endpoint.SelectedIndex].Id)) _log.Note("HD haptik çıkışı açılamadı: " + _fb.HapticOut.Error);
+                _hapticEndpoint = want;
+                if (!_fb.HapticOut.Start(want)) _log.Note("HD haptik çıkışı açılamadı: " + _fb.HapticOut.Error);
                 else _log.Note("HD haptik çıkışı: " + _fb.HapticOut.Device + " · " + _fb.HapticOut.WaveFormat);
             }
             if (_fb.HapticOut == null) _log.Note("HD haptik seçili ama DualSense ses uç noktası yok.");
         }
         if (_endpoint.SelectedItem is string epName) { _cfg.EndpointName = epName; _cfg.Save(); }
         _log.Event("outputs", new { outputs = _fb.Enabled.ToString(), profile = _cfg.Profile.ToString(), features = _cfg.Features.ToString(), triggers = _cfg.Triggers.ToString(), _cfg.HapticPercent, _cfg.RumblePercent, loadout = string.Join(",", _cfg.Loadout) });
+    }
+
+    private string? _hapticEndpoint;
+
+    /// <summary>The 4-channel endpoint of the pad this game drives, matched by device container: the real DualSense in
+    /// "Bağlı kol (RW3'süz)", RW3's virtual one otherwise (when both exist, names alone cannot tell them apart).</summary>
+    private int ChooseEndpoint(List<(string Id, string Name, Guid? Container)> eps)
+    {
+        if (eps.Count == 0) return -1;
+        var wanted = NativeMode ? _fb.DualSenses.Where(d => !d.Virtual)
+            : _fb.DualSenses.Where(d => d.Virtual).Concat(_fb.DualSenses.Where(d => !d.Virtual));
+        foreach (var ds in wanted)
+        {
+            int i = eps.FindIndex(e => e.Container != null && e.Container == ds.Container);
+            if (i >= 0) return i;
+        }
+        int saved = eps.FindIndex(e => e.Name == _cfg.EndpointName);
+        return saved >= 0 ? saved : 0;
     }
 
     private void Enter(Screen s)
