@@ -9,7 +9,8 @@ public enum GameOutput
     Physical,
     /// <summary>A virtual Xbox 360 pad (XUSB): two rumble motors, no impulse triggers. Game Pass games accept it.</summary>
     Xbox360,
-    /// <summary>A virtual Xbox Series pad: rumble and impulse triggers. Some GDK games ignore its input (E-20261115-02).</summary>
+    /// <summary>A virtual Xbox Series pad: rumble and impulse triggers. Input reaches GameInput (E-20261115-04); not yet
+    /// confirmed in a game (Banishers is no test: it ignores a real DualSense too, E-20261121-01).</summary>
     XboxSeries,
     /// <summary>A virtual DualShock 4: rumble only.</summary>
     DualShock4,
@@ -191,10 +192,10 @@ public static class OutputMatrix
     public static string? Warning(GameOutput output, bool xboxMode) => output switch
     {
         GameOutput.Physical => xboxMode
-            ? "Xbox modunda Game Pass oyunları, tarayıcılar ve Claude/Codex öndeyken Windows avuçları (Sensa) susturur. Game Pass oyunlarında avuç için Xbox 360'ı seç."
+            ? "Xbox modunda Game Pass oyunları, tarayıcılar ve Claude/Codex öndeyken Windows avuçları (Sensa) susturur. Avuçlar için sanal bir kol seçebilirsin."
             : null,
         GameOutput.Xbox360 => "Deneysel: oyunda henüz denenmedi. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
-        GameOutput.XboxSeries => "Deneysel: Banishers gibi bazı Game Pass oyunları bu kolu görür ama girdisini almaz (kol tepki vermez). O zaman Xbox 360'ı seç. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
+        GameOutput.XboxSeries => "Deneysel: oyunda henüz doğrulanmadı. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
         GameOutput.DualShock4 => "Deneysel: oyunda henüz denenmedi. Oyun PS4 kolunu desteklemiyorsa kol tepki vermez. Seçtikten sonra kolu çıkarıp tak ve oyunu yeniden başlat.",
         _ => null
     };

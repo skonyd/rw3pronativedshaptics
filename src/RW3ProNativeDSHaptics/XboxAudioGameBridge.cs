@@ -202,9 +202,8 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _context = new HMContext();
                 _context.LoadDefaultProfiles();
                 if (!_context.IsDriverInstalled) throw new InvalidOperationException("HIDMaestro sürücüsü hazır değil.");
-                // Strict: the output the user picked (Xbox 360 / Series / PS4). Banishers did not take the Bluetooth Series
-                // profile (a HID device) as a gamepad through GameInput: it sent rumble to it but ignored its input
-                // (E-20261115-02); the Xbox 360 pad (XUSB) is the safe choice there.
+                // Strict: the output the user picked (Xbox 360 / Series / PS4). Input reaches GameInput (E-20261115-04);
+                // which pad types a game accepts is game-specific (Banishers ignores even a real DualSense, E-20261121-01).
                 string profileId = Strict ? VirtualProfile : "xbox-series-xs-bt";
                 var model = _context.GetProfile(profileId) ??
                     throw new InvalidOperationException("Sanal kol profili bulunamadı: " + profileId + ".");
