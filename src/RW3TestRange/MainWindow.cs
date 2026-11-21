@@ -182,7 +182,7 @@ public sealed class MainWindow : Window
         return Row(label, p);
     }
 
-    private static readonly PadProfile[] Profiles = { PadProfile.Physical, PadProfile.Xbox360, PadProfile.XboxSeries, PadProfile.DualShock4, PadProfile.DualSense };
+    private static readonly PadProfile[] Profiles = { PadProfile.Native, PadProfile.Physical, PadProfile.Xbox360, PadProfile.XboxSeries, PadProfile.DualShock4, PadProfile.DualSense };
     private static readonly GameFeature[] Rows = { GameFeature.Music, GameFeature.Sfx, GameFeature.HdHaptics, GameFeature.Rumble, GameFeature.Triggers };
 
     /// <summary>Closest profile with a feature: HD haptics → DualSense; triggers → Series from the Xbox side, DualSense from PS4.</summary>
@@ -208,6 +208,7 @@ public sealed class MainWindow : Window
     {
         var set = _cfg.Features;
         if (p == PadProfile.DualSense && _cfg.Profile != PadProfile.DualSense) set |= GameFeature.HdHaptics | GameFeature.Triggers;
+        if (p == PadProfile.Native && _cfg.Profile != PadProfile.Native) set = GameFeature.Music | GameFeature.Sfx | GameFeature.HdHaptics | GameFeature.Rumble | GameFeature.Triggers;
         if (p is PadProfile.XboxSeries or PadProfile.Physical && _cfg.Profile is not (PadProfile.XboxSeries or PadProfile.Physical)) set |= GameFeature.Triggers;
         foreach (var row in Rows) if (!GameConfig.Supports(p, row)) set &= ~row;
         _cfg.Profile = p; _cfg.Features = set; _cfg.ManualOutputs = null; _cfg.Save();
@@ -279,12 +280,38 @@ public sealed class MainWindow : Window
         foreach (var (flag, cb) in _outBoxes) cb.IsChecked = (outs & flag) != 0;
         _tableInfo.Text = !table
             ? "Elle seçilmiş çıkışlar kullanılıyor (tablodan bir hücreye tıklayınca tabloya döner): " + outs
-            : $"Oyun şöyle davranacak: {GameConfig.Label(_cfg.Profile)} destekli oyun · çıkışlar: {outs}";
+            : _cfg.Profile == PadProfile.Native
+                ? NativeNote() + $" · çıkışlar: {outs}"
+                : $"Oyun şöyle davranacak: {GameConfig.Label(_cfg.Profile)} destekli oyun · çıkışlar: {outs}";
     }
 
     private Out Chosen() => _outBoxes.Where(kv => kv.Value.IsChecked == true).Aggregate(Out.None, (a, kv) => a | kv.Key);
 
-    private Out EffectiveOutputs() => _cfg.ManualOutputs ?? GameConfig.OutputsFor(_cfg.Profile, _cfg.Features);
+    private Out EffectiveOutputs() =>
+        _cfg.ManualOutputs ?? (_cfg.Profile == PadProfile.Native
+            ? GameConfig.OutputsForReal(_cfg.Features, _fb.DualSenses.Any(d => !d.Virtual), HapticOutput.Endpoints().Count > 0,
+                _fb.Ds4s.Any(d => !d.Virtual), _fb.GameInput?.Devices.Any(d => !d.Sony) == true, _fb.XPads.Count > 0)
+            : GameConfig.OutputsFor(_cfg.Profile, _cfg.Features));
+
+    private bool NativeMode => _cfg.Profile == PadProfile.Native && _cfg.ManualOutputs == null;
+
+    /// <summary>Native column: which real pads the game will use, and whether RW3 is emulating a pad right now.</summary>
+    private string NativeNote()
+    {
+        var real = new List<string>();
+        real.AddRange(_fb.DualSenses.Where(d => !d.Virtual).Select(d => d.Name));
+        real.AddRange(_fb.Ds4s.Where(d => !d.Virtual).Select(d => d.Name));
+        if (_fb.GameInput?.Devices.Any(d => !d.Sony) == true) real.Add("Xbox kolu (GameInput: rumble + tetik motorları)");
+        else if (_fb.XPads.Count > 0) real.Add("Xbox kolu (XInput: rumble)");
+        string text = real.Count > 0 ? "Bağlı kollar kendi yollarıyla kullanılır: " + string.Join(", ", real) + "."
+            : "Gerçek kol bulunamadı: kolunu bağla ve ↻ Yeniden tara.";
+        var rw3 = GameConfig.FromRw3();
+        bool rw3Running = System.Diagnostics.Process.GetProcessesByName("RW3ProNativeDSHaptics").Length > 0;
+        if (rw3Running && rw3 is { } r && r.Profile != PadProfile.Physical)
+            text += $" ⚠ RW3 açık ve {GameConfig.Label(r.Profile)} taklit ediyor: Wolverine oyundan gizli, sanal kol yok sayılır. Kendi kolunla saf test için RW3'te 'Kolun kendisi'ni seç ya da RW3'ü kapat.";
+        else if (rw3Running) text += " RW3 açık ama kol taklit etmiyor (Kolun kendisi); Wolverine'i sesten titreşimle birlikte görürsün.";
+        return text;
+    }
 
     /// <summary>Finds every pad and output the game can use, and (re)opens them.</summary>
     private void ScanDevices()
@@ -334,6 +361,7 @@ public sealed class MainWindow : Window
     private void ApplyOutputs()
     {
         _fb.Enabled = EffectiveOutputs();
+        _fb.RealOnly = _input.RealOnly = NativeMode;
         _fb.RumbleOn = _cfg.ManualOutputs != null || _cfg.Features.HasFlag(GameFeature.Rumble);
         _fb.TriggersOn = (_cfg.ManualOutputs != null || _cfg.Features.HasFlag(GameFeature.Triggers)) && _cfg.Triggers != TriggerIntensity.Off;
         _fb.RumbleScale = _cfg.RumblePercent / 100f;
@@ -480,6 +508,7 @@ public sealed class MainWindow : Window
     private void SaveReport(bool open)
     {
         var sb = new StringBuilder();
+        if (NativeMode) sb.AppendLine("── RW3'süz referans ── " + NativeNote());
         sb.AppendLine($"── Oyun profili ── {GameConfig.Label(_cfg.Profile)} · satırlar {_cfg.Features} · çıkışlar {EffectiveOutputs()}{(_cfg.ManualOutputs != null ? " (elle)" : "")}");
         sb.AppendLine($"── Ayarlar ── tetik {_cfg.Triggers} · haptik %{_cfg.HapticPercent} · rumble %{_cfg.RumblePercent} · müzik %{_cfg.MusicPercent} · efekt %{_cfg.SfxPercent} · tur {_cfg.RoundSeconds} sn · silahlar {string.Join(", ", RangeGame.Weapons.Where((w, i) => _cfg.Loadout[i]).Select(w => w.Name))}");
         sb.AppendLine("── Kollar ──\n" + _devices.Text);

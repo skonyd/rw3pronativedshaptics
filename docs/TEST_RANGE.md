@@ -14,6 +14,7 @@ Rumble, Tetik titreşimi / efekti). The game then uses the paths a real game wit
 
 | Column | Paths |
 | --- | --- |
+| **Bağlı kol (RW3'süz)** | no RW3: the real pads that are connected, each through its own path (real DualSense: report 0x02 + HD haptics; real DS4: report 0x05; Xbox pad: GameInput, else XInput). RW3's virtual Sony pads are ignored for input and output. Use it with your own DualSense or Xbox pad as the reference; the start screen warns when RW3 is emulating a pad at the same time |
 | Xbox (kolun kendisi), Xbox Series | GameInput: body motors + LT/RT trigger motors |
 | Xbox 360 | XInput: two body motors (no trigger row) |
 | PS4 | DualShock 4 output report 0x05: rumble + lightbar (no trigger row) |

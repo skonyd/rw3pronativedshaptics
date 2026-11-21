@@ -3,7 +3,13 @@ using System.Text.Json;
 namespace RW3TestRange;
 
 /// <summary>The pad type the test game "supports" in the quick table (same columns as RW3's output selector).</summary>
-public enum PadProfile { Physical, Xbox360, XboxSeries, DualShock4, DualSense }
+public enum PadProfile
+{
+    Physical, Xbox360, XboxSeries, DualShock4, DualSense,
+    /// <summary>No RW3 at all: the game uses whatever real pad is connected (own DualSense, Xbox pad, DS4) through
+    /// that pad's own path, and ignores RW3's virtual pads. Reference for comparing RW3 against.</summary>
+    Native
+}
 
 /// <summary>Quick-table rows (same idea as RW3's feature matrix, from the game's side).</summary>
 [Flags]
@@ -51,7 +57,7 @@ public sealed class GameConfig
     }
 
     /// <summary>What a real game supporting <paramref name="p"/> can do with that pad.</summary>
-    public static bool Supports(PadProfile p, GameFeature f) => f switch
+    public static bool Supports(PadProfile p, GameFeature f) => p == PadProfile.Native || f switch
     {
         GameFeature.Music or GameFeature.Sfx => true,
         GameFeature.HdHaptics => p == PadProfile.DualSense,
@@ -81,10 +87,24 @@ public sealed class GameConfig
         return o;
     }
 
+    /// <summary>Native column: the paths of the real pads that are actually connected.</summary>
+    public static Out OutputsForReal(GameFeature f, bool dualSense, bool dualSenseAudio, bool ds4, bool gameInput, bool xinput)
+    {
+        Out o = Out.None;
+        if (f.HasFlag(GameFeature.Music)) o |= Out.Music;
+        if (f.HasFlag(GameFeature.Sfx)) o |= Out.Sfx;
+        bool feedback = f.HasFlag(GameFeature.Rumble) || f.HasFlag(GameFeature.Triggers);
+        if (dualSense) { o |= Out.DsHid; if (dualSenseAudio && f.HasFlag(GameFeature.HdHaptics)) o |= Out.DsHaptics; }
+        if (ds4 && f.HasFlag(GameFeature.Rumble)) o |= Out.Ds4;
+        if (gameInput && feedback) o |= Out.GameInput;
+        else if (xinput && f.HasFlag(GameFeature.Rumble)) o |= Out.XInput;
+        return o;
+    }
+
     public static string Label(PadProfile p) => p switch
     {
         PadProfile.Physical => "Xbox (kolun kendisi)", PadProfile.Xbox360 => "Xbox 360", PadProfile.XboxSeries => "Xbox Series",
-        PadProfile.DualShock4 => "PS4", _ => "DualSense"
+        PadProfile.DualShock4 => "PS4", PadProfile.Native => "Bağlı kol (RW3'süz)", _ => "DualSense"
     };
 
     public static string Label(GameFeature f) => f switch

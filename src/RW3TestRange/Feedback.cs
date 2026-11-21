@@ -37,6 +37,10 @@ public sealed class FeedbackHub : IDisposable
     public GameInputHub? GameInput;
     public readonly List<DualSenseHid> DualSenses = new();
     public readonly List<DualShock4Hid> Ds4s = new();
+    /// <summary>"Bağlı kol (RW3'süz)": send only to real Sony pads, never to RW3's virtual ones.</summary>
+    public bool RealOnly;
+    private IEnumerable<DualSenseHid> DsTargets => RealOnly ? DualSenses.Where(d => !d.Virtual) : DualSenses;
+    private IEnumerable<DualShock4Hid> Ds4Targets => RealOnly ? Ds4s.Where(d => !d.Virtual) : Ds4s;
     /// <summary>Quick-table rows: the game's rumble / trigger feedback on or off (game setting).</summary>
     public bool RumbleOn = true, TriggersOn = true;
     /// <summary>Game settings: HD haptic level (0..2).</summary>
@@ -82,15 +86,20 @@ public sealed class FeedbackHub : IDisposable
         _sLow = low; _sHigh = high; _sLt = lt; _sRt = rt; _sinceSend = 0; _sentNonZero = !zero;
         if (Has(Out.XInput)) foreach (var p in XPads) if (p.Rumble(low, high)) SessionLog.Current?.Count("xinput writes");
         if (Has(Out.GameInput) && GameInput != null)
-            foreach (var d in GameInput.Devices) if (d.Rumble(low, high, lt, rt)) SessionLog.Current?.Count("gameinput writes");
+            foreach (var d in GameInput.Devices)
+            {
+                // GameInput also lists Sony pads; they get their feedback from their own HID report, not twice.
+                if (d.Sony && (Has(Out.DsHid) || Has(Out.Ds4))) continue;
+                if (d.Rumble(low, high, lt, rt)) SessionLog.Current?.Count("gameinput writes");
+            }
         if (Has(Out.DsHid) && RumbleOn)
-            foreach (var ds in DualSenses)
+            foreach (var ds in DsTargets)
             {
                 ds.RumbleLeft = (byte)(low * 255); ds.RumbleRight = (byte)(high * 255);
                 if (ds.Send()) SessionLog.Current?.Count("dualsense reports (rumble)");
             }
         if (Has(Out.Ds4))
-            foreach (var p in Ds4s)
+            foreach (var p in Ds4Targets)
             {
                 p.RumbleLeft = (byte)(low * 255); p.RumbleRight = (byte)(high * 255);
                 if (p.Send()) SessionLog.Current?.Count("dualshock4 reports (rumble)");
@@ -101,7 +110,7 @@ public sealed class FeedbackHub : IDisposable
     {
         if (!Has(Out.DsHid)) return;
         if (!TriggersOn) { left = TriggerFx.Off; right = TriggerFx.Off; }
-        foreach (var ds in DualSenses)
+        foreach (var ds in DsTargets)
         {
             if (ds.LeftTrigger.Mode == left.Mode && ds.LeftTrigger.P.SequenceEqual(left.P) && ds.RightTrigger.Mode == right.Mode && ds.RightTrigger.P.SequenceEqual(right.P)) continue;
             ds.LeftTrigger = left; ds.RightTrigger = right;
@@ -113,10 +122,10 @@ public sealed class FeedbackHub : IDisposable
     public void Light(byte r, byte g, byte b, byte playerLeds, string why)
     {
         if (Has(Out.Ds4))
-            foreach (var p in Ds4s)
+            foreach (var p in Ds4Targets)
                 if (p.Red != r || p.Green != g || p.Blue != b) { p.Red = r; p.Green = g; p.Blue = b; if (p.Send()) SessionLog.Current?.Count("dualshock4 reports (light)"); }
         if (!Has(Out.DsHid)) return;
-        foreach (var ds in DualSenses)
+        foreach (var ds in DsTargets)
         {
             if (ds.Red == r && ds.Green == g && ds.Blue == b && ds.PlayerLeds == playerLeds) continue;
             ds.Red = r; ds.Green = g; ds.Blue = b; ds.PlayerLeds = playerLeds;
@@ -128,7 +137,7 @@ public sealed class FeedbackHub : IDisposable
     public void MicLed(bool on)
     {
         if (!Has(Out.DsHid)) return;
-        foreach (var ds in DualSenses) { ds.MicLed = (byte)(on ? 1 : 0); ds.Send(); }
+        foreach (var ds in DsTargets) { ds.MicLed = (byte)(on ? 1 : 0); ds.Send(); }
     }
 
     /// <summary>DualSense HD haptics (stereo: left/right actuator).</summary>

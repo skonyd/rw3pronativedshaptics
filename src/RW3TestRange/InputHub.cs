@@ -4,6 +4,8 @@ namespace RW3TestRange;
 public sealed class InputHub
 {
     public readonly List<IPadSource> Sources = new();
+    /// <summary>"Bağlı kol (RW3'süz)": ignore RW3's virtual Sony pads as input.</summary>
+    public bool RealOnly;
     private readonly Dictionary<IPadSource, PadState> _last = new();
     public IPadSource? Active { get; private set; }
     public PadState State { get; private set; }
@@ -14,6 +16,7 @@ public sealed class InputHub
         Previous = State;
         foreach (var s in Sources)
         {
+            if (RealOnly && (s is DualSenseHid { Virtual: true } || s is DualShock4Hid { Virtual: true })) continue;
             if (!s.TryRead(out var st)) continue;
             bool moved = _last.TryGetValue(s, out var old) && !old.SameAs(st);
             _last[s] = st;
