@@ -90,6 +90,9 @@ public sealed class HapticOutput : IWaveProvider, IDisposable
 {
     public readonly VoiceMixer Haptics = new();
     public readonly VoiceMixer PadSpeaker = new();
+    /// <summary>Game rumble played as haptics (as PS5 games do): low (left, ~55 Hz) and high (right, ~150 Hz) 0..1.</summary>
+    public volatile float RumbleLow, RumbleHigh;
+    private double _rlPh, _rhPh; private float _rlAmp, _rhAmp;
     private WasapiOut? _out;
     private float[] _mix = Array.Empty<float>(), _spk = Array.Empty<float>();
     private bool _float;
@@ -150,6 +153,15 @@ public sealed class HapticOutput : IWaveProvider, IDisposable
         if (_mix.Length < frames * 2) { _mix = new float[frames * 2]; _spk = new float[frames * 2]; }
         Array.Clear(_mix, 0, frames * 2); Array.Clear(_spk, 0, frames * 2);
         Haptics.Mix(_mix, 0, frames);
+        float tl = RumbleLow, th = RumbleHigh;
+        for (int f = 0; f < frames; f++)
+        {
+            _rlAmp += (tl - _rlAmp) * .004f; _rhAmp += (th - _rhAmp) * .004f;   // smooth, no clicks
+            if (_rlAmp < 1e-4f && _rhAmp < 1e-4f) continue;
+            _rlPh += 2 * Math.PI * 55 / Synth.Rate; _rhPh += 2 * Math.PI * 150 / Synth.Rate;
+            float lo = (float)Math.Sin(_rlPh) * _rlAmp * .8f, hi = (float)Math.Sin(_rhPh) * _rhAmp * .6f;
+            _mix[2 * f] += lo + hi * .3f; _mix[2 * f + 1] += hi + lo * .3f;
+        }
         PadSpeaker.Mix(_spk, 0, frames);
         float pl = 0, pr = 0;
         for (int f = 0; f < frames; f++)

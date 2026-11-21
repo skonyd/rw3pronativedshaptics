@@ -40,14 +40,15 @@ public sealed class MusicGenerator
     private readonly Biquad _padLpL = Biquad.LowPass(850), _padLpR = Biquad.LowPass(850);
     // lead
     private double _leadPh, _leadHz = 440, _leadTarget = 440, _leadEnv, _vib; private bool _leadOn;
-    private readonly Biquad _leadLp = Biquad.LowPass(2600);
+    private readonly Biquad _leadLp = Biquad.LowPass(2400);
+    private readonly Biquad _outL = Biquad.LowPass(9000), _outR = Biquad.LowPass(9000);
 
     public MusicGenerator()
     {
         _kick = Dsp.Add(Dsp.Sweep(.35, 160, 48, .025, 9), Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.01), 1), Biquad.HighPass(3000)), 400), .3f);
-        _snare = Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.25), 2), Biquad.BandPass(1900, .7)), 17), Dsp.Sweep(.15, 220, 180, .02, 28), .6f);
-        _hat = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.05), 3), Biquad.HighPass(7500)), 75);
-        _openHat = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.3), 4), Biquad.HighPass(6500)), 11);
+        _snare = Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.22), 2), Biquad.BandPass(1500, .8)), 20), Dsp.Sweep(.15, 210, 175, .02, 26), .8f);
+        _hat = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.04), 3), Biquad.BandPass(8000, 1.2)), 90);
+        _openHat = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.25), 4), Biquad.BandPass(7000, 1)), 14);
         _padHz = Chords[0].Select(Midi).ToArray();
     }
 
@@ -72,10 +73,10 @@ public sealed class MusicGenerator
         int s = step % 16, bar = step / 16 % 8, chord = bar % 4;
         // drums: kick 1 & 3 (+ a pickup), snare 2 & 4, 8th hats, open hat before the bar line
         if (s is 0 or 8 || s == 6 && bar % 2 == 1 || s == 14 && bar == 7) _hits.Add((_kick, 0, .95f, 0, 0));
-        if (s is 4 or 12) _hits.Add((_snare, 0, .55f, .05f, .25f));
-        if (bar == 7 && s is 13 or 15) _hits.Add((_snare, 0, .3f, .1f, .25f));
-        if (s % 2 == 0 && s != 14) _hits.Add((_hat, 0, s % 4 == 0 ? .16f : .1f, .3f, 0));
-        if (s == 14) _hits.Add((_openHat, 0, .12f, .3f, .1f));
+        if (s is 4 or 12) _hits.Add((_snare, 0, .38f, .05f, .2f));
+        if (bar == 7 && s is 13 or 15) _hits.Add((_snare, 0, .22f, .1f, .2f));
+        if (s % 2 == 0 && s != 14) _hits.Add((_hat, 0, s % 4 == 0 ? .07f : .045f, .3f, 0));
+        if (s == 14) _hits.Add((_openHat, 0, .05f, .3f, .05f));
         // bass
         int b = BassSteps[s];
         // a rest closes the note (the bass kept sounding at 35 % between notes = a drone)
@@ -141,7 +142,7 @@ public sealed class MusicGenerator
                 _vib += 2 * Math.PI * 5.2 / Rate;
                 _leadEnv *= .99992;
                 double hz = _leadHz * (1 + .004 * Math.Sin(_vib) * Math.Min(1, (1 - _leadEnv) * 4));
-                lead = _leadLp.Process(Saw(ref _leadPh, hz) * .6f) * (float)(_leadEnv * .16);
+                lead = _leadLp.Process(Saw(ref _leadPh, hz) * .6f) * (float)(_leadEnv * .12);
             }
             float dl = _delayL[_delayPos], dr = _delayR[_delayPos];
             _delayL[_delayPos] = lead + dr * .38f;
@@ -153,8 +154,9 @@ public sealed class MusicGenerator
             var (wl, wr) = _room.Process(send);
             l += wl * .5f; r += wr * .5f;
 
-            buffer[offset + 2 * f] += Dsp.Soft(l * vol);
-            buffer[offset + 2 * f + 1] += Dsp.Soft(r * vol);
+            // gentle top cut (no hiss on headphones) and headroom below the soft limiter
+            buffer[offset + 2 * f] += Dsp.Soft(_outL.Process(l) * vol * .75f);
+            buffer[offset + 2 * f + 1] += Dsp.Soft(_outR.Process(r) * vol * .75f);
         }
     }
 }

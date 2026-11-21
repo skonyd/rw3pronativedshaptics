@@ -94,6 +94,8 @@ public sealed class DualSenseHid : IPadSource
     // output state, sent whole on each change (games resend their full state)
     public TriggerFx LeftTrigger = TriggerFx.Off, RightTrigger = TriggerFx.Off;
     public byte RumbleLeft, RumbleRight, Red = 0, Green = 60, Blue = 255, PlayerLeds = 0b00100, MicLed;
+    /// <summary>HD haptics in use: no rumble emulation (it would mute the haptic audio channels).</summary>
+    public bool AudioHaptics;
 
     private DualSenseHid(string path, bool isVirtual) { Path = path; Virtual = isVirtual; }
 
@@ -184,10 +186,13 @@ public sealed class DualSenseHid : IPadSource
         if (_write == null || _write.IsInvalid || Bluetooth) return false;
         var d = new byte[_outLen];
         d[0] = 0x02;
-        d[1] = 0x01 | 0x02 | 0x04 | 0x08;       // compatible rumble + haptics select + right + left trigger
-        d[2] = 0x01 | 0x04 | 0x10;              // mic LED, lightbar, player LEDs
-        d[3] = RumbleRight; d[4] = RumbleLeft;
+        // flags0: bit0 rumble emulation + bit1 "rumble instead of haptics" make the pad IGNORE the haptic audio channels
+        // (2026-11-21: a real DualSense stayed silent). With HD haptics both stay 0 and rumble is played as haptic audio.
+        d[1] = (byte)((AudioHaptics ? 0 : 0x01 | 0x02) | 0x04 | 0x08);
+        d[2] = 0x01 | 0x02 | 0x04 | 0x10;       // mic LED, power-save / mute control, lightbar, player LEDs
+        if (!AudioHaptics) { d[3] = RumbleRight; d[4] = RumbleLeft; }
         d[9] = MicLed;
+        d[10] = 0x00;                            // MuteControl: haptic / audio power-save and mute bits cleared (Special K, RW3)
         Write(d, 11, RightTrigger); Write(d, 22, LeftTrigger);
         d[39] = 0x02;                            // lightbar setup valid
         d[42] = 0x02;                            // light out (take over from the boot animation)

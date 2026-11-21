@@ -50,18 +50,19 @@ public static class Synth
             4 => Crossbow(seed),
             _ => Gun(seed, .45, crackHz: 2100, bodyHz: 900, bodyDecay: 18, thumpFrom: 150, thumpTo: 55, thumpGain: .8f, tail: 9)
         });
-        return Dsp.Place(mono, pan, weapon is 3 or 4 ? .12f : .28f, weapon == 2 ? 1.25 : 1, weapon == 2 ? .9 : .6);
+        return Dsp.Place(mono, pan, weapon is 3 or 4 ? .08f : .16f, weapon == 2 ? 1.2 : 1, weapon == 2 ? .8 : .5);
     }
 
     private static float[] Gun(int seed, double len, double crackHz, double bodyHz, double bodyDecay, double thumpFrom, double thumpTo, float thumpGain, double tail)
     {
         int n = Dsp.N(len);
-        var crack = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 1), Biquad.HighPass(crackHz)), 180);
+        // a soft "crack" (band-passed, not raw high-passed noise: that read as harsh hiss on headphones)
+        var crack = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 1), Biquad.BandPass(crackHz, .9)), 160);
         var body = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 2), Biquad.BandPass(bodyHz, .7)), bodyDecay);
         var low = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed * 7 + 3), Biquad.LowPass(400)), tail);
         var thump = Dsp.Sweep(len, thumpFrom, thumpTo, .04, 14);
-        var mix = Dsp.Add(Dsp.Add(Dsp.Add(Dsp.Gain(crack, .7f), body, 1.1f), low, .9f), thump, thumpGain);
-        return Dsp.Finish(mix, .95f);
+        var mix = Dsp.Add(Dsp.Add(Dsp.Add(Dsp.Gain(crack, .35f), body, .9f), low, 1f), thump, thumpGain * 1.2f);
+        return Dsp.Finish(Dsp.Filter(mix, Biquad.LowPass(6500)), .9f);
     }
 
     private static float[] Bow(int seed)
@@ -88,19 +89,19 @@ public static class Synth
         {
             var r = new Random(seed + 100);
             int n = Dsp.N(.8);
-            var impact = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed + 101), Biquad.HighPass(1800)), 28);
-            var mix = Dsp.Gain(impact, .8f);
-            for (int k = 0; k < 26; k++)
+            var impact = Dsp.Decay(Dsp.Filter(Dsp.Noise(n, seed + 101), Biquad.BandPass(2600, .8)), 30);
+            var mix = Dsp.Gain(impact, .7f);
+            for (int k = 0; k < 14; k++)
             {
-                double at = Math.Pow(r.NextDouble(), 1.8) * .45;     // denser at the start
-                double hz = 2800 + r.NextDouble() * 6500;
-                var ping = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.09), seed * 31 + k), Biquad.BandPass(hz, 18)), 35 + r.NextDouble() * 40);
-                mix = Dsp.Add(mix, ping, (float)(3.5 * (1 - at)), at);
+                double at = Math.Pow(r.NextDouble(), 1.8) * .4;      // denser at the start
+                double hz = 2200 + r.NextDouble() * 3800;
+                var ping = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.09), seed * 31 + k), Biquad.BandPass(hz, 12)), 40 + r.NextDouble() * 40);
+                mix = Dsp.Add(mix, ping, (float)(2.2 * (1 - at)), at);
             }
-            var clink = Dsp.Decay(Dsp.Sweep(.25, 4200, 4100, 1, 18), 0);
-            return Dsp.Finish(Dsp.Add(mix, clink, .25f, .03), .8f);
+            var clink = Dsp.Decay(Dsp.Sweep(.25, 3200, 3150, 1, 20), 0);
+            return Dsp.Finish(Dsp.Filter(Dsp.Add(mix, clink, .2f, .03), Biquad.LowPass(7000)), .7f);
         });
-        return Dsp.Place(mono, pan, .3f, .8, .5);
+        return Dsp.Place(mono, pan, .15f, .8, .4);
     }
 
     /// <summary>Renders every sound once (background), so the first shot does not stall a frame.</summary>
@@ -127,7 +128,7 @@ public static class Synth
     public static float[] Reload() => Variant("reload", 2, seed =>
     {
         float[] Metal(double hz, double decay, int s) =>
-            Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.08), s), Biquad.BandPass(hz, 5)), decay), Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.02), s + 1), Biquad.HighPass(4000)), 300), .5f);
+            Dsp.Add(Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.08), s), Biquad.BandPass(hz, 5)), decay), Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.02), s + 1), Biquad.BandPass(3500, 2)), 300), .25f);
         var slide = Dsp.Decay(Dsp.Filter(Dsp.Noise(Dsp.N(.12), seed + 301), Biquad.BandPass(2600, 1.2)), 25);
         var m = Dsp.Add(Metal(1500, 90, seed + 310), slide, .35f, .1);
         m = Dsp.Add(m, Metal(900, 60, seed + 320), 1.2f, .3);
