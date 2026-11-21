@@ -58,6 +58,27 @@ public sealed class XboxAudioGameBridge : IDisposable
     private double _maxGameBody, _maxGameTrig;
     // Input path diagnostics (strict): physical read changes → virtual pad on XInput → GameInput reading (as a GDK game).
     private long _physChanges;
+    // What the window's input looked like on each side (the physical pad, our virtual pad read back via XInput): shows
+    // whether sticks, D-pad and triggers reach the virtual pad, not only that its packet number moves.
+    private InputSeen _physSeen, _virtSeen;
+    private struct InputSeen
+    {
+        private ushort _buttons; private int _stick, _trigger;
+        public void Add(XInputPad p)
+        {
+            _buttons |= p.Buttons;
+            _stick = Math.Max(_stick, Math.Max(Math.Max(Abs(p.LX), Abs(p.LY)), Math.Max(Abs(p.RX), Abs(p.RY))));
+            _trigger = Math.Max(_trigger, Math.Max(p.LeftTrigger, p.RightTrigger));
+        }
+        private static int Abs(short v) => v == short.MinValue ? 32768 : Math.Abs((int)v);
+        /// <summary>"btn 0x1001 stick 32767 trig 255" for the window, then reset.</summary>
+        public string TakeNote()
+        {
+            string note = $"btn 0x{_buttons:X4} stick {_stick} trig {_trigger}";
+            this = default;
+            return note;
+        }
+    }
     private XInputPad _lastPad;
     private VirtualPadInputProbe? _inputProbe;
     private Thread? _probeThread;
@@ -420,6 +441,10 @@ public sealed class XboxAudioGameBridge : IDisposable
                 if (Strict)
                 {
                     if (!pad.Equals(_lastPad)) { _physChanges++; _lastPad = pad; }
+                    _physSeen.Add(pad);
+                    if (_virtualXSlot >= 0 && XInput.GetState((uint)_virtualXSlot, out var vs) == 0)
+                        _virtSeen.Add(new(vs.Gamepad.wButtons, vs.Gamepad.bLeftTrigger, vs.Gamepad.bRightTrigger,
+                            vs.Gamepad.sThumbLX, vs.Gamepad.sThumbLY, vs.Gamepad.sThumbRX, vs.Gamepad.sThumbRY));
                     _maxGameBody = Math.Max(_maxGameBody, Math.Max(_game.BodyLeft, _game.BodyRight));
                     _maxGameTrig = Math.Max(_maxGameTrig, Math.Max(_game.TriggerLeft, _game.TriggerRight));
                     if (now >= nextLog)
@@ -428,7 +453,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                         DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
                             $"XInput writes {_xinputWrites} (slot {_xinputSlot}), foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
-                            $"INPUT physical changes {_physChanges} → virtual XInput {VirtualXInputNote()} → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
+                            $"INPUT physical changes {_physChanges} ({_physSeen.TakeNote()}) → virtual XInput {VirtualXInputNote()} ({_virtSeen.TakeNote()}) → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
                             (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
                         var foreign = FindForeignPads();
