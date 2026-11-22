@@ -52,8 +52,30 @@ public sealed class FeedbackHub : IDisposable
         foreach (var p in XPads) if (!(virtualOnly && p.Name.Contains("1532")) && p.Rumble(low, high)) x++;
         if (GameInput != null) foreach (var d in GameInput.Devices) if (!d.Sony && !(virtualOnly && d.Vid == 0x1532) && d.Rumble(low, high, lt, rt)) gi++;
         if (!noWgi) w = Wgi.Rumble(low, high, lt, rt, virtualOnly);
-        return $"XInput {x} · GameInput {gi} · WGI {(noWgi ? "kapalı" : w.ToString())}";
+        // Sony pads (RW3's virtual DualSense / PS4 pad, or a real one) take feedback only from their own HID report:
+        // body rumble as compatible rumble, trigger motors as the vibration trigger effect, the way games write them.
+        // Without this the quick test sent nothing at all while RW3's output was DualSense (2026-11-22).
+        int ds = 0;
+        _quickDs = low + high + lt + rt > .02f;
+        foreach (var d in DsTargets)
+        {
+            d.AudioHaptics = false;   // compatible rumble needs the rumble flags; the keep-alive restores the mode later
+            d.RumbleLeft = (byte)(Math.Clamp(low, 0, 1) * 255); d.RumbleRight = (byte)(Math.Clamp(high, 0, 1) * 255);
+            d.LeftTrigger = QuickTriggerFx(lt); d.RightTrigger = QuickTriggerFx(rt);
+            if (d.Send()) ds++;
+        }
+        foreach (var p in Ds4Targets)
+        {
+            p.RumbleLeft = (byte)(Math.Clamp(low, 0, 1) * 255); p.RumbleRight = (byte)(Math.Clamp(high, 0, 1) * 255);
+            if (p.Send()) ds++;
+        }
+        return $"XInput {x} · GameInput {gi} · WGI {(noWgi ? "kapalı" : w.ToString())} · Sony HID {ds}";
     }
+
+    /// <summary>Quick test: trigger strength 0..1 → DualSense vibration effect over the whole travel (amplitude 1..8, 40 Hz).</summary>
+    private bool _quickDs;
+    private static TriggerFx QuickTriggerFx(float strength) =>
+        strength > .02f ? TriggerFx.Vibration(0, Math.Clamp((int)Math.Ceiling(strength * 8), 1, 8), 40) : TriggerFx.Off;
     public readonly List<DualSenseHid> DualSenses = new();
     public readonly List<DualShock4Hid> Ds4s = new();
     /// <summary>"Bağlı kol (RW3'süz)": send only to real Sony pads, never to RW3's virtual ones.</summary>
@@ -88,7 +110,7 @@ public sealed class FeedbackHub : IDisposable
         // DualSense: haptic mode follows the outputs, and the state is resent every 100 ms like DSX / games do
         // (a single report did not wake the actuators on real hardware).
         bool hd = Has(Out.DsHaptics);
-        foreach (var ds in DualSenses) ds.AudioHaptics = hd;
+        foreach (var ds in DualSenses) ds.AudioHaptics = hd && !_quickDs;
         if (Has(Out.DsHid) && (_keepAlive += dt) >= .1) { _keepAlive = 0; foreach (var ds in DsTargets) if (ds.Send()) SessionLog.Current?.Count("dualsense reports (keep-alive)"); }
         float low = 0, high = 0, lt = 0, rt = 0;
         lock (_envs)

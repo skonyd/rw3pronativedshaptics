@@ -276,7 +276,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                 {
                     _slotsBefore = 0;
                     for (int i = 0; i < 4; i++) if (XInput.GetState((uint)i, out _) == 0) _slotsBefore |= 1 << i;
-                    try { _gameInputBefore = VirtualPadInputProbe.DeviceIds(); } catch { }
+                    if (VirtualPadInputProbe.Enabled) try { _gameInputBefore = VirtualPadInputProbe.DeviceIds(); } catch { }
                 }
                 _controller = _context.CreateController(model, "rw3-xbox-audio");
                 _controller.OutputReceived += OnOutput;
@@ -474,7 +474,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             var state = new HMGamepadState { Axes = axes };
 #endif
             long nextLog = Environment.TickCount64 + 10_000, lostSince = 0;
-            if (Strict && _inputProbe == null)
+            if (Strict && _inputProbe == null && VirtualPadInputProbe.Enabled)
             {
                 // Own thread: GameInput's first enumeration blocks for a while, and the motor watchdog stops the bridge
                 // when this loop pauses > 250 ms (2026-11-15).

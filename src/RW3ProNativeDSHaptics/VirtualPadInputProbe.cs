@@ -13,6 +13,11 @@ namespace RW3ProNativeDSHaptics;
 /// </summary>
 public sealed class VirtualPadInputProbe : IDisposable
 {
+    /// <summary>Off unless RW3_INPUT_PROBE=1. It calls GameInput through raw vtable slots; on 2026-11-15 and twice on
+    /// 2026-11-22 an access violation inside its device callback (TryOpen) killed RW3 (uncatchable, Application log
+    /// event 1026), and on 2026-11-22 23:45 that crash left the user with no vibration at all.</summary>
+    public static bool Enabled { get; } = Environment.GetEnvironmentVariable("RW3_INPUT_PROBE") == "1";
+
     private const uint KindGamepad = 0x00040000;
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint RefFn(IntPtr self);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate IntPtr InfoFn(IntPtr self);
