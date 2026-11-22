@@ -72,6 +72,32 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
     Check(seriesPicked && seriesFallback && OutputMatrix.SeriesPadTypes.Length == 6
         && Array.TrueForAll(OutputMatrix.SeriesPadTypes, t => t.Profile.StartsWith("xbox-") && t.Ids.StartsWith("045E:")),
         "Series pad type: the chosen HIDMaestro profile drives only the Series output; unknown ids fall back to Series BT");
+    {
+        // GIP codec for direct mode (docs/WINUSB_DIRECT_MODE.md): framing, power-on, rumble, ACK, input report
+        var varint = new byte[4]; int vn = GipCodec.WriteVarint(varint, 300);
+        var power = GipCodec.PowerOn(7);
+        var rumble = GipCodec.Rumble(9, .5, 1, .25, 0);
+        var two = GipCodec.Decode(power.Concat(rumble).ToArray());
+        var raz = GipCodec.Decode(GipCodec.Razer(3, new byte[60]));
+        var ack = GipCodec.Decode(GipCodec.Ack(new GipMessage(0x04, 0x90 | 0x20, 5, new byte[284])))[0];
+        var inPayload = new byte[14];
+        inPayload[0] = 0x10; inPayload[1] = 0x11;                       // A; up + LB
+        BitConverter.TryWriteBytes(inPayload.AsSpan(2), (ushort)1023);   // LT full
+        BitConverter.TryWriteBytes(inPayload.AsSpan(6), (short)12345);   // LX
+        BitConverter.TryWriteBytes(inPayload.AsSpan(8), (short)-200);    // LY
+        BitConverter.TryWriteBytes(inPayload.AsSpan(12), (short)32767);  // RY
+        bool parsed = GipCodec.TryParseInput(inPayload, guide: true, out var gp);
+        Check(vn == 2 && varint[0] == 0xAC && varint[1] == 0x02
+            && power.SequenceEqual(new byte[] { 0x05, 0x20, 7, 0x01, 0x00 })
+            && rumble.SequenceEqual(new byte[] { 0x09, 0x00, 9, 0x09, 0x00, 0x0F, 25, 0, 50, 100, 0xFF, 0x00, 0xEB })
+            && two.Count == 2 && two[0].Command == 0x05 && two[0].Internal && two[1].Command == 0x09 && two[1].Payload.Length == 9
+            && raz.Count == 1 && raz[0].Command == 0x0F && raz[0].Payload.Length == 60
+            && ack.Command == 0x01 && ack.Sequence == 5 && ack.Payload[1] == 0x04 && ack.Payload[3] == (284 & 0xFF) && ack.Payload[4] == 1
+            && parsed && gp.Buttons == (XInputPad.A | XInputPad.DpadUp | XInputPad.LeftShoulder | XInputPad.Guide)
+            && gp.LeftTrigger == 255 && gp.RightTrigger == 0 && gp.LX == 12345 && gp.LY == -200 && gp.RY == 32767
+            && !GipCodec.TryParseInput(new byte[10], false, out _) && GipCodec.GuidePressed(new byte[] { 1, 0x5B }),
+            "GIP codec: varint length, power-on, four-motor rumble (0..100), several messages per transfer, Razer 0x0F, ACK echo, input report → XInput pad");
+    }
     // 2026-11-22 live: slot 0 = a paired Bluetooth Xbox controller (045E:0B13, stick drift), slot 1 = the Wolverine in Xbox
     // mode (045E:02FF, child of USB\VID_1532&PID_0A3F).
     Check(XInputWolverineSlot.Choose(new[] { (0, (ushort)0x045E, (ushort)0x0B13), (1, (ushort)0x045E, (ushort)0x02FF) }) == 1
