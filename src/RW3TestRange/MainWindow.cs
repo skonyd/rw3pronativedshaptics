@@ -19,6 +19,8 @@ public sealed class MainWindow : Window
     private readonly InputHub _input = new();
     private readonly GameSurface _surface = new();
     private RangeGame? _game;
+    private readonly HashSet<string> _rawLogged = new();
+    private (double X, double Y) _aimLogged = (-1, -1);
     private Screen _screen = Screen.Setup;
     private readonly Dictionary<Out, CheckBox> _outBoxes = new();
     private readonly CheckBox _gyro = new() { Content = "Jiroskopla nişan (DualSense)", Foreground = Brushes.White, Margin = new Thickness(0, 6, 0, 0) };
@@ -660,8 +662,14 @@ public sealed class MainWindow : Window
             _statsTimer = 0;
             var stats = _input.TakeStats();
             if (stats.Count > 0) SessionLog.Current?.Event("input-stats", stats);
-            foreach (var ds in _fb.DualSenses) SessionLog.Current?.Event("ds-raw", new { ds.Name, len = ds.LastRawLength, hex = ds.LastRaw });
-            if (_screen == Screen.Game && _game != null) SessionLog.Current?.Event("aim", new { x = Math.Round(_game.CrossX, 3), y = Math.Round(_game.CrossY, 3), gyroAim = _game.GyroAim });
+            // the raw report once per pad (it showed the virtual DualSense's short layout, E-20261123-69)
+            foreach (var ds in _fb.DualSenses)
+                if (ds.LastRawLength > 0 && _rawLogged.Add(ds.Name)) SessionLog.Current?.Event("ds-raw", new { ds.Name, len = ds.LastRawLength, hex = ds.LastRaw });
+            if (_screen == Screen.Game && _game != null && (Math.Abs(_game.CrossX - _aimLogged.X) > .01 || Math.Abs(_game.CrossY - _aimLogged.Y) > .01))
+            {
+                _aimLogged = (_game.CrossX, _game.CrossY);
+                SessionLog.Current?.Event("aim", new { x = Math.Round(_game.CrossX, 3), y = Math.Round(_game.CrossY, 3), gyroAim = _game.GyroAim });
+            }
         }
         if (_screen != Screen.Setup)
         {

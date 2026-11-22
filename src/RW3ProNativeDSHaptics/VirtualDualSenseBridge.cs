@@ -250,6 +250,18 @@ public sealed class VirtualDualSenseBridge : IDisposable
 
     private void HidePad(string? virtualPath)
     {
+        // Direct mode: every connected Wolverine is on WinUSB, so no game can see it; hiding has nothing to do and only
+        // churned HidHide state (2026-11-23: "Xbox kolu oyundan gizlendi (3 düğüm)" on every start in direct mode).
+        try
+        {
+            var present = DirectModeDriver.Instances().FindAll(i => i.Present);
+            if (present.Count > 0 && present.TrueForAll(i => i.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase)))
+            {
+                HidHideNote = "doğrudan mod: kol Windows'ta görünmüyor, gizleme gerekmiyor";
+                return;
+            }
+        }
+        catch { }
         if (!HidHideControl.Query().Ready) { HidHideNote = "HidHide yok: oyun Xbox kolunu da görebilir"; return; }
         try
         {

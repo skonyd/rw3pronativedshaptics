@@ -44,7 +44,8 @@ public sealed class WinUsbGipTransport : IDisposable
     public long Messages => Interlocked.Read(ref _messages);
     public long Writes => Interlocked.Read(ref _writes);
     public long WriteFailures => Interlocked.Read(ref _writeFailures);
-    /// <summary>Options byte for Razer's 0x0F command (to be confirmed on hardware; see GipCodec.Razer).</summary>
+    /// <summary>Options byte for Razer's 0x0F command: 0x00 (Razer answers with 0x10 status 0x02 on cable and adapter,
+    /// E-20261122-61 / E-20261123-68).</summary>
     public static volatile byte RazerOptions = 0x00;
     /// <summary>Set before a driver switch (and kept until RW3 restarts): no part of RW3 may open the pad's WinUSB handle
     /// again. On 2026-11-22 the Sensa engine reopened it while the instance was being uninstalled; with another app
@@ -119,7 +120,8 @@ public sealed class WinUsbGipTransport : IDisposable
     {
         var buf = new byte[512];
         int errors = 0, logged = 0;
-        long nextSummary = Environment.TickCount64 + 10_000, opened = Environment.TickCount64;
+        long nextSummary = Environment.TickCount64 + 10_000, opened = Environment.TickCount64, lastLogged = 0;
+        string lastSummary = "";
         // at most one reset per RW3 run: the reset makes the pad leave and rejoin USB, the pipe reopens, and a reset on
         // every reopen made it cycle endlessly (2026-11-22, Windows' connect/disconnect sound looping)
         bool resetSent;
@@ -145,7 +147,13 @@ public sealed class WinUsbGipTransport : IDisposable
             if (Environment.TickCount64 >= nextSummary)
             {
                 nextSummary = Environment.TickCount64 + 10_000;
-                Log("Direct mode: " + Summary + $", last pad btn 0x{_pad.Buttons:X4} LT {_pad.LeftTrigger} RT {_pad.RightTrigger} LX {_pad.LX}");
+                // every 10 s while something happens, else once a minute (an idle pad repeated the same line)
+                string summary = Summary;
+                if (summary != lastSummary || Environment.TickCount64 - lastLogged >= 60_000)
+                {
+                    Log("Direct mode: " + summary + (RazerErrors > 0 ? $", Razer errors {RazerErrors}" : ""));
+                    lastSummary = summary; lastLogged = Environment.TickCount64;
+                }
             }
             if (!WinUsb_ReadPipe(_usb, _in, buf, (uint)buf.Length, out uint n, IntPtr.Zero))
             {
@@ -162,14 +170,16 @@ public sealed class WinUsbGipTransport : IDisposable
             foreach (var m in GipCodec.Decode(buf.AsSpan(0, (int)n)))
             {
                 Interlocked.Increment(ref _messages);
-                if (logged < 16 && (m.Command != GipCodec.CmdInput || logged < 12))
+                // connection messages only (announce, status, power…): input and Razer replies are counted, not logged
+                if (logged < 8 && m.Command is not (GipCodec.CmdInput or 0x10))
                 {
                     logged++;
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
                 if (m.WantsAck) Send(GipCodec.Ack(m));
-                if (m.Command == 0x10 && m.Payload.Length >= 8 && Interlocked.Increment(ref _razerLogged) <= 10)
-                    Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} tx {m.Payload[1]} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
+                // Razer replies: status 0x02 = accepted; anything else is counted and the first one logged
+                if (m.Command == 0x10 && m.Payload.Length >= 8 && m.Payload[0] != 0x02 && m.Payload[0] != 0x00 && Interlocked.Increment(ref _razerErrors) == 1)
+                    Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
                     case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight(); break;   // (re)connected: power on, LED on
@@ -206,13 +216,10 @@ public sealed class WinUsbGipTransport : IDisposable
     public bool Rumble(double bodyLeft, double bodyRight, double triggerLeft, double triggerRight)
     {
         if (!IsOpen) return false;
-        var msg = GipCodec.Rumble(NextSeq(), bodyLeft, bodyRight, triggerLeft, triggerRight);
-        // 2026-11-22: the trigger part was felt, the body part not: log a few packets that carry body values
-        if ((bodyLeft > .05 || bodyRight > .05) && Interlocked.Increment(ref _bodyLogged) <= 6)
-            Log("Direct mode: GIP out rumble " + Convert.ToHexString(msg));
-        return Send(msg);
+        return Send(GipCodec.Rumble(NextSeq(), bodyLeft, bodyRight, triggerLeft, triggerRight));
     }
-    private int _bodyLogged, _razerLogged;
+    private long _razerErrors;
+    public long RazerErrors => Interlocked.Read(ref _razerErrors);
 
     /// <summary>Razer's 60-byte 0x0F packet (Sensa frame, RGB, battery…), the same bytes WGI's SendMessage carried.</summary>
     public bool SendRazer(ReadOnlySpan<byte> packet60) => IsOpen && Send(GipCodec.Razer(NextSeq(), packet60, RazerOptions));

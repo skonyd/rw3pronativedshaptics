@@ -103,6 +103,19 @@ Settled on the cable: Razer's 0x0F command works with options 0x00 (Razer replie
 already connected needs one GIP power reset (0x05 0x07) before it reports. Body rumble from 0x09 is not felt while RW3
 streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 Hz).
 
+## While RW3 drives the pad
+
+* The pad's RGB is dim white (Razer lighting in RAM, about 15 %) while RW3 has it open, and goes dark when RW3 lets go,
+  so a lit pad means it works. The Xbox button LED is switched on with the standard GIP LED command (Windows' driver
+  sends it; in direct mode nobody else does).
+* RW3's own menus follow the pad (they read XInput and skip RW3's virtual pad, so in direct mode they read the GIP pipe).
+* DualSense output: View is the touchpad click (the Wolverine has no touchpad; Create is not sent). The virtual
+  DualSense sends the full input report (idle touch points, counter, timestamp); HIDMaestro's profile alone sent a short
+  layout that read as a finger at (0,0) in every report (E-20261123-69).
+* Only the elevated RW3 opens the pad (the first, non-elevated start hands over without touching it), so the pad is
+  reset at most once per run.
+* HidHide is not used while every connected Wolverine is on WinUSB: Windows cannot see the pad, nothing to hide.
+
 ## Wireless adapter
 
 The adapter is its own instance (`USB\VID_1532&PID_0A3F\0000000000000001`) and is switched by the same button while
