@@ -17,7 +17,7 @@ public sealed class SpeakerForwarder : IDisposable
     private readonly object _gate = new();
     private BufferedWaveProvider? _buffer;
     private WasapiOut? _output;
-    private bool _failed;
+    private bool _failed, _opening;
     private byte[] _stereo = Array.Empty<byte>();
     public float PeakLeft, PeakRight;
     public string Note { get; private set; } = "kapalı";
@@ -41,9 +41,11 @@ public sealed class SpeakerForwarder : IDisposable
         {
             if (_buffer == null)
             {
-                if (_failed || Math.Max(pl, pr) < 0.002f) return;   // nothing to play yet
-                Open();
-                if (_buffer == null) return;
+                if (_failed || _opening || Math.Max(pl, pr) < 0.002f) return;   // nothing to play yet
+                // open off this thread: it is HIDMaestro's audio thread, and opening an output takes tens of ms
+                _opening = true;
+                System.Threading.ThreadPool.QueueUserWorkItem(_ => Open());
+                return;
             }
             if (_buffer.BufferedDuration.TotalMilliseconds < 150) _buffer.AddSamples(_stereo, 0, frames * 4);
         }
@@ -57,22 +59,22 @@ public sealed class SpeakerForwarder : IDisposable
             var device = devices.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             if (device.FriendlyName.Contains("DualSense", StringComparison.OrdinalIgnoreCase))
             {
-                _failed = true; Note = "varsayılan çıkış DualSense, aktarılmıyor";
+                lock (_gate) { _failed = true; _opening = false; }
+                Note = "varsayılan çıkış DualSense, aktarılmıyor";
                 DiagnosticsService.Info("Virtual DualSense speaker: default output is a DualSense, not forwarded.");
                 return;
             }
-            _buffer = new BufferedWaveProvider(new WaveFormat(48000, 16, 2)) { BufferDuration = TimeSpan.FromMilliseconds(400), DiscardOnBufferOverflow = true };
-            _output = new WasapiOut(device, AudioClientShareMode.Shared, true, 40);
-            _output.Init(_buffer);
-            _output.Play();
+            var buffer = new BufferedWaveProvider(new WaveFormat(48000, 16, 2)) { BufferDuration = TimeSpan.FromMilliseconds(400), DiscardOnBufferOverflow = true };
+            var output = new WasapiOut(device, AudioClientShareMode.Shared, true, 40);
+            output.Init(buffer);
+            output.Play();
+            lock (_gate) { _buffer = buffer; _output = output; _opening = false; }
             Note = "→ " + device.FriendlyName;
             DiagnosticsService.Info("Virtual DualSense speaker: forwarded to " + device.FriendlyName + ".");
         }
         catch (Exception ex)
         {
-            _failed = true; _buffer = null;
-            try { _output?.Dispose(); } catch { }
-            _output = null;
+            lock (_gate) { _failed = true; _opening = false; }
             Note = "açılamadı: " + ex.Message;
             DiagnosticsService.Error("Virtual DualSense speaker forward", ex);
         }
@@ -92,7 +94,7 @@ public sealed class SpeakerForwarder : IDisposable
         {
             try { _output?.Stop(); } catch { }
             try { _output?.Dispose(); } catch { }
-            _output = null; _buffer = null; _failed = false; Note = "kapalı";
+            _output = null; _buffer = null; _failed = false; _opening = false; Note = "kapalı";
         }
     }
 }

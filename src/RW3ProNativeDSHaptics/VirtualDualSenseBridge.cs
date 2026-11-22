@@ -302,6 +302,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         // Interleaved PCM16, roles speakerLeft, speakerRight, hapticLeft, hapticRight = the DualSense
         // rear-channel layout the extractor already reads (channels 2/3).
         if (_stop || output.Channels != 4 || output.BitsPerSample != 16 || pcm.Length % 8 != 0) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        try {
         _speaker.Push(pcm.Span);   // the controller-speaker channels 1/2 → the PC's speakers (the Wolverine has none)
         if (!_inputHealthy) return;
         var span = pcm.Span;
@@ -330,6 +332,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
         else if ((_mode == WolverineControllerMode.Pc || (_mode == WolverineControllerMode.Xbox && XboxSensa.Active)) && XboxMix.PcmEnabled)
             _target?.Push(span, FourChannelHapticAnalyzer.PcmEncoding.Pcm16);   // Xbox mode: palms through Sensa over GIP
         Interlocked.Increment(ref _hapticBlocks);
+        }
+        finally { _audioStats.Note(pcm.Length / 8, t0); }
         }
     }
 
@@ -596,7 +600,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; mode {_mode}" +
                     (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites}, " +
                         $"{(TriggerMotors ? "trigger motors" : "classic")}; max body {_wBodyL:F2}/{_wBodyR:F2} trig {_wTrigL:F2}/{_wTrigR:F2})" : "") +
-                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : "") + _delay.Take() + _speaker.Take());
+                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : "") + _delay.Take() + _speaker.Take() + _audioStats.Take());
                 _wPullL = _wPullR = _wBodyL = _wBodyR = _wTrigL = _wTrigR = 0;
             }
             // direct mode: wake on the pad's next report (a press goes out at once), else every 4 ms for the motors
@@ -621,6 +625,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private int _pcOutputSlot = -1;
     private readonly InputDelayMeter _delay = new();
     private readonly SpeakerForwarder _speaker = new();
+    private readonly AudioBlockStats _audioStats = new();
     private readonly double[] _dRum = new double[4];
     private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)
