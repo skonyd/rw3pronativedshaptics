@@ -91,9 +91,17 @@ public sealed class WinUsbGipTransport : IDisposable
     {
         var buf = new byte[512];
         int errors = 0, logged = 0;
-        long nextSummary = Environment.TickCount64 + 10_000;
+        long nextSummary = Environment.TickCount64 + 10_000, opened = Environment.TickCount64;
+        bool resetSent = false;
         while (!_stop)
         {
+            // a pad that was already connected ignores power-on until it re-announces: reset it once (no input in 1.5 s)
+            if (!resetSent && Interlocked.Read(ref _inputs) == 0 && Environment.TickCount64 - opened > 1500)
+            {
+                resetSent = true;
+                Log("Direct mode: no input 1.5 s after open, sending GIP power reset (the pad re-announces).");
+                Send(GipCodec.PowerReset(NextSeq()));
+            }
             if (Environment.TickCount64 >= nextSummary)
             {
                 nextSummary = Environment.TickCount64 + 10_000;
@@ -105,7 +113,8 @@ public sealed class WinUsbGipTransport : IDisposable
                 if (e == 121 /*SEM_TIMEOUT*/) continue;
                 if (errors == 0 || errors % 20 == 0) Log($"Direct mode: GIP read error {e} (#{errors + 1}), resetting the pipe.");
                 WinUsb_ResetPipe(_usb, 0x81);
-                if (++errors > 200) { State = "okuma hatası " + e; Log("Direct mode: GIP read failed " + e + " 200 times, closing."); break; }
+                // ~1 s of errors (unplugged, or the pad reset itself): close; the bridge reopens it within a second
+                if (++errors > 20) { State = "okuma hatası " + e; Log("Direct mode: GIP read failed " + e + " 20 times, closing (reopen follows)."); break; }
                 Thread.Sleep(50);
                 continue;
             }

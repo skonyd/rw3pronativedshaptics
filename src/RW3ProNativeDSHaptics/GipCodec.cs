@@ -75,6 +75,10 @@ public static class GipCodec
     /// <summary>Power on (system message 0x05, mode 0x00): the pad starts sending input after it.</summary>
     public static byte[] PowerOn(byte sequence) => Encode(CmdPower, OptInternal, sequence, new byte[] { 0x00 });
 
+    /// <summary>Power reset (system message 0x05, mode 0x07, as in xone): the pad re-announces itself like after a replug.
+    /// Needed when RW3 opens a pad that was already connected: power-on alone did not start its input (2026-11-22).</summary>
+    public static byte[] PowerReset(byte sequence) => Encode(CmdPower, OptInternal, sequence, new byte[] { 0x07 });
+
     /// <summary>ACK for a message that asked for one (xone gip_send_ack): echoes its command, options and length.</summary>
     public static byte[] Ack(in GipMessage m) =>
         Encode(CmdAck, OptInternal, m.Sequence, new byte[]

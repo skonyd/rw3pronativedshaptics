@@ -89,6 +89,7 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
         bool parsed = GipCodec.TryParseInput(inPayload, guide: true, out var gp);
         Check(vn == 2 && varint[0] == 0xAC && varint[1] == 0x02
             && power.SequenceEqual(new byte[] { 0x05, 0x20, 7, 0x01, 0x00 })
+            && GipCodec.PowerReset(3).SequenceEqual(new byte[] { 0x05, 0x20, 3, 0x01, 0x07 })
             && rumble.SequenceEqual(new byte[] { 0x09, 0x00, 9, 0x09, 0x00, 0x0F, 25, 0, 50, 100, 0xFF, 0x00, 0xEB })
             && two.Count == 2 && two[0].Command == 0x05 && two[0].Internal && two[1].Command == 0x09 && two[1].Payload.Length == 9
             && raz.Count == 1 && raz[0].Command == 0x0F && raz[0].Payload.Length == 60
