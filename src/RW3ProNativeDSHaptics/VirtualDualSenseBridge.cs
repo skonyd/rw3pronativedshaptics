@@ -491,7 +491,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 var g = new XInput.Gamepad { wButtons = pad.Buttons, bLeftTrigger = pad.LeftTrigger, bRightTrigger = pad.RightTrigger,
                     sThumbLX = pad.LX, sThumbLY = pad.LY, sThumbRX = pad.RX, sThumbRY = pad.RY };
                 _wPullL = Math.Max(_wPullL, g.bLeftTrigger / 255.0); _wPullR = Math.Max(_wPullR, g.bRightTrigger / 255.0);
-                state.Buttons = MapButtons(g.wButtons);
+                state.Buttons = MapButtons(g.wButtons, viewAsTouchpad: true);
                 state.Hat = HatOf(DualSenseInputMapping.Hat(g.wButtons));
                 // HIDMaestro axes are [0..1], 0.5 = centre (DualSenseInputMapping; a -1..1 range pinned the
                 // sticks up/left in TLOU2, 2026-11-08).
@@ -681,7 +681,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
         catch (Exception ex) { return "failed: " + ex.Message; }
     }
 
-    internal static HMButton MapButtons(ushort b)
+    /// <param name="viewAsTouchpad">DualSense output only: View = touchpad click. The virtual Xbox / PS4 pads
+    /// (XboxAudioGameBridge) keep View = Back / Share.</param>
+    internal static HMButton MapButtons(ushort b, bool viewAsTouchpad = false)
     {
         HMButton r = HMButton.None;
         if ((b & 0x1000) != 0) r |= HMButton.A;
@@ -692,7 +694,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         if ((b & 0x0200) != 0) r |= HMButton.RightBumper;
         // View → touchpad click: the Wolverine has no touchpad, games put the map / menu on it, and the user does not
         // use Create (share / capture), so View takes the touchpad's place (2026-11-23)
-        if ((b & 0x0020) != 0) r |= HMButton.Touchpad;
+        if ((b & 0x0020) != 0) r |= viewAsTouchpad ? HMButton.Touchpad : HMButton.Back;
         if ((b & 0x0010) != 0) r |= HMButton.Start;
         if ((b & 0x0040) != 0) r |= HMButton.LeftStick;
         if ((b & 0x0080) != 0) r |= HMButton.RightStick;
