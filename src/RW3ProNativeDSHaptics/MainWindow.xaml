@@ -300,19 +300,6 @@
                         Checked="XboxStrictHide_Changed" Unchecked="XboxStrictHide_Changed"/>
               <TextBlock Text="Game Pass oyunları kolu GameInput üzerinden görüyorsa sanal DualSense'i kullanmaz ve avuçlar (Sensa) oyun öndeyken susar. Açıkken oyun yalnızca sanal DualSense'i görür; kol XInput ile okunur, tetik motorları yalnızca Sensa ile sürülür. Açtıktan sonra kolu çıkarıp tak (ya da mod değiştir) ve oyunu yeniden başlat. Oyun DualSense'i desteklemiyorsa kontrol çalışmaz: o zaman kapat." Style="{StaticResource Hint}"/>
               <TextBlock x:Name="RouteNativeHint" Style="{StaticResource Hint}" Margin="0,6,0,6"/>
-              <!-- Direct mode (docs/WINUSB_DIRECT_MODE.md): the pad on WinUSB, RW3 speaks GIP itself, no focus gate -->
-              <Border Background="#0F1829" CornerRadius="10" Padding="12,10" Margin="0,8,0,8" BorderBrush="{StaticResource Line}" BorderThickness="1">
-                <StackPanel>
-                  <TextBlock Text="Doğrudan mod (WinUSB) · deneysel" Foreground="#FFB547" FontWeight="SemiBold" FontSize="14"/>
-                  <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,8"
-                             Text="Xbox modunda Windows, oyun öndeyken RW3'ün tetik ve avuç komutlarını düşürür. Doğrudan modda kol Windows'un Xbox sürücüsünden alınır, Microsoft'un imzalı WinUSB sürücüsüne geçer ve RW3 kolla kendisi konuşur: avuçlar, tetik ve rumble oyun öndeyken de çalışır. Oyunlar kolu yalnızca RW3'ün sanal kolu olarak görür; RW3 kapalıyken kol çalışmaz, Synapse görmez. Kaldır düğmesi kolu Windows'un sürücüsüne geri verir."/>
-                  <WrapPanel>
-                    <Button x:Name="DirectModeInstallBtn" Content="Doğrudan modu kur" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeInstall_Click"/>
-                    <Button x:Name="DirectModeRemoveBtn" Content="Doğrudan modu kaldır" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeRemove_Click"/>
-                  </WrapPanel>
-                  <TextBlock x:Name="DirectModeStatus" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
-                </StackPanel>
-              </Border>
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>
             </StackPanel>
@@ -482,6 +469,19 @@
 
           <!-- Temel -->
           <StackPanel x:Name="SettingsBasicPanel">
+            <!-- Direct mode (docs/WINUSB_DIRECT_MODE.md): the pad on WinUSB, RW3 speaks GIP itself, no focus gate -->
+            <Border Background="#0F1829" CornerRadius="10" Padding="12,10" Margin="0,8,0,8" BorderBrush="{StaticResource Line}" BorderThickness="1">
+              <StackPanel>
+                <TextBlock Text="Doğrudan mod (WinUSB) · deneysel" Foreground="#FFB547" FontWeight="SemiBold" FontSize="14"/>
+                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,8"
+                           Text="Xbox modunda Windows, oyun öndeyken RW3'ün tetik ve avuç komutlarını düşürür. Doğrudan modda kol Windows'un Xbox sürücüsünden alınır, Microsoft'un imzalı WinUSB sürücüsüne geçer ve RW3 kolla kendisi konuşur: avuçlar, tetik ve rumble oyun öndeyken de çalışır. Oyunlar kolu yalnızca RW3'ün sanal kolu olarak görür; RW3 kapalıyken kol çalışmaz, Synapse görmez. Kaldır düğmesi kolu Windows'un sürücüsüne geri verir."/>
+                <WrapPanel>
+                  <Button x:Name="DirectModeInstallBtn" Content="Doğrudan modu kur" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeInstall_Click"/>
+                  <Button x:Name="DirectModeRemoveBtn" Content="Doğrudan modu kaldır" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeRemove_Click"/>
+                </WrapPanel>
+                <TextBlock x:Name="DirectModeStatus" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
             <TextBlock Text="Titreşim gücü" Style="{StaticResource CardTitle}"/>
             <TextBlock Text="Genel üst sınır: bu uygulamanın gönderdiği her titreşime uygulanır (Normal moddaki oyun titreşimine değil). Modlara özel seviyeler Genel sekmesindeki kaydırıcılarda." Style="{StaticResource Hint}" Margin="0,0,0,10"/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
