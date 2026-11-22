@@ -696,12 +696,19 @@ public sealed class MainWindow : Window
         if (s.Down(Btn.B)) { lt = s.LT; rt = s.RT; }
         if (s.Down(Btn.A)) { low = s.LT; high = s.RT; }
         bool sound = s.Down(Btn.Y) && s.RT > .2f;
+        if (_input.Pressed(Btn.X))
+        {
+            _fb.Direct(0, 0, 0, 0);
+            _quickVirtualOnly = !_quickVirtualOnly;
+            _surface.QVirtualOnly = _quickVirtualOnly;
+            _log.Event("quick-test", new { virtualOnly = _quickVirtualOnly });
+        }
         if (lt + rt + low + high > .02f || _quickSending)
         {
-            string paths = _fb.Direct(low, high, lt, rt);
+            string paths = _fb.Direct(low, high, lt, rt, _quickVirtualOnly);
             _surface.QPaths = paths;
             _quickSending = lt + rt + low + high > .02f;
-            if ((_quickLog += dt) >= .5 && _quickSending) { _quickLog = 0; _log.Event("quick-test", new { low, high, lt, rt, paths }); }
+            if ((_quickLog += dt) >= .5 && _quickSending) { _quickLog = 0; _log.Event("quick-test", new { low, high, lt, rt, paths, virtualOnly = _quickVirtualOnly }); }
         }
         if (sound != _quickSound && _fb.Speakers != null)
         {
@@ -717,6 +724,7 @@ public sealed class MainWindow : Window
         if (_surface.MenuHold > 2) { _surface.MenuHold = 0; Enter(Screen.Setup); }
     }
     private double _quickWgi;
+    private bool _quickVirtualOnly;
 
     private void PadTest(double dt)
     {

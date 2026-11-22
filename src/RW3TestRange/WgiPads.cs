@@ -25,8 +25,8 @@ public sealed class WgiPads
         catch (Exception ex) { return ex.Message; }
     }
 
-    /// <summary>All four motors (0..1) on every WGI gamepad; returns how many took the write.</summary>
-    public int Rumble(float low, float high, float lt, float rt)
+    /// <summary>All four motors (0..1) on every WGI gamepad (or all but the Razer pad); returns how many took the write.</summary>
+    public int Rumble(float low, float high, float lt, float rt, bool skipRazer = false)
     {
         int n = 0;
         try
@@ -35,6 +35,7 @@ public sealed class WgiPads
             {
                 try
                 {
+                    if (skipRazer && RawGameController.FromGameController(g)?.HardwareVendorId == 0x1532) continue;
                     g.Vibration = new GamepadVibration { LeftMotor = low, RightMotor = high, LeftTrigger = lt, RightTrigger = rt };
                     n++;
                 }
