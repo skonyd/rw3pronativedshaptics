@@ -2,7 +2,7 @@
 
 **Firmware lab, 2026-11-22:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[20-stage validation](firmware/validation/20261122-loop.json)
+[21-stage validation](firmware/validation/20261122-loop-i2c.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -19,8 +19,12 @@ independent audio-only stop open. The [foreground/GPIO replay](firmware/FOREGROU
 now runs complete iterations in one explicit raw-gate state; the loop
 reaches Sensa itself. Raw pin packing, stock/inactive-candidate state,
 five audio sources, stereo isolation and drained output are checked.
-Three other gate combinations stop at I2C. Next: integrate that later
-I2C state, establish gate/button meanings and complete game reports,
+The [foreground I2C extension](firmware/FOREGROUND_I2C_REPLAY.md) now
+executes the original callback registration and IRQ17 driver in a second
+raw-gate state, including original timeout cleanup. Two other states
+advance to an explicit FLEXCOMM9 boundary rather than pass. Next:
+connect that driver/peer, extend active audio to the new gate state,
+establish gate/button meanings and complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime
 controls and non-Sensa GIP feedback arbitration. Resolve actual

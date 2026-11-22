@@ -196,12 +196,32 @@ gate combinations reach an unmodeled I2C configuration read; do not
 label them full-loop passes. Integrate startup I2C/peer state there,
 establish raw-gate/button meanings and actual IRQ0 setup, and then
 extend continuous CPU/USB/peripheral timing. Module bytes are unchanged.
-The [latest full validation](firmware/validation/20261122-loop.json)
+The [preceding full validation](firmware/validation/20261122-loop.json)
 passes all 20 stages (E-20261122-61). Normal and optimized foreground
 reports are identical. Five active flows execute 795 iterations,
 11,130 checked IRQ returns and 45 independently checked decoder frames.
 The preceding clock/watchdog reports and tool sources are unchanged
 except the runner. Gate failure boundaries remain explicit.
+
+Foreground I2C continuation (E-20261122-70): read
+[FOREGROUND_I2C_REPLAY.md](firmware/FOREGROUND_I2C_REPLAY.md).
+The old audio fixture lacked stock I2C completion-callback registration;
+merely mapping the bus left its wrapper flag set. The new stage executes
+that original registration and the real IRQ17 vector, without host-written
+completion flags. Seven stock/inactive-candidate scenario pairs execute
+84 complete iterations and 3,546 checked IRQ returns, comparing 81,192
+RAM bytes, persistent registers, PWM, transactions and watchdog feeds.
+Wrong identities retry; address NACK and suppressed IRQ use original
+three-attempt timeout cleanup with explicit logical wait-clock quanta.
+The (1,0) raw-gate state now completes; both (0,*) states stop later at
+0x20672/0x4009AE00 (FLEXCOMM9), not full-loop successes. Active PCM in
+this new state, actual gate meanings, full boot and physical timing remain
+open. Keep the older stage and its controls. The C module is unchanged.
+The [latest validation](firmware/validation/20261122-loop-i2c.json)
+passes 21/21 (E-20261122-71); the preceding 20 reports are identical,
+and the new stage matches its optimized-Python run. Execution was
+interrupted after 17 stages; the final four resumed after pinned-input,
+source and completed-report checks. Recovery is recorded in the JSON.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

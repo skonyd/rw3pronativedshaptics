@@ -97,6 +97,12 @@ Sensa dispatcher from the loop. Strict byte inputs, stock comparisons,
 runtime packet checks and mono/stereo PWM controls keep unknown devices
 from silently becoming a pass. The other gates still stop at I2C and
 full production boot/timing remain open.
+The separate [foreground I2C stage](FOREGROUND_I2C_REPLAY.md) executes
+original callback registration, SDK transfers and real IRQ17 handling in
+a second raw-gate state. Seven stock/inactive-candidate pairs compare
+successful setup, identity retries and original timeout cleanup. Two
+remaining states now stop at FLEXCOMM9; full boot and physical timing
+remain open. Busy-wait clock quanta are explicitly supplied, not CPU cycles.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -104,9 +110,12 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-loop.json)
-preserves the 20-stage result, input/source hashes, unchanged module
-hash and foreground/GPIO results with explicit unsupported gates. The
+The [latest 2026-11-22 validation summary](validation/20261122-loop-i2c.json)
+preserves the 21-stage result, input/source hashes, unchanged module
+and seven foreground-I2C scenario pairs. The preceding 20 reports
+are unchanged; execution recovery after a tool interruption is explicit.
+The [earlier loop summary](validation/20261122-loop.json) retains the
+20-stage result with its original missing-I2C controls. The
 [watchdog summary](validation/20261122-watchdog.json) retains the 19-stage
 result and terminal reset guards. The
 [clock summary](validation/20261122-clock.json) retains the 18-stage

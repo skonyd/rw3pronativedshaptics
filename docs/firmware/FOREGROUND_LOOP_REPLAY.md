@@ -25,7 +25,10 @@ For the three other zero/one combinations, execution reaches an
 unmodeled FLEXCOMM3 I²C configuration read at `0x10E5E`, address
 `0x40089800`. Each case stops there. They are failure boundaries,
 not three additional successful full-loop cases. Existing startup I²C
-models still need integration into this later foreground state.
+models still need integration into this later foreground state in this
+frozen stage. The later [I2C extension](FOREGROUND_I2C_REPLAY.md) separately
+completes (1,0) and moves both (0,*) states to the next FLEXCOMM9 boundary;
+it does not relabel these older missing-model controls as successful loops.
 
 The real FLEXCOMM3 vector is restored rather than using the older
 synthetic class-16 IRQ17 shim as a device source. No real USB interrupt,

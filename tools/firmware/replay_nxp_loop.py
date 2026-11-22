@@ -76,7 +76,7 @@ class LoopLab(WatchdogLab):
     def send(self):
         raise RuntimeError('The main-loop fixture does not model a real USB command IRQ')
 
-    def run(self):
+    def run(self, *, instruction_limit=100000):
         # Split after the first instruction so start != until. Flush cached
         # translations when switching until boundaries; otherwise an already
         # translated interior address can be missed by Unicorn.
@@ -86,7 +86,7 @@ class LoopLab(WatchdogLab):
             self.cpu.ctl_flush_tb()
             self.irq.execute(LOOP_HEADER, LOOP_HEADER + 4, instruction_limit=100)
             self.cpu.ctl_flush_tb()
-            self.irq.execute(LOOP_HEADER + 4, LOOP_HEADER, instruction_limit=100000)
+            self.irq.execute(LOOP_HEADER + 4, LOOP_HEADER, instruction_limit=instruction_limit)
         finally:
             self.in_foreground = False
         verify(self.cpu.reg_read(UC_ARM_REG_PC) == LOOP_HEADER and self.cpu.reg_read(UC_ARM_REG_SP) == stack,

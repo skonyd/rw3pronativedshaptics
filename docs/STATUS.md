@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 20 stages passed with the local pinned images on 2026-11-22,
+All 21 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-loop.json)
+The [public validation summary](firmware/validation/20261122-loop-i2c.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -250,10 +250,26 @@ operations fail. Idle stock/candidate loops match 81,192 RAM bytes,
 persistent registers and PWM. Five optimized active streams preserve
 96 PCM blocks each, check left/right isolation, original decoder frames
 and return to idle. Normal and optimized new-stage reports are identical;
-the full suite passes 20/20 (E-20261122-61). Unknown foreground MMIO fails. Other gate settings
-stop at I2C configuration; flag meanings, full startup and physical
+the preceding full suite passes 20/20 (E-20261122-61). That stage
+retains explicit missing-I2C controls for its other gate settings;
+unknown foreground MMIO fails. Flag meanings, full startup and physical
 button/report mapping remain open. USB receive calls/clock events are
 still supplied at loop boundaries; no continuous CPU timing is claimed.
+The [foreground I2C extension](firmware/FOREGROUND_I2C_REPLAY.md)
+now completes the additional raw-gate (1,0) fixture through original
+callback registration and the real IRQ17 vector. Seven stock/inactive-
+candidate scenario pairs compare 81,192 RAM bytes, registers, PWM and
+transactions over 84 complete iterations and 3,546 checked IRQ returns.
+Wrong identities retry; NACK and suppressed IRQ complete three original
+timeouts with a supplied logical wait-clock schedule. Two remaining
+gate states stop later at 0x20672/0x4009AE00 (FLEXCOMM9). Unknown peer
+registers and unsupported I2C accesses fail. Active audio in the new
+gate state, physical bus/instruction timing and full boot remain open.
+All 21 stages pass (E-20261122-71); all 20 preceding reports remain
+identical. The complete new stage also matches under optimized Python.
+A tool/process interruption occurred after 17 stages; inputs/code and
+saved reports were checked before resuming the final four stages.
+The public validation records that recovery explicitly.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen
@@ -262,10 +278,12 @@ but includes separate, uncommitted RGB/shortcut additions; that is not
 a clean published-main build. See E-20261122-05. A newer check on
 `ecc493b`, Windows CI `45021366034`, has 575 passing contracts and the
 same missing `ChromaEffect` WPF failure (E-20261122-32).
-Latest inspected package CI `45028884831` on firmware-source commit
-`32809ef` has 575 passing contracts and the same CS0246 `ChromaEffect`
-failure at `MainWindow.xaml.cs:2790` (E-20261122-62). Firmware 20/20 is
-an independent offline result; no Windows package was produced by that run.
+Package CI `45028884831` on `32809ef` has 575 passing contracts and
+the same CS0246 `ChromaEffect` failure (E-20261122-62). The newer
+prepublication check `45031220312` on `6e519805` has 576 passing
+contracts but still fails that missing type at `MainWindow.xaml.cs:2859`.
+Firmware 21/21 is an independent offline result; these failed desktop
+runs did not produce a Windows package.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

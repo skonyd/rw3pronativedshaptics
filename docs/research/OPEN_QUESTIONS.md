@@ -152,11 +152,18 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   both set to one. The loop itself reaches Sensa dispatch; the host no
   longer calls that dispatcher directly in this path. Raw scanning
   covers 29 pins/63 scenes; physical button names and debounce/report
-  mapping remain open. Three other flag combinations stop at the real
-  FLEXCOMM3 configuration read 0x10E5E/0x40089800. Integrate the existing
-  startup I2C model/peer state there and establish those flags' real
-  meanings, rather than bypassing the read. The selected loop fixture
-  still uses boundary-supplied USB receive calls/clock events and does
+  mapping remain open. E-20261122-70 integrates the existing I2C peer
+  through original callback registration and the real IRQ17 vector. The
+  (1,0) raw-gate fixture now completes, with original identity retries
+  and timeout cleanup; two (0,*) cases stop later at PC 0x20672 reading
+  FLEXCOMM9 SPI FIFOCFG address 0x4009AE00. Connect its actual
+  driver/FIFO/DMA/peer state (separate from the existing FLEXCOMM5 path),
+  extend active audio to (1,0), and establish the raw flags' real meanings.
+  The I2C wait schedule supplies 125us logical quanta, not CPU cycle timing.
+  E-20261122-71 passes all 21 stages, with prior 20 reports unchanged
+  and normal/optimized I2C equality; the saved run records validated
+  recovery after a tool interruption. This does not close the limits above.
+  The selected loop fixture still uses boundary-supplied USB receive calls/clock events and does
   not close continuous CPU timing or actual board IRQ0 configuration.
   See [foreground limits](../firmware/FOREGROUND_LOOP_REPLAY.md).
   Add/verify real control commands and arbitrate separate normal GIP
