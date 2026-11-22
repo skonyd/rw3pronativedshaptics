@@ -71,7 +71,11 @@ public sealed class SpeakerOutput : ISampleProvider, IDisposable
 
     public int Read(float[] buffer, int offset, int count)
     {
-        Array.Clear(buffer, offset, count);
+        // Not Array.Clear: NAudio hands over a WaveBuffer, a byte[] seen as float[]. Array.Clear works on the real
+        // element type and cleared only count BYTES (a quarter of the floats); the rest kept the previous block, the
+        // music/sfx below were added (+=) on top of it, and the speakers played a growing hiss / buzz instead of the
+        // game's sound (2026-11-22, loopback correlation with the expected mix 0.26 → see EXPERIMENTS).
+        for (int i = 0; i < count; i++) buffer[offset + i] = 0;
         int frames = count / 2;
         if (MusicOn) Music.Read(buffer, offset, frames);
         if (SfxOn) Sfx.Mix(buffer, offset, frames); else Sfx.Mix(new float[count], 0, frames);
