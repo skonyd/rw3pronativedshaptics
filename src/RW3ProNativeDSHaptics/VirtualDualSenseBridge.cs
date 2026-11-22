@@ -389,11 +389,6 @@ public sealed class VirtualDualSenseBridge : IDisposable
         try
         {
         state.Hat = HMHat.None;
-        // No finger on the touchpad. A DualSense marks an idle touch point with bit 7 of its id byte; with the defaults
-        // (inactive, id 0) the virtual pad reported a finger at (0,0) in every report, so a game that reads the touchpad
-        // saw a constant touch: the test range pinned its crosshair to the corner (2026-11-23, 330/330 reports).
-        state.TouchpadFinger0Active = state.TouchpadFinger1Active = false;
-        state.TouchpadFinger0Id = state.TouchpadFinger1Id = 0x80;
         _ctrl.SubmitState(in state); // neutral even when physical input is initially unavailable
         while (!_stop)
         {
@@ -659,7 +654,9 @@ public sealed class VirtualDualSenseBridge : IDisposable
         if ((b & 0x8000) != 0) r |= HMButton.Y;
         if ((b & 0x0100) != 0) r |= HMButton.LeftBumper;
         if ((b & 0x0200) != 0) r |= HMButton.RightBumper;
-        if ((b & 0x0020) != 0) r |= HMButton.Back;
+        // View → touchpad click: the Wolverine has no touchpad, games put the map / menu on it, and the user does not
+        // use Create (share / capture), so View takes the touchpad's place (2026-11-23)
+        if ((b & 0x0020) != 0) r |= HMButton.Touchpad;
         if ((b & 0x0010) != 0) r |= HMButton.Start;
         if ((b & 0x0040) != 0) r |= HMButton.LeftStick;
         if ((b & 0x0080) != 0) r |= HMButton.RightStick;

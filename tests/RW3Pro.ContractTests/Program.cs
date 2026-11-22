@@ -1267,12 +1267,12 @@ SpectralContracts.Run(Check);
     var right = DualSenseInputMapping.Expected(new XInputPad(0, 255, 255, short.MaxValue, 0, short.MinValue, 0));
     bool directions = up.LY == 0 && up.RY == 255 && right.LX == 255 && right.RX == 0 && right.L2 == 255 && right.R2 == 255;
     var face = DualSenseInputMapping.Expected(new XInputPad((ushort)(XInputPad.A | XInputPad.Y | XInputPad.Back | XInputPad.Guide), 0, 0, 0, 0, 0, 0));
-    bool buttons = face.Cross && face.Triangle && !face.Circle && !face.Square && face.Create && !face.Options && face.PS;
+    bool buttons = face.Cross && face.Triangle && !face.Circle && !face.Square && !face.Create && !face.Options && face.PS;
     bool hats = DualSenseInputMapping.Hat(XInputPad.DpadUp) == 0 && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadUp | XInputPad.DpadRight)) == 1
         && DualSenseInputMapping.Hat(XInputPad.DpadDown) == 4 && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadLeft | XInputPad.DpadUp)) == 7
         && DualSenseInputMapping.Hat((ushort)(XInputPad.DpadUp | XInputPad.DpadDown)) == DualSenseInputState.HatNone;
     Check(centred && directions && buttons && hats,
-        "XInput → DualSense: rest = centre 128, up = LY 0, right = LX 255, A/Y/View/Guide = Cross/Triangle/Create/PS, D-pad hat");
+        "XInput → DualSense: rest = centre 128, up = LY 0, right = LX 255, A/Y/View/Guide = Cross/Triangle/touchpad/PS (no Create), D-pad hat");
 
     // Report 0x01 parse: Cross + hat E + L1 + Options + PS.
     var report = new byte[64]; report[0] = 0x01; report[1] = 10; report[2] = 20; report[3] = 30; report[4] = 40; report[5] = 50; report[6] = 60;

@@ -68,13 +68,13 @@ public static class DualSenseInputMapping
     }
 
     /// <summary>What the game should read for this XInput state (Xbox layout → PlayStation layout:
-    /// A = Cross, B = Circle, X = Square, Y = Triangle, View = Create, Menu = Options, Guide = PS).</summary>
+    /// A = Cross, B = Circle, X = Square, Y = Triangle, View = touchpad click (not Create), Menu = Options, Guide = PS).</summary>
     public static DualSenseInputState Expected(in XInputPad p) => new(
         AxisByte(StickX(p.LX)), AxisByte(StickY(p.LY)), AxisByte(StickX(p.RX)), AxisByte(StickY(p.RY)),
         AxisByte(Trigger(p.LeftTrigger)), AxisByte(Trigger(p.RightTrigger)), Hat(p.Buttons),
         Square: p.Has(XInputPad.X), Cross: p.Has(XInputPad.A), Circle: p.Has(XInputPad.B), Triangle: p.Has(XInputPad.Y),
         L1: p.Has(XInputPad.LeftShoulder), R1: p.Has(XInputPad.RightShoulder),
-        Create: p.Has(XInputPad.Back), Options: p.Has(XInputPad.Start),
+        Create: false, Options: p.Has(XInputPad.Start),
         L3: p.Has(XInputPad.LeftThumb), R3: p.Has(XInputPad.RightThumb), PS: p.Has(XInputPad.Guide));
 
     /// <summary>Differences a player would notice, e.g. "LY beklenen 128 görülen 0". Axes within

@@ -489,7 +489,7 @@ public sealed class MainWindow : Window
         foreach (var ds in DualSenseHid.FindAll())
         {
             if (ds.Open()) { _fb.DualSenses.Add(ds); _input.Sources.Add(ds); }
-            sb.AppendLine($"DualSense   {ds.Name}{(ds.Error != null ? " · " + ds.Error : "")}\n            {ds.ParentIds}");
+            sb.AppendLine($"DualSense   {ds.Name}{(ds.Error != null ? " · " + ds.Error : "")} · feature {ds.Features}\n            {ds.ParentIds}");
         }
         foreach (var p in DualShock4Hid.FindAll())
         {

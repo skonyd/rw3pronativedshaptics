@@ -96,6 +96,8 @@ public sealed class DualSenseHid : IPadSource
     public byte RumbleLeft, RumbleRight, Red = 0, Green = 60, Blue = 255, PlayerLeds = 0b00100, MicLed;
     /// <summary>HD haptics in use: no rumble emulation (it would mute the haptic audio channels).</summary>
     public bool AudioHaptics;
+    /// <summary>Which feature reports the pad answered at open ("0x05:ok 0x09:ok 0x20:-").</summary>
+    public string Features { get; private set; } = "";
 
     private DualSenseHid(string path, bool isVirtual) { Path = path; Virtual = isVirtual; }
 
@@ -127,6 +129,11 @@ public sealed class DualSenseHid : IPadSource
         _write = Hid.Open(Path, Hid.GenericRead | Hid.GenericWrite);
         if (_read.IsInvalid || _write.IsInvalid) { Error = "HID açılamadı (" + Marshal.GetLastWin32Error() + ")"; return false; }
         if (Hid.Caps(_write, out _, out _, out ushort inLen, out ushort outLen)) { _outLen = Math.Max(48, (int)outLen); Bluetooth = inLen > 64 && inLen != 64; }
+        // Like games and Steam: read the calibration (0x05), pairing (0x09) and firmware (0x20) feature reports first.
+        // A real pad does not care; RW3's virtual DualSense (HIDMaestro) switches from its short report layout to the
+        // full one only after such a read, and the short layout has no touch data, which reads as a finger at (0,0)
+        // and pinned the crosshair to the top-left corner (2026-11-23, E-20261123-69).
+        Features = string.Join(" ", new byte[] { 0x05, 0x09, 0x20 }.Select(id => $"0x{id:X2}:{(Hid.GetFeature(_write, id) ? "ok" : "-")}"));
         _thread = new Thread(ReadLoop) { IsBackground = true, Name = "DualSense input" };
         _thread.Start();
         return true;
@@ -220,6 +227,7 @@ internal static class Hid
     [StructLayout(LayoutKind.Sequential)] private struct IfData { public int Size; public Guid Class; public int Flags; public IntPtr Reserved; }
     [DllImport("hid.dll")] private static extern void HidD_GetHidGuid(out Guid g);
     [DllImport("hid.dll")] private static extern bool HidD_GetAttributes(SafeFileHandle h, ref Attr a);
+    [DllImport("hid.dll")] private static extern bool HidD_GetFeature(SafeFileHandle h, byte[] buf, int len);
     [DllImport("hid.dll")] private static extern bool HidD_GetPreparsedData(SafeFileHandle h, out IntPtr p);
     [DllImport("hid.dll")] private static extern bool HidD_FreePreparsedData(IntPtr p);
     [DllImport("hid.dll")] private static extern int HidP_GetCaps(IntPtr p, ref HidpCaps c);
@@ -348,6 +356,17 @@ internal static class Hid
     {
         var a = new Attr { Size = Marshal.SizeOf<Attr>() };
         bool ok = HidD_GetAttributes(h, ref a); vid = a.Vid; pid = a.Pid; return ok;
+    }
+
+    /// <summary>Get_Feature for one report id (buffer = the device's longest feature report).</summary>
+    public static bool GetFeature(SafeFileHandle h, byte id)
+    {
+        int len = 64;
+        if (HidD_GetPreparsedData(h, out IntPtr p))
+            try { var c = new HidpCaps { Res = new ushort[17] }; if (HidP_GetCaps(p, ref c) == 0x110000 && c.FeatLen > 0) len = c.FeatLen; }
+            finally { HidD_FreePreparsedData(p); }
+        var buf = new byte[len]; buf[0] = id;
+        return HidD_GetFeature(h, buf, len);
     }
 
     public static bool Caps(SafeFileHandle h, out ushort page, out ushort usage, out ushort inLen, out ushort outLen)
