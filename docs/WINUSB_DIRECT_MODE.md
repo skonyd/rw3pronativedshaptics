@@ -119,7 +119,7 @@ streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 H
 ## Sign-in screen (login bridge)
 
 Without Windows' Xbox driver nothing reads the pad until the user signs in and RW3 starts, so in direct mode the
-Windows sign-in / lock screen saw no pad. *Ayarlar → Doğrudan mod → "Giriş ekranında da çalışsın"* (with confirmation)
+Windows sign-in / lock screen saw no pad. the checkbox *"Giriş ekranında da çalıştır (doğrudan mod)"* under *"Windows açılınca arka planda başlat"* (with confirmation)
 installs a boot task that runs RW3 without a window as SYSTEM (`--login-bridge`, `LoginBridge.cs`): it reads the pad and
 feeds a virtual Xbox Series pad (buttons and sticks; no rumble, Sensa or audio).
 
@@ -130,7 +130,7 @@ feeds a virtual Xbox Series pad (buttons and sticks; no rumble, Sensa or audio).
 * **Where it runs.** The task starts a copy in `C:\Program Files\RW3ProNativeDSHaptics\LoginBridge`, which only
   administrators can change (RW3 itself lives in the user's profile; a SYSTEM task must not run an exe from there).
   RW3 refreshes the copy when it starts elevated and finds it older than itself (`LoginBridgeTask.RefreshIfStale`).
-* **Stopping.** Removing (same button, or *Doğrudan modu kaldır*, which removes the bridge first) signals the bridge to
+* **Stopping.** Removing (unticking the box, or *Doğrudan modu kaldır*, which removes the bridge first) signals the bridge to
   stop, ends and deletes the task and deletes the copy.
 * **Log.** The bridge writes to SYSTEM's profile: `C:\Windows\System32\config\systemprofile\AppData\Local\RW3ProNativeDSHaptics\logs\rw3.log`.
 

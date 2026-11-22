@@ -190,6 +190,8 @@ public partial class MainWindow : Window
         DeviceSlotCombo.SelectedIndex = _settings.PreferredXInputSlot is >= -1 and <= 3
             ? _settings.PreferredXInputSlot + 1 : 0;
         AutostartCheckbox.IsChecked = StartupService.IsEnabled;
+        _ = Task.Run(LoginBridgeTask.IsInstalled).ContinueWith(t => Dispatcher.Invoke(() => LoginBridgeCheckbox.IsChecked = t.Result),
+            TaskContinuationOptions.OnlyOnRanToCompletion);
         VersionText.Text = "v" + UpdateService.InstalledVersion;
         InitializeRgbUi();
         InitializeTray();
@@ -2441,45 +2443,54 @@ public partial class MainWindow : Window
                 list + (recorded > 0 ? $" · kayıtlı {recorded} geçiş" : "") +
                 (WinUsbGipTransport.Shared.IsOpen ? " · GIP borusu: " + WinUsbGipTransport.Shared.Summary : "");
             bool loginBridge = LoginBridgeTask.IsInstalled();
-            LoginBridgeBtn.Content = loginBridge ? "Giriş ekranı köprüsünü kaldır" : "Giriş ekranında da çalışsın";
+            LoginBridgeCheckbox.IsChecked = loginBridge;
             if (loginBridge) DirectModeStatus.Text += " · giriş ekranı köprüsü kurulu";
         }
         catch (Exception ex) { DirectModeStatus.Text = "Durum okunamadı: " + ex.Message; }
     }
 
     // Login bridge (docs/WINUSB_DIRECT_MODE.md, "Sign-in screen"): the pad on the Windows sign-in screen in direct mode.
-    private async void LoginBridge_Click(object sender, RoutedEventArgs e)
+    // A checkbox under "Windows açılınca arka planda başlat" (user, 2026-11-23); Click, so setting IsChecked from code
+    // (startup, status refresh) never installs or removes anything.
+    private async void LoginBridgeCheckbox_Click(object sender, RoutedEventArgs e)
     {
-        if (!VirtualDualSenseBridge.IsElevated)
+        bool want = LoginBridgeCheckbox.IsChecked == true;
+        LoginBridgeCheckbox.IsEnabled = false;
+        try
         {
-            DirectModeStatus.Text = "Yönetici izni gerekli: önce Xbox Series kolunu seç (RW3 yönetici olarak yeniden açılır), sonra tekrar bas.";
-            return;
+            if (!VirtualDualSenseBridge.IsElevated)
+            {
+                System.Windows.MessageBox.Show(this, "Yönetici izni gerekli: önce Xbox Series ya da DualSense çıkışını seç (RW3 yönetici olarak yeniden açılır), sonra tekrar dene.",
+                    "RW3 · Giriş ekranı", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            string nl = Environment.NewLine;
+            if (want)
+            {
+                var answer = System.Windows.MessageBox.Show(this,
+                    "Kol Windows giriş ekranında da çalışsın mı? (doğrudan mod)" + nl + nl +
+                    "• Windows açılırken SYSTEM yetkisiyle, pencere açmadan küçük bir RW3 köprüsü başlar: kolu okur ve sanal Xbox kolu oluşturur, giriş ekranında kolla PIN / şifre girebilirsin." + nl +
+                    "• Oturum açıp RW3 başlayınca köprü kolu RW3'e bırakır; RW3 ya da oturum kapanınca kolu geri alır." + nl +
+                    "• Köprü yalnızca yöneticilerin değiştirebildiği klasöre kopyalanır ve oradan çalışır:" + nl + "  " + LoginBridgeTask.InstallDir + nl + nl +
+                    "Kapatmak için kutunun işaretini kaldır: görev ve kopya silinir.",
+                    "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
+                var (_, msg) = await Task.Run(LoginBridgeTask.Install);
+                DirectModeStatus.Text = msg;
+            }
+            else
+            {
+                if (System.Windows.MessageBox.Show(this, "Giriş ekranı köprüsü kaldırılsın mı? Görev ve " + LoginBridgeTask.InstallDir + " silinir.",
+                        "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                var (_, msg) = await Task.Run(LoginBridgeTask.Uninstall);
+                DirectModeStatus.Text = msg;
+            }
         }
-        string nl = Environment.NewLine;
-        bool installed = await Task.Run(LoginBridgeTask.IsInstalled);
-        if (!installed)
+        finally
         {
-            var answer = System.Windows.MessageBox.Show(this,
-                "Kol Windows giriş ekranında da çalışsın mı?" + nl + nl +
-                "• Windows açılırken SYSTEM yetkisiyle, pencere açmadan küçük bir RW3 köprüsü başlar: kolu okur ve sanal Xbox kolu oluşturur, giriş ekranında kolla PIN / şifre girebilirsin." + nl +
-                "• Oturum açıp RW3 başlayınca köprü kolu RW3'e bırakır; RW3 ya da oturum kapanınca kolu geri alır." + nl +
-                "• Köprü yalnızca yöneticilerin değiştirebildiği klasöre kopyalanır ve oradan çalışır:" + nl + "  " + LoginBridgeTask.InstallDir + nl + nl +
-                "Kapatmak için aynı düğme: görev ve kopya silinir.",
-                "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (answer != MessageBoxResult.Yes) return;
-            DirectModeStatus.Text = "Giriş ekranı köprüsü kuruluyor…";
-            var (_, msg) = await Task.Run(LoginBridgeTask.Install);
-            DirectModeStatus.Text = msg;
+            LoginBridgeCheckbox.IsChecked = await Task.Run(LoginBridgeTask.IsInstalled);   // what is really there
+            LoginBridgeCheckbox.IsEnabled = true;
         }
-        else
-        {
-            if (System.Windows.MessageBox.Show(this, "Giriş ekranı köprüsü kaldırılsın mı? Görev ve " + LoginBridgeTask.InstallDir + " silinir.",
-                    "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            DirectModeStatus.Text = "Giriş ekranı köprüsü kaldırılıyor…";
-            var (_, msg) = await Task.Run(LoginBridgeTask.Uninstall);
-            DirectModeStatus.Text = msg;
-        }
-        LoginBridgeBtn.Content = await Task.Run(LoginBridgeTask.IsInstalled) ? "Giriş ekranı köprüsünü kaldır" : "Giriş ekranında da çalışsın";
     }
 
     private async void DirectModeInstall_Click(object sender, RoutedEventArgs e)

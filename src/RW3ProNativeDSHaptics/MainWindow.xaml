@@ -478,8 +478,6 @@
                 <WrapPanel>
                   <Button x:Name="DirectModeInstallBtn" Content="Doğrudan modu kur" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeInstall_Click"/>
                   <Button x:Name="DirectModeRemoveBtn" Content="Doğrudan modu kaldır" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeRemove_Click"/>
-                  <Button x:Name="LoginBridgeBtn" Content="Giriş ekranında da çalışsın" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="LoginBridge_Click"
-                          ToolTip="Doğrudan modda kol Windows giriş ekranında da çalışır (açılışta SYSTEM olarak başlayan RW3 köprüsü)."/>
                 </WrapPanel>
                 <TextBlock x:Name="DirectModeStatus" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
               </StackPanel>
@@ -502,6 +500,9 @@
             </WrapPanel>
             <CheckBox x:Name="AutostartCheckbox" Content="Windows açılınca arka planda başlat" Foreground="#EEF3FF"
                       Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
+            <CheckBox x:Name="LoginBridgeCheckbox" Content="Giriş ekranında da çalıştır (doğrudan mod)" Foreground="#EEF3FF" Margin="20,4,0,0"
+                      Click="LoginBridgeCheckbox_Click"
+                      ToolTip="Doğrudan modda kol Windows giriş / kilit ekranında da çalışır: açılışta SYSTEM olarak başlayan küçük bir RW3 köprüsü sanal Xbox kolunu sürer."/>
             <TextBlock Text="Başlarken" Style="{StaticResource CardTitle}" Margin="0,16,0,0"/>
             <TextBlock Text="Hangi modu seçeceğini bilmiyorsan rehber iki soruyla en uygun ayarı yapar." Style="{StaticResource Hint}" Margin="0,0,0,6"/>
             <Button Content="Başlangıç rehberini aç" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="ShowGuide_Click"/>
