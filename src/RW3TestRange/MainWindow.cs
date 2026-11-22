@@ -660,6 +660,7 @@ public sealed class MainWindow : Window
             _statsTimer = 0;
             var stats = _input.TakeStats();
             if (stats.Count > 0) SessionLog.Current?.Event("input-stats", stats);
+            if (_screen == Screen.Game && _game != null) SessionLog.Current?.Event("aim", new { x = Math.Round(_game.CrossX, 3), y = Math.Round(_game.CrossY, 3), gyroAim = _game.GyroAim });
         }
         if (_screen != Screen.Setup)
         {
