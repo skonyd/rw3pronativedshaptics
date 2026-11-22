@@ -105,6 +105,7 @@ public sealed class XboxAudioGameBridge : IDisposable
             if (l != _bodyL || r != _bodyR || Math.Abs(dtl - _wgiL) > .01 || Math.Abs(dtr - _wgiR) > .01 || any && now - _bodyTick >= 100)
                 if (WinUsbGipTransport.Shared.Rumble(l / 65535.0, r / 65535.0, dtl, dtr)) { _bodyL = l; _bodyR = r; _wgiL = dtl; _wgiR = dtr; _bodyTick = now; _xinputWrites++; }
             XboxSensa.SetTriggers(dtl, dtr);   // the Sensa engine may add its own trigger pulses on the same pipe
+            XboxSensa.SetRumble(l / 65535.0, r / 65535.0);   // and plays the body rumble in the palms
             return;
         }
         // Only on change (or every 100 ms as a keep-alive): the loop runs every 8 ms.

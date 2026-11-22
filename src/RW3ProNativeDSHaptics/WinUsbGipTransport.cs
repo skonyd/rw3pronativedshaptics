@@ -135,7 +135,16 @@ public sealed class WinUsbGipTransport : IDisposable
                 switch (m.Command)
                 {
                     case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); break;   // (re)connected: power on again
-                    case GipCodec.CmdGuide: _guide = GipCodec.GuidePressed(m.Payload); break;
+                    case GipCodec.CmdGuide:
+                        // The Xbox button comes in its own message; the next input report may be far away (nothing else
+                        // moved), so the pad state takes it now. Waiting for 0x20 made the button work only sometimes.
+                        _guide = GipCodec.GuidePressed(m.Payload);
+                        lock (_write)
+                        {
+                            _pad = _pad with { Buttons = (ushort)(_guide ? _pad.Buttons | XInputPad.Guide : _pad.Buttons & ~XInputPad.Guide) };
+                            _padTick = Environment.TickCount64;
+                        }
+                        break;
                     case GipCodec.CmdInput:
                         if (GipCodec.TryParseInput(m.Payload, _guide, out var pad))
                         {

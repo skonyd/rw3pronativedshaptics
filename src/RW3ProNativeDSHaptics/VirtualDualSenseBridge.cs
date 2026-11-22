@@ -404,7 +404,18 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 ClearGameState();
                 nextAcquire = 0;
             }
-            if (_mode == WolverineControllerMode.Xbox && StrictHide)
+            if (_mode == WolverineControllerMode.Xbox && WinUsbGipTransport.DevicePresent() && !WinUsbGipTransport.Suspended)
+            {
+                // Direct mode (docs/WINUSB_DIRECT_MODE.md): the pad is on WinUSB, RW3 reads it over GIP. No focus gate.
+                var t = WinUsbGipTransport.Shared;
+                if (!t.IsOpen && now >= nextAcquire)
+                {
+                    nextAcquire = now + 1;
+                    if (t.TryOpen()) DiagnosticsService.Info("Virtual DualSense: direct mode, input/output on the pad's GIP pipe.");
+                }
+                read = t.TryReadPad(out pad);
+            }
+            else if (_mode == WolverineControllerMode.Xbox && StrictHide)
             {
                 if (!_strictApplied)
                 {
@@ -590,9 +601,24 @@ public sealed class VirtualDualSenseBridge : IDisposable
     }
 
     private int _pcOutputSlot = -1;
+    private readonly double[] _dRum = new double[4];
+    private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)
     {
-        if (_outputMode == WolverineControllerMode.Xbox && StrictHide)
+        if (_outputMode == WolverineControllerMode.Xbox && WinUsbGipTransport.Shared.IsOpen)
+        {
+            // Direct mode: all four motors on the GIP pipe, and the body rumble also in the palm stream.
+            double bl = BodyMotorLimit.Big(f.BodyLeft), br = Math.Clamp(f.BodyRight, 0, 1);
+            double tl = Math.Clamp(f.TriggerLeft, 0, 1), tr = Math.Clamp(f.TriggerRight, 0, 1);
+            long now = Environment.TickCount64;
+            bool any = bl > .004 || br > .004 || tl > .004 || tr > .004;
+            // the loop runs every few ms: write on change, else every 100 ms while anything runs
+            if (Math.Abs(bl - _dRum[0]) > .01 || Math.Abs(br - _dRum[1]) > .01 || Math.Abs(tl - _dRum[2]) > .01 || Math.Abs(tr - _dRum[3]) > .01
+                || any && now - _dRumTick >= 100 || !any && _dRumTick != 0)
+                if (WinUsbGipTransport.Shared.Rumble(bl, br, tl, tr)) { _dRum[0] = bl; _dRum[1] = br; _dRum[2] = tl; _dRum[3] = tr; _dRumTick = any ? now : 0; }
+            XboxSensa.SetRumble(bl, br);
+        }
+        else if (_outputMode == WolverineControllerMode.Xbox && StrictHide)
         {
             // GameInput cannot see the pad here: body motors through XInput; the trigger motors get the Sensa frame only.
             if (_xboxXInputSlot < 0) return;

@@ -2432,11 +2432,11 @@ public partial class MainWindow : Window
                 : string.Join(" · ", present.ConvertAll(i => (i.Id.EndsWith("0001") ? "kablosuz adaptör" : "kablo") + ": " +
                     (i.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase) ? "WinUSB (doğrudan mod)" : i.Service)));
             int recorded = DirectModeDriver.LoadState().Count;
-            // direct mode feeds the strict virtual pad bridge (Xbox 360 / Series / PS4); the DualSense bridge and the pad
-            // itself read XInput, which a WinUSB pad does not have (2026-11-22: DualSense selected, nothing worked)
-            bool needsVirtualXbox = present.Exists(i => i.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase)) &&
-                _output is GameOutput.DualSense or GameOutput.Physical;
-            DirectModeStatus.Text = (needsVirtualXbox ? "⚠ Doğrudan mod yalnız Xbox Series / Xbox 360 / PS4 seçiliyken çalışır: ana sayfada Xbox Series'i seç. · " : "") +
+            // direct mode feeds RW3's virtual pads (Xbox 360 / Series / PS4 / DualSense); the pad itself ("Physical")
+            // reads XInput, which a WinUSB pad does not have
+            bool needsVirtualPad = present.Exists(i => i.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase)) &&
+                _output is GameOutput.Physical;
+            DirectModeStatus.Text = (needsVirtualPad ? "⚠ Doğrudan modda oyun kolu RW3'ün sanal kolundan görür: ana sayfada Xbox Series, DualSense, Xbox 360 veya PS4 seç. · " : "") +
                 list + (recorded > 0 ? $" · kayıtlı {recorded} geçiş" : "") +
                 (WinUsbGipTransport.Shared.IsOpen ? " · GIP borusu: " + WinUsbGipTransport.Shared.Summary : "");
         }

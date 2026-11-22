@@ -409,7 +409,10 @@ public sealed class SensaStereoPrototype : IDisposable
                     trigL = Math.Max(trigL, synthTrigL); trigR = Math.Max(trigR, synthTrigR);
                 }
                 synthTrigL *= synthDecay; synthTrigR *= synthDecay;
-                bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008;
+                // Game rumble (direct mode): the Wolverine renders body rumble on the palm actuators, which go quiet while
+                // RW3 streams Sensa frames, so the rumble is mixed into the palm stream (left 55 Hz, right 120 Hz).
+                var (rumL, rumR) = gipMode ? XboxSensa.Rumble() : (0, 0);
+                bool active = leftOn || rightOn || trigL > 0.008 || trigR > 0.008 || rumL > 0.01 || rumR > 0.01;
                 if (active && !wasActive) next = now;      // first frame of a sound: no wait
                 bool sendFrame = active || silenceToSend > 0;
                 if (sendFrame && gipMode)
@@ -421,6 +424,7 @@ public sealed class SensaStereoPrototype : IDisposable
                         bool haveSpectrum = (multibandMode || hybridMode) && !manual && Features.TryTakeSpectrum(out ls, out rs);
                         int ln = mln > 0 ? mln : leftOn ? DirectBands(fl, la, ls, haveSpectrum, multibandMode, hybridMode, lPolicy, lHold, level, now, lBands) : 0;
                         int rn = mrn > 0 ? mrn : rightOn ? DirectBands(fr, ra, rs, haveSpectrum, multibandMode, hybridMode, rPolicy, rHold, level, now, rBands) : 0;
+                        ln = AddRumbleBand(lBands, ln, rumL, 55); rn = AddRumbleBand(rBands, rn, rumR, 120);
                         int length = SensaXboxFrameEncoder.Encode(lBands.AsSpan(0, ln), rBands.AsSpan(0, rn),
                             records && leftOn ? DirectSensaMapping.Hit(fl, level) : null, records && rightOn ? DirectSensaMapping.Hit(fr, level) : null,
                             trigL, trigR, xframe);
@@ -491,6 +495,18 @@ public sealed class SensaStereoPrototype : IDisposable
     /// Hybrid: HybridOutputPolicy decides per frame; standard frames of a mixed sound use its
     /// strongest real component as pitch. Total strength across bands is kept ≤ 1.
     /// </summary>
+    /// <summary>Adds the game's body rumble to one palm as a steady band (a palm plays at most two bands: a stronger
+    /// rumble replaces the weaker second band).</summary>
+    internal static int AddRumbleBand(SensaBand[] bands, int n, double strength, double hz)
+    {
+        if (!(strength > 0.01)) return n;
+        double a = Math.Clamp(strength, 0, 1);
+        var band = new SensaBand(a, a, a, a, SensaFrameEncoder.PitchOf(hz));
+        if (n < 2) { bands[n] = band; return n + 1; }
+        if (Math.Max(bands[1].A0, bands[1].A2) < a) bands[1] = band;
+        return n;
+    }
+
     private int DirectBands(in SideFeatures f, double[] points, in HapticSpectrum spectrum, bool haveSpectrum,
         bool multibandMode, bool hybridMode, HybridOutputPolicy policy, PitchHold hold, double level, double now, SensaBand[] bands)
     {

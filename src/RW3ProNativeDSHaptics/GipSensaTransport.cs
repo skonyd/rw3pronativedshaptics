@@ -19,6 +19,7 @@ public static class XboxSensa
     /// <summary>The engine has an open GIP route and sends Xbox-mode Sensa frames.</summary>
     public static volatile bool Active;
     private static long _triggers, _triggerTick;
+    private static long _rumble, _rumbleTick;
     private static int _maxSentL, _maxSentR;
 
     /// <summary>Engine: raw trigger strengths (0..63) of a frame it sent; the periodic log reads and resets the maxima.</summary>
@@ -46,6 +47,22 @@ public static class XboxSensa
     {
         if (Environment.TickCount64 - Interlocked.Read(ref _triggerTick) > maxAgeMs) return (0, 0);
         long v = Interlocked.Read(ref _triggers);
+        return (((v >> 16) & 0xFFFF) / 65535.0, (v & 0xFFFF) / 65535.0);
+    }
+
+    /// <summary>Bridge → engine (direct mode): body-rumble strengths 0..1, played in the palms.</summary>
+    public static void SetRumble(double left, double right)
+    {
+        static int Q(double v) => (int)Math.Round((double.IsFinite(v) ? Math.Clamp(v, 0, 1) : 0) * 65535);
+        Interlocked.Exchange(ref _rumble, ((long)Q(left) << 16) | (uint)Q(right));
+        Interlocked.Exchange(ref _rumbleTick, Environment.TickCount64);
+    }
+
+    /// <summary>The latest body-rumble strengths, or zero when the bridge has not published for <paramref name="maxAgeMs"/>.</summary>
+    public static (double Left, double Right) Rumble(long maxAgeMs = 100)
+    {
+        if (Environment.TickCount64 - Interlocked.Read(ref _rumbleTick) > maxAgeMs) return (0, 0);
+        long v = Interlocked.Read(ref _rumble);
         return (((v >> 16) & 0xFFFF) / 65535.0, (v & 0xFFFF) / 65535.0);
     }
 }
