@@ -93,6 +93,12 @@ were checked against the previous validation; pinned inputs and tool
 sources were checked before the last four stages resumed. This is
 recorded as execution recovery, not a single uninterrupted run.
 
+The later [RGB/SPI extension](RGB_SPI_REPLAY.md) executes the original
+FLEXCOMM9 initializer, FIFO descriptors and callbacks in selected GPIO
+states. The missing-SPI controls in this older stage are retained as
+original fixture boundaries. GPIO output/delay, real pin meanings and
+full production startup remain open in the extension too.
+
 ## Reproduce and next step
 
 ```powershell

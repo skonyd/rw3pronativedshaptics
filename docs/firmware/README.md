@@ -103,6 +103,13 @@ a second raw-gate state. Seven stock/inactive-candidate pairs compare
 successful setup, identity retries and original timeout cleanup. Two
 remaining states now stop at FLEXCOMM9; full boot and physical timing
 remain open. Busy-wait clock quanta are explicitly supplied, not CPU cycles.
+The [RGB/SPI continuation](RGB_SPI_REPLAY.md) supplies a strict eight-entry
+SPI9 FIFO, original global DMA/reset and RGB setup, real TX/RX descriptor
+chains and paired IRQ callbacks. It compares RGB bytes with an independent
+symbol oracle and exercises shared SPI/I2S completion during haptics.
+Stock error callbacks can set ready without sending data; this is retained
+as a failure of ready-only evidence, not a successful delivery. Selected
+GPIO states are covered; high-P3_17 output/delay and physical timing stay open.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -110,10 +117,12 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-loop-i2c.json)
-preserves the 21-stage result, input/source hashes, unchanged module
-and seven foreground-I2C scenario pairs. The preceding 20 reports
-are unchanged; execution recovery after a tool interruption is explicit.
+The [latest 2026-11-23 validation summary](validation/20261123-rgb-spi.json)
+preserves the 22-stage result, unchanged preceding 21 reports, input/
+source hashes and unchanged module. The RGB stage has 780 codec cases,
+four initial gate states, five audio cases and explicit failure boundaries.
+The [I2C summary](validation/20261122-loop-i2c.json) retains the earlier
+21-stage result and its execution-recovery metadata.
 The [earlier loop summary](validation/20261122-loop.json) retains the
 20-stage result with its original missing-I2C controls. The
 [watchdog summary](validation/20261122-watchdog.json) retains the 19-stage

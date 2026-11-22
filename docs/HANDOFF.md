@@ -1,6 +1,6 @@
 # Handoff: where the work stands (for any AI tool)
 
-Updated 2026-11-22. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
+Updated 2026-11-23. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
 Cursor…). This page says **what was done, where it lives, what phase we are in and what comes next**. Rules stay
 in [AGENTS.md](../AGENTS.md); behaviour facts in [STATUS.md](STATUS.md); every test and its result in
 [research/EXPERIMENTS.md](research/EXPERIMENTS.md). Update this page when the phase changes.
@@ -222,6 +222,29 @@ passes 21/21 (E-20261122-71); the preceding 20 reports are identical,
 and the new stage matches its optimized-Python run. Execution was
 interrupted after 17 stages; the final four resumed after pinned-input,
 source and completed-report checks. Recovery is recorded in the JSON.
+
+RGB/SPI continuation (E-20261123-90): read
+[RGB_SPI_REPLAY.md](firmware/RGB_SPI_REPLAY.md). The earlier FLEXCOMM9
+boundary belongs to an original RGB serializer/SPI DMA path, separate
+from the modeled FLEXCOMM5 radio control path. The new master FIFO has
+eight entries/SIZE=1 per UM10912, not the USART description in the SDK
+header. Execute original global DMA_Init/reset, reconstruct I2S handles,
+then original SPI/RGB setup; do not merely write a controller-enable bit.
+The test checks descriptors, supplied MISO and independent encoded MOSI,
+paired callbacks and shared SPI/I2S IRQs. High P3_17 with USB events stops
+at 0xD7F8/0x4008C028 after 19 loops for both P0_23 levels; its output/delay
+path is next. Original DMA ERRINT callbacks can also report application
+success/ready with zero FIFO clocks; preserve this failure, define custom
+firmware error handling and never treat ready as physical delivery proof.
+The selected GPIO/input state is explicit; no full boot/timing is claimed.
+The [latest full validation](firmware/validation/20261123-rgb-spi.json)
+passes 22/22 (E-20261123-91), with the preceding 21 reports unchanged
+and identical normal/optimized new-stage output. It has 780 RGB cases,
+64 idle iterations, 25 rejection controls and five active audio cases
+(795 iterations, 41 shared IRQ batches, 11,395 checked IRQ returns,
+45 independent frame checks). Module bytes remain unchanged. Next
+model high-P3_17 GPIO output/delay and preserve SPI DMA error status
+in a future candidate; whole-device/flashable flags remain false.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

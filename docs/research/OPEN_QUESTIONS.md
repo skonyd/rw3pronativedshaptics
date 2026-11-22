@@ -156,9 +156,22 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   through original callback registration and the real IRQ17 vector. The
   (1,0) raw-gate fixture now completes, with original identity retries
   and timeout cleanup; two (0,*) cases stop later at PC 0x20672 reading
-  FLEXCOMM9 SPI FIFOCFG address 0x4009AE00. Connect its actual
-  driver/FIFO/DMA/peer state (separate from the existing FLEXCOMM5 path),
-  extend active audio to (1,0), and establish the raw flags' real meanings.
+  FLEXCOMM9 SPI FIFOCFG address 0x4009AE00. E-20261123-90 now follows
+  the original RGB serializer and SPI9 DMA 22/23, separately from the
+  FLEXCOMM5 radio control replay. Global DMA initialization/reset and
+  I2S reconstruction precede it. The selected low-GPIO fixtures support
+  this path and active audio in (1,0); the raw flags/pin meanings remain
+  unverified. With P3_17 high and USB events, both P0_23 levels stop at
+  0xD7F8 writing GPIO 0x4008C028 after 19 iterations. Model this output
+  and its following delay/power state, then extend continuous scheduling.
+  SPI DMA error flags also expose a delivery-evidence gap: original driver
+  callbacks receive transfer-done=0 but still publish application status 0
+  and ready with no FIFO clocks. Future custom firmware must preserve
+  errors and define abort/retry; do not accept ready alone as delivery.
+  E-20261123-91 passes all 22 stages, with unchanged prior 21 reports
+  and full normal/optimized RGB equality. Five active audio cases
+  cover 41 shared IRQ batches and 45 independent frame checks, but
+  the high-GPIO and real timing/error-safety limits above remain open.
   The I2C wait schedule supplies 125us logical quanta, not CPU cycle timing.
   E-20261122-71 passes all 21 stages, with prior 20 reports unchanged
   and normal/optimized I2C equality; the saved run records validated

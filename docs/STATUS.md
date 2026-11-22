@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-22. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-23. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Firmware lab
@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 21 stages passed with the local pinned images on 2026-11-22,
+All 22 stages passed with the local pinned images on 2026-11-23,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-loop-i2c.json)
+The [public validation summary](firmware/validation/20261123-rgb-spi.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -270,6 +270,24 @@ identical. The complete new stage also matches under optimized Python.
 A tool/process interruption occurred after 17 stages; inputs/code and
 saved reports were checked before resuming the final four stages.
 The public validation records that recovery explicitly.
+The [RGB/SPI continuation](firmware/RGB_SPI_REPLAY.md), 2026-11-23,
+executes original global DMA initialization, idle register reset, I2S
+reconstruction and SPI9/RGB setup. It checks real generated descriptors,
+FIFO bytes and paired DMA callbacks, rather than only the ready flag.
+All four initial raw-gate combinations now have a bounded idle-loop
+fixture. Selected low-GPIO audio fixtures combine original I2S/SPI DMA
+handlers, actual Sensa main dispatch and explicit original RGB boundary
+calls. Physical clock/bus timing and a real USB RGB-command IRQ remain open.
+Two high-P3_17 GPIO variants still stop at 0xD7F8/0x4008C028, not full-run
+successes. Supplied SPI DMA ERRINT flags reveal that stock callbacks can
+set ready without FIFO data; error propagation for custom firmware is
+still required. No stock code is patched to erase this observation.
+The complete suite passes 22/22 (E-20261123-91); all 21 preceding
+reports remain identical. Normal/optimized RGB-stage reports match.
+The new stage covers 780 RGB cases, 64 idle iterations across four
+initial gate states, 25 rejection controls and five active audio cases.
+Those audio cases run 795 iterations, 41 combined SPI/I2S IRQ batches,
+11,395 checked IRQ returns and 45 independently checked Sensa frames.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen
