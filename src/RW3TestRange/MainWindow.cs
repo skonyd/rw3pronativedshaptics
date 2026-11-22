@@ -81,7 +81,7 @@ public sealed class MainWindow : Window
         title.Children.Add(new TextBlock { Text = "RW3 test oyunu • Xbox ve DualSense destekli", Style = S("Hint") });
         header.Children.Add(title);
         var tabs = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (screen, text) in new[] { (Screen.Setup, "Hazırlık"), (Screen.Game, "Oyun"), (Screen.PadTest, "Tuş testi"), (Screen.Guided, "Geri bildirim testi") })
+        foreach (var (screen, text) in new[] { (Screen.Setup, "Hazırlık"), (Screen.Game, "Oyun"), (Screen.PadTest, "Tuş testi"), (Screen.Guided, "Geri bildirim testi"), (Screen.QuickTest, "Hızlı test") })
         {
             var tab = new RadioButton { Content = text, GroupName = "Tabs", Style = S("TabButton"), IsChecked = screen == Screen.Setup };
             tab.Checked += (_, _) => { if (!_syncingTabs) Enter(screen); };
@@ -192,9 +192,11 @@ public sealed class MainWindow : Window
         padTest.Click += (_, _) => Enter(Screen.PadTest);
         var guided = new Button { Content = "📳  Geri bildirim testi", Style = S("Btn"), Margin = new Thickness(0, 0, 8, 6) };
         guided.Click += (_, _) => Enter(Screen.Guided);
+        var quick = new Button { Content = "⚡  Hızlı titreşim testi", Style = S("Btn"), Margin = new Thickness(0, 0, 8, 6) };
+        quick.Click += (_, _) => Enter(Screen.QuickTest);
         var report = new Button { Content = "📄  Raporu kaydet ve aç", Style = S("SmallBtn"), Margin = new Thickness(0, 0, 8, 6), VerticalAlignment = VerticalAlignment.Center };
         report.Click += (_, _) => SaveReport(true);
-        go.Children.Add(play); go.Children.Add(padTest); go.Children.Add(guided); go.Children.Add(report);
+        go.Children.Add(play); go.Children.Add(quick); go.Children.Add(padTest); go.Children.Add(guided); go.Children.Add(report);
         right.Children.Add(Card("Başlat", "Oyun kapanınca rapor kendiliğinden yazılır; aynı dakikalardaki RW3 kaydı da eklenir.", go, _reportInfo));
 
         var rightScroll = new ScrollViewer { Content = right, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Focusable = false };
@@ -230,7 +232,16 @@ public sealed class MainWindow : Window
 
         KeyDown += OnKey;
         Closing += (_, _) => { SaveReport(false); _fb.Dispose(); _log.Dispose(); };
-        Loaded += (_, _) => { _ = Task.Run(Synth.Warm); ScanDevices(); CompositionTarget.Rendering += Frame; _log.Event("app-start", new { args }); };
+        Loaded += (_, _) =>
+        {
+            _ = Task.Run(Synth.Warm); ScanDevices(); CompositionTarget.Rendering += Frame; _log.Event("app-start", new { args });
+            // RW3's Test tab opens the quick test directly (like PowerA's test page)
+            // (explorer.exe cannot pass arguments, so RW3 leaves a fresh flag file instead of --quick)
+            string flag = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3TestRange", "quick-start.flag");
+            bool flagged = false;
+            try { if (File.Exists(flag)) { flagged = DateTime.Now - File.GetLastWriteTime(flag) < TimeSpan.FromSeconds(30); File.Delete(flag); } } catch { }
+            if (flagged || args.Any(a => a.Equals("--quick", StringComparison.OrdinalIgnoreCase))) Enter(Screen.QuickTest);
+        };
     }
 
     private static UIElement DockTop(UIElement e) { DockPanel.SetDock(e, Dock.Top); return e; }
@@ -585,6 +596,11 @@ public sealed class MainWindow : Window
         if (s == Screen.Game) { _game = new RangeGame(_fb, _cfg); _surface.Game = _game; }
         if (s == Screen.Guided) { _surface.GuidedPhase = "idle"; }
         if (s == Screen.Setup) { _fb.StopAll(); if (_fb.Speakers != null) _fb.Speakers.MusicOn = false; }
+        if (s != Screen.QuickTest && (_quickSending || _quickSound))
+        {
+            _fb.Direct(0, 0, 0, 0); _quickSending = false;
+            if (_quickSound && _fb.Speakers != null) _fb.Speakers.MusicOn = false; _quickSound = false;
+        }
         Focus();
     }
 
@@ -614,7 +630,7 @@ public sealed class MainWindow : Window
         _badgeDot.Fill = _input.Active != null ? B("Good") : B("Muted");
         if (_screen == Screen.Setup && IsActive && (_input.Pressed(Btn.RB) || _input.Pressed(Btn.LB)))
         {
-            var order = new[] { Screen.Setup, Screen.Game, Screen.PadTest, Screen.Guided };
+            var order = new[] { Screen.Setup, Screen.Game, Screen.PadTest, Screen.Guided, Screen.QuickTest };
             Enter(order[(Array.IndexOf(order, _screen) + (_input.Pressed(Btn.RB) ? 1 : order.Length - 1)) % order.Length]);
             return;
         }
@@ -636,6 +652,7 @@ public sealed class MainWindow : Window
                 break;
             case Screen.PadTest: PadTest(dt); break;
             case Screen.Guided: Guided(dt); break;
+            case Screen.QuickTest: QuickTest(dt); break;
         }
         _fb.Update(dt);
         if ((_statsTimer += dt) >= 2)
@@ -666,6 +683,40 @@ public sealed class MainWindow : Window
             else if (Keyboard.FocusedElement is Button b) b.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
     }
+
+    private bool _quickSending, _quickSound;
+    private double _quickLog;
+
+    /// <summary>PowerA-style: B + trigger = that trigger motor, A + trigger = that side's body motor, Y + RT = sound on the
+    /// default playback device (for RW3's sound → palms). Strength = how far the trigger is pulled.</summary>
+    private void QuickTest(double dt)
+    {
+        var s = _input.State;
+        float lt = 0, rt = 0, low = 0, high = 0;
+        if (s.Down(Btn.B)) { lt = s.LT; rt = s.RT; }
+        if (s.Down(Btn.A)) { low = s.LT; high = s.RT; }
+        bool sound = s.Down(Btn.Y) && s.RT > .2f;
+        if (lt + rt + low + high > .02f || _quickSending)
+        {
+            string paths = _fb.Direct(low, high, lt, rt);
+            _surface.QPaths = paths;
+            _quickSending = lt + rt + low + high > .02f;
+            if ((_quickLog += dt) >= .5 && _quickSending) { _quickLog = 0; _log.Event("quick-test", new { low, high, lt, rt, paths }); }
+        }
+        if (sound != _quickSound && _fb.Speakers != null)
+        {
+            _quickSound = sound;
+            _fb.Speakers.MusicOn = sound;
+            if (sound) _fb.Speakers.Music.Volume = .4f + .6f * s.RT;
+            _log.Event("quick-test", new { sound });
+        }
+        if (sound && _fb.Speakers != null) _fb.Speakers.Music.Volume = .4f + .6f * s.RT;
+        _surface.QLow = low; _surface.QHigh = high; _surface.QLt = lt; _surface.QRt = rt; _surface.QSound = sound;
+        if ((_quickWgi -= dt) <= 0) { _quickWgi = 1; _surface.QWgi = _fb.Wgi.Count + " · " + _fb.Wgi.Names(); }
+        _surface.MenuHold = s.Down(Btn.Menu) ? _surface.MenuHold + dt : 0;
+        if (_surface.MenuHold > 2) { _surface.MenuHold = 0; Enter(Screen.Setup); }
+    }
+    private double _quickWgi;
 
     private void PadTest(double dt)
     {

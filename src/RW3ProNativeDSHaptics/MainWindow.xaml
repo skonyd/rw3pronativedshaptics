@@ -409,6 +409,8 @@
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0">
             <Button x:Name="TestGameBtn" Content="▶  Test oyununu aç" Style="{StaticResource PrimaryBtn}" Click="TestGame_Click" Margin="0,0,0,8"/>
+            <Button x:Name="TestGameQuickBtn" Content="⚡  Hızlı titreşim testi (B/A/Y + tetik)" Style="{StaticResource Btn}" Click="TestGameQuick_Click" Margin="0,0,0,8"
+                    ToolTip="Test oyununu doğrudan hızlı testte açar: B + tetik = tetik motoru, A + tetik = rumble, Y + RT = ses (avuçlar)."/>
             <Button Content="📄  Son test raporunu aç" Style="{StaticResource SmallBtn}" HorizontalAlignment="Stretch" Click="TestGameReport_Click"/>
           </StackPanel>
           <StackPanel>

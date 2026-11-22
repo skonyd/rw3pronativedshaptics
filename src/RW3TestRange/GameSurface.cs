@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace RW3TestRange;
 
-public enum Screen { Setup, Game, PadTest, Guided }
+public enum Screen { Setup, Game, PadTest, Guided, QuickTest }
 
 /// <summary>Draws the game, the button test and the guided test with plain shapes (visuals are not the point).</summary>
 public sealed class GameSurface : FrameworkElement
@@ -59,6 +59,7 @@ public sealed class GameSurface : FrameworkElement
             case Screen.Game: DrawGame(dc); break;
             case Screen.PadTest: DrawPadTest(dc); break;
             case Screen.Guided: DrawGuided(dc); break;
+            case Screen.QuickTest: DrawQuickTest(dc); break;
         }
         Text(dc, Status, 12 * S, H - 26 * S, 12, Muted);
     }
@@ -105,6 +106,38 @@ public sealed class GameSurface : FrameworkElement
         dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(190, 0, 0, 0)), null, new Rect(0, 0, W, H));
         Text(dc, title, W / 2, H / 2 - 40 * S, 36, Brushes.White, true, TextAlignment.Center);
         Text(dc, sub, W / 2, H / 2 + 10 * S, 18, Muted, false, TextAlignment.Center);
+    }
+
+    // quick test state (set by MainWindow each frame)
+    public float QLow, QHigh, QLt, QRt;
+    public bool QSound;
+    public string QPaths = "-", QWgi = "-";
+
+    /// <summary>PowerA-style quick test: hold a face button and pull a trigger; the pull sets the strength.</summary>
+    private void DrawQuickTest(DrawingContext dc)
+    {
+        var st = Input?.State ?? default;
+        Text(dc, "Hızlı titreşim testi · " + (Input?.Active?.Name ?? "kol bekleniyor (bir tuşa bas)"), 20 * S, 14 * S, 22, Brushes.White, true);
+        Text(dc, "Bir tuşu basılı tut ve tetiği çek: ne kadar çekersen o kadar güçlü. Komut aynı anda XInput, GameInput ve Windows.Gaming.Input (PowerA'nın yolu) ile gönderilir. Çıkmak için ☰ 2 sn ya da Esc.",
+            20 * S, 46 * S, 13, Muted, false, TextAlignment.Left, W - 40 * S);
+        double cw = 250 * S, ch = 150 * S, y = 100 * S;
+        void CardBox(int i, string title, string l1, string l2, bool on)
+        {
+            double x = 20 * S + i * (cw + 14 * S);
+            dc.DrawRoundedRectangle(on ? new SolidColorBrush(Color.FromRgb(30, 90, 60)) : Panel, Line, new Rect(x, y, cw, ch), 10, 10);
+            Text(dc, title, x + 16 * S, y + 14 * S, 20, Brushes.White, true);
+            Text(dc, l1, x + 16 * S, y + 56 * S, 15, Brushes.White);
+            Text(dc, l2, x + 16 * S, y + 86 * S, 15, Brushes.White);
+        }
+        CardBox(0, "Tetik (impulse)", "B + RT  → sağ tetik", "B + LT  → sol tetik", QLt + QRt > 0);
+        CardBox(1, "Rumble", "A + RT  → sağ (küçük) motor", "A + LT  → sol (büyük) motor", QLow + QHigh > 0);
+        CardBox(2, "Ses testi (avuçlar)", "Y + RT  → hoparlörde ses", "RW3 sesi avuçlara çevirir", QSound);
+        double by = y + ch + 30 * S;
+        Bar(dc, "Sol tetik", QLt, 20 * S, by); Bar(dc, "Sağ tetik", QRt, 100 * S, by);
+        Bar(dc, "Sol motor", QLow, 200 * S, by); Bar(dc, "Sağ motor", QHigh, 280 * S, by);
+        Bar(dc, "LT", st.LT, 400 * S, by); Bar(dc, "RT", st.RT, 480 * S, by);
+        Text(dc, "Son gönderim: " + QPaths, 600 * S, by + 10 * S, 14, Brushes.White);
+        Text(dc, "WGI kolları: " + QWgi, 600 * S, by + 36 * S, 13, Muted);
     }
 
     private void DrawPadTest(DrawingContext dc)

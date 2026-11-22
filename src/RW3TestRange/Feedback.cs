@@ -35,6 +35,21 @@ public sealed class FeedbackHub : IDisposable
     public Out Enabled;
     public readonly List<XInputPad> XPads = new();
     public GameInputHub? GameInput;
+    public readonly WgiPads Wgi = new();
+
+    /// <summary>
+    /// Quick test (PowerA-style): the four motors straight to every path at once, ignoring the chosen outputs and the
+    /// rumble/trigger switches, so a single press shows which path reaches the triggers. Returns "XInput 1 · GameInput 1
+    /// · WGI 2" (how many pads took the write per path).
+    /// </summary>
+    public string Direct(float low, float high, float lt, float rt)
+    {
+        int x = 0, gi = 0, w;
+        foreach (var p in XPads) if (p.Rumble(low, high)) x++;
+        if (GameInput != null) foreach (var d in GameInput.Devices) if (!d.Sony && d.Rumble(low, high, lt, rt)) gi++;
+        w = Wgi.Rumble(low, high, lt, rt);
+        return $"XInput {x} · GameInput {gi} · WGI {w}";
+    }
     public readonly List<DualSenseHid> DualSenses = new();
     public readonly List<DualShock4Hid> Ds4s = new();
     /// <summary>"Bağlı kol (RW3'süz)": send only to real Sony pads, never to RW3's virtual ones.</summary>

@@ -4,7 +4,8 @@
        every feedback it sends, to test RW3 end to end. Independent of RW3's code on purpose. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 10.0.19041: Windows.Gaming.Input (the PowerA-style trigger path of the quick test) -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <PlatformTarget>x64</PlatformTarget>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>

@@ -956,6 +956,20 @@ public partial class MainWindow : Window
         catch (Exception ex) { NoteError("Test oyunu", ex); }
     }
 
+    /// <summary>The test game straight into its PowerA-style quick test. explorer.exe cannot pass arguments, so a fresh
+    /// flag file tells the game (it deletes it).</summary>
+    private void TestGameQuick_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3TestRange");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "quick-start.flag"), DateTime.Now.ToString("O"));
+        }
+        catch (Exception ex) { NoteError("Hızlı test", ex); }
+        TestGame_Click(sender, e);
+    }
+
     private void TestGameReport_Click(object sender, RoutedEventArgs e)
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3TestRange", "logs");
