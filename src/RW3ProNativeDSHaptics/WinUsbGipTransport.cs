@@ -92,7 +92,9 @@ public sealed class WinUsbGipTransport : IDisposable
         var buf = new byte[512];
         int errors = 0, logged = 0;
         long nextSummary = Environment.TickCount64 + 10_000, opened = Environment.TickCount64;
-        bool resetSent = false;
+        // at most one reset per RW3 run: the reset makes the pad leave and rejoin USB, the pipe reopens, and a reset on
+        // every reopen made it cycle endlessly (2026-11-22, Windows' connect/disconnect sound looping)
+        bool resetSent = Interlocked.Exchange(ref s_resetDone, 1) == 1;
         while (!_stop)
         {
             // a pad that was already connected ignores power-on until it re-announces: reset it once (no input in 1.5 s)
@@ -164,6 +166,7 @@ public sealed class WinUsbGipTransport : IDisposable
         return Send(msg);
     }
     private int _bodyLogged, _razerLogged;
+    private static int s_resetDone;
 
     /// <summary>Razer's 60-byte 0x0F packet (Sensa frame, RGB, battery…), the same bytes WGI's SendMessage carried.</summary>
     public bool SendRazer(ReadOnlySpan<byte> packet60) => IsOpen && Send(GipCodec.Razer(NextSeq(), packet60, RazerOptions));
