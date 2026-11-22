@@ -302,6 +302,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         // Interleaved PCM16, roles speakerLeft, speakerRight, hapticLeft, hapticRight = the DualSense
         // rear-channel layout the extractor already reads (channels 2/3).
         if (_stop || output.Channels != 4 || output.BitsPerSample != 16 || pcm.Length % 8 != 0) return;
+        _speaker.Push(pcm.Span);   // the controller-speaker channels 1/2 → the PC's speakers (the Wolverine has none)
         if (!_inputHealthy) return;
         var span = pcm.Span;
         float pl = 0, pr = 0;
@@ -595,7 +596,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; mode {_mode}" +
                     (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites}, " +
                         $"{(TriggerMotors ? "trigger motors" : "classic")}; max body {_wBodyL:F2}/{_wBodyR:F2} trig {_wTrigL:F2}/{_wTrigR:F2})" : "") +
-                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : "") + _delay.Take());
+                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : "") + _delay.Take() + _speaker.Take());
                 _wPullL = _wPullR = _wBodyL = _wBodyR = _wTrigL = _wTrigR = 0;
             }
             // direct mode: wake on the pad's next report (a press goes out at once), else every 4 ms for the motors
@@ -619,6 +620,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
 
     private int _pcOutputSlot = -1;
     private readonly InputDelayMeter _delay = new();
+    private readonly SpeakerForwarder _speaker = new();
     private readonly double[] _dRum = new double[4];
     private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)
@@ -727,6 +729,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             return; // retain native objects until the worker has actually exited
         }
         _input = null;
+        _speaker.Dispose();
 #if HAS_HIDMAESTRO
         _pcOutputSlot = -1;
         try { _ctrl?.Dispose(); } catch { }
