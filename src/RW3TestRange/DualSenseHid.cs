@@ -98,6 +98,9 @@ public sealed class DualSenseHid : IPadSource
     public bool AudioHaptics;
     /// <summary>Which feature reports the pad answered at open ("0x05:ok 0x09:ok 0x20:-").</summary>
     public string Features { get; private set; } = "";
+    /// <summary>The last input report as hex (first 48 bytes) and its length, for the session log.</summary>
+    public string LastRaw { get; private set; } = "";
+    public int LastRawLength { get; private set; }
 
     private DualSenseHid(string path, bool isVirtual) { Path = path; Virtual = isVirtual; }
 
@@ -178,7 +181,7 @@ public sealed class DualSenseHid : IPadSource
                 int x = buf[o + 33] | ((buf[o + 34] & 0x0F) << 8), y = (buf[o + 34] >> 4) | (buf[o + 35] << 4);
                 s.TouchX = x / 1919f; s.TouchY = y / 1079f;
             }
-            lock (_gate) { _state = s; _lastInputTick = Environment.TickCount64; InputReports++; }
+            lock (_gate) { _state = s; _lastInputTick = Environment.TickCount64; InputReports++; LastRaw = Convert.ToHexString(buf, 0, Math.Min(n, 48)); LastRawLength = n; }
         }
     }
 
