@@ -88,12 +88,25 @@ public sealed class XboxAudioGameBridge : IDisposable
     private ushort _bodyL, _bodyR;
     private long _bodyTick;
 
+    static XboxAudioGameBridge() => WinUsbGipTransport.Log = m => DiagnosticsService.Info(m);
+
     public XboxAudioGameBridge() => _output = new(frame =>
     {
         if (!Strict) { _physical.Set(frame.BodyLeft, frame.BodyRight, frame.TriggerLeft, frame.TriggerRight); return; }
         double rumble = Math.Clamp(RumblePercent, 0, 100) / 100.0;
         ushort l = (ushort)(BodyMotorLimit.Big(frame.BodyLeft * rumble) * 65535), r = (ushort)(Math.Clamp(frame.BodyRight * rumble, 0, 1) * 65535);
         long now = Environment.TickCount64;
+        if (_direct)
+        {
+            // Direct mode: all four motors in one GIP rumble on the pad's own pipe, no focus gate. On change, else every
+            // 100 ms while anything runs (the pad stops a rumble after its duration).
+            double dtl = XboxNativeMix.TriggerGain(frame.TriggerLeft, TriggerPercent), dtr = XboxNativeMix.TriggerGain(frame.TriggerRight, TriggerPercent);
+            bool any = (l | r) != 0 || dtl > .004 || dtr > .004;
+            if (l != _bodyL || r != _bodyR || Math.Abs(dtl - _wgiL) > .01 || Math.Abs(dtr - _wgiR) > .01 || any && now - _bodyTick >= 100)
+                if (WinUsbGipTransport.Shared.Rumble(l / 65535.0, r / 65535.0, dtl, dtr)) { _bodyL = l; _bodyR = r; _wgiL = dtl; _wgiR = dtr; _bodyTick = now; _xinputWrites++; }
+            XboxSensa.SetTriggers(dtl, dtr);   // the Sensa engine may add its own trigger pulses on the same pipe
+            return;
+        }
         // Only on change (or every 100 ms as a keep-alive): the loop runs every 8 ms.
         bool bodyWritten = false;
         if (_xinputSlot >= 0 && (l != _bodyL || r != _bodyR || (l | r) != 0 && now - _bodyTick >= 100))
@@ -113,6 +126,10 @@ public sealed class XboxAudioGameBridge : IDisposable
         }
     });
     private readonly WgiPadOutput _wgi = new();
+    /// <summary>Direct mode: the pad is on WinUSB and RW3 speaks GIP to it (WinUsbGipTransport).</summary>
+    private bool _direct;
+    public bool Direct => _direct;
+    private long _nextDirectOpen;
     private double _wgiL, _wgiR;
     private long _wgiTick;
     private bool _wgiTriggersOn;
@@ -238,7 +255,9 @@ public sealed class XboxAudioGameBridge : IDisposable
             throw new InvalidOperationException("HidHide hazır olmalı ve önceki gizleme geri alınmalı.");
         try
         {
-            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException("Wolverine XInput ile görünmüyor (" + SlotTable() + ")."); }
+            _direct = Strict && WinUsbGipTransport.DevicePresent() && WinUsbGipTransport.Shared.TryOpen();
+            if (_direct) DiagnosticsService.Info("Virtual Xbox pad (strict): DIRECT MODE (WinUSB GIP pipe): input, rumble, triggers and Sensa on the pad's own pipe.");
+            if (Strict) { if (!TryReadXInput(out _)) throw new InvalidOperationException(_direct ? "Doğrudan mod: Wolverine'in GIP borusu okunamıyor (" + WinUsbGipTransport.Shared.Summary + ")." : "Wolverine XInput ile görünmüyor (" + SlotTable() + ")."); }
             else if (!_physical.TryAcquire() || !_physical.TryReadPad(out _))
                 throw new InvalidOperationException("Xbox modunda tek Wolverine gerekli. " + _physical.LastError);
             if (!synthetic)
@@ -263,11 +282,12 @@ public sealed class XboxAudioGameBridge : IDisposable
                 _hideOwned = true;
                 Interlocked.Increment(ref s_hidersAlive);
                 // Strict also runs in PC mode (the pad is XInput there too): hide whichever nodes the pad has now.
-                HidHideControl.HidePad(null, xboxOnly: !Strict || WolverineModeControl.Detect() == WolverineControllerMode.Xbox);
+                // Direct mode: Windows' controller stack does not have the pad at all, nothing to hide from games
+                if (!_direct) HidHideControl.HidePad(null, xboxOnly: !Strict || WolverineModeControl.Detect() == WolverineControllerMode.Xbox);
                 if (Strict)
                     try { DiagnosticsService.Info("Virtual Xbox pad (strict): " + HidHideControl.DisallowApp(HidHideControl.GameInputServicePath)); }
                     catch (Exception ex) { DiagnosticsService.Info("Virtual Xbox pad (strict): GameInputSvc " + ex.Message); }
-                if (!HidHideControl.RestorePending || !(Strict ? TryReadXInput(out _) : _physical.TryReadPad(out _)))
+                if (!_direct && (!HidHideControl.RestorePending || !(Strict ? TryReadXInput(out _) : _physical.TryReadPad(out _))))
                     throw new InvalidOperationException("Gizleme sonrası Wolverine giriş yolu doğrulanamadı.");
 #else
                 throw new InvalidOperationException("HIDMaestro SDK bu derlemede yok.");
@@ -532,7 +552,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         nextLog = now + 10_000;
                         string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                         DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
-                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
+                            $"{(_direct ? "DIRECT " + WinUsbGipTransport.Shared.Summary + ", " : "")}XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
                             $"INPUT physical changes {_physChanges} ({_physSeen.TakeNote()}) → virtual XInput {VirtualXInputNote()} ({_virtSeen.TakeNote()}) → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
                             (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
@@ -616,6 +636,13 @@ public sealed class XboxAudioGameBridge : IDisposable
     private bool TryReadXInput(out XInputPad pad)
     {
         pad = default;
+        if (_direct)
+        {
+            // direct mode: the pad's own GIP pipe; after a replug reopen it (at most every second)
+            var t = WinUsbGipTransport.Shared;
+            if (!t.IsOpen && Environment.TickCount64 >= _nextDirectOpen) { _nextDirectOpen = Environment.TickCount64 + 1000; t.TryOpen(); }
+            return t.TryReadPad(out pad);
+        }
         int slot = _xinputSlot;
         if (slot < 0)
         {

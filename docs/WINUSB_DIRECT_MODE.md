@@ -1,7 +1,8 @@
 # Direct mode (WinUSB): RW3 drives the Wolverine without Windows' controller stack
 
-Status: **planned, phase 1 in progress** (2026-11-22). Nothing here changes a driver until the user presses the
-button in Settings and confirms.
+Status (2026-11-22): **phases 1-4 implemented, not yet tested on hardware.** Nothing here changes a driver until the
+user presses the button in Settings and confirms. Code: `GipCodec.cs`, `WinUsbGipTransport.cs`, `DirectModeDriver.cs`,
+the direct branch in `XboxAudioGameBridge.cs` and `GipSensaTransport.cs`, Settings in `MainWindow.xaml(.cs)`.
 
 ## Why
 

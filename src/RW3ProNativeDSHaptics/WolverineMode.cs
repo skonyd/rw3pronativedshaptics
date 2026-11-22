@@ -50,6 +50,8 @@ public static class WolverineModeControl
         var nodes = HidHideControl.PadGameNodes();
         if (nodes.Any(n => n.Contains("PID_0A4C", StringComparison.OrdinalIgnoreCase))) return WolverineControllerMode.Pc;
         if (nodes.Any(n => n.Contains("PID_0A3F", StringComparison.OrdinalIgnoreCase))) return WolverineControllerMode.Xbox;
+        // direct mode (docs/WINUSB_DIRECT_MODE.md): the Xbox-mode pad is on WinUSB, without XInput/HID nodes
+        if (WinUsbGipTransport.DevicePresent()) return WolverineControllerMode.Xbox;
         return WolverineControllerMode.NotFound;
     }
 

@@ -40,6 +40,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/HapticModePolicy.cs" Link="HapticModePolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/GameOutput.cs" Link="GameOutput.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/GipCodec.cs" Link="GipCodec.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/WinUsbGipTransport.cs" Link="WinUsbGipTransport.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/DemoRoutePolicy.cs" Link="DemoRoutePolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/MultiResolutionSpectrumAnalyzer.cs" Link="MultiResolutionSpectrumAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPanTest.cs" Link="AudioPanTest.cs" />

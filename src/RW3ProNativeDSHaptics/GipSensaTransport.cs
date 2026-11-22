@@ -73,12 +73,15 @@ public sealed class GipSensaTransport
     public long FramesSent { get; private set; }
     public string? LastError { get; private set; }
 
-    public bool IsOpen => Volatile.Read(ref _provider) is { IsConnected: true };
+    /// <summary>Open through WGI's custom GIP provider, or (direct mode, docs/WINUSB_DIRECT_MODE.md) on the pad's own WinUSB
+    /// GIP pipe, where Windows' focus gate does not apply.</summary>
+    public bool IsOpen => WinUsbGipTransport.Shared.IsOpen || Volatile.Read(ref _provider) is { IsConnected: true };
 
     /// <summary>Registers the factory once (process-wide); returns whether a connected controller is available now.
     /// Windows hands the provider over asynchronously, so a first call usually returns false.</summary>
     public bool TryOpen()
     {
+        if (WinUsbGipTransport.DevicePresent() && WinUsbGipTransport.Shared.TryOpen()) return true;   // direct mode
         if (Interlocked.Exchange(ref _registered, 1) == 0)
         {
             try { GameControllerFactoryManager.RegisterCustomFactoryForGipInterface(new Factory(this), RazerInterface); }
@@ -89,6 +92,15 @@ public sealed class GipSensaTransport
 
     public bool Send(ReadOnlySpan<byte> frame)
     {
+        if (WinUsbGipTransport.Shared.IsOpen)
+        {
+            // direct mode: the same 60-byte Razer packet, straight on the pad's GIP pipe
+            Span<byte> packet = stackalloc byte[SensaXboxFrameEncoder.GipPacketLength];
+            SensaXboxFrameEncoder.BuildGipPacket(frame, _tx++, packet);
+            bool ok = WinUsbGipTransport.Shared.SendRazer(packet);
+            if (ok) FramesSent++;
+            return ok;
+        }
         var p = Volatile.Read(ref _provider);
         if (p == null) return false;
         try

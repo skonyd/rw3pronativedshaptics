@@ -339,7 +339,7 @@ public partial class MainWindow : Window
             GipSensaTransport.Shared.TryOpen();
             UpdateRgbPreviewUi();
         }
-        if (TabSettings.IsChecked == true && _initialized) await RefreshVirtualControllerAsync();
+        if (TabSettings.IsChecked == true && _initialized) { RefreshDirectModeStatus(); await RefreshVirtualControllerAsync(); }
     }
 
     // ───────────────────────── Ayarlar: virtual DualSense (HIDMaestro) ─────────────────────────
@@ -2419,6 +2419,75 @@ public partial class MainWindow : Window
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("Series kol türü", ex); }
         DiagnosticsService.Info("Xbox Series pad type: " + OutputMatrix.SeriesProfile + ".");
         if (_output == GameOutput.XboxSeries) ApplyOutputToControls();   // VirtualProfile changed: restarts the pad
+    }
+
+    /// <summary>Settings: which Xbox-mode Wolverine instances are on WinUSB / dc1-controller and the GIP pipe state.</summary>
+    private void RefreshDirectModeStatus()
+    {
+        try
+        {
+            var inst = DirectModeDriver.Instances();
+            var present = inst.FindAll(i => i.Present);
+            string list = present.Count == 0 ? "Xbox modunda bağlı Wolverine yok"
+                : string.Join(" · ", present.ConvertAll(i => (i.Id.EndsWith("0001") ? "kablosuz adaptör" : "kablo") + ": " +
+                    (i.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase) ? "WinUSB (doğrudan mod)" : i.Service)));
+            int recorded = DirectModeDriver.LoadState().Count;
+            DirectModeStatus.Text = list + (recorded > 0 ? $" · kayıtlı {recorded} geçiş" : "") +
+                (WinUsbGipTransport.Shared.IsOpen ? " · GIP borusu: " + WinUsbGipTransport.Shared.Summary : "");
+        }
+        catch (Exception ex) { DirectModeStatus.Text = "Durum okunamadı: " + ex.Message; }
+    }
+
+    private async void DirectModeInstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (!VirtualDualSenseBridge.IsElevated)
+        {
+            DirectModeStatus.Text = "Yönetici izni gerekli: önce Xbox Series kolunu seç (RW3 yönetici olarak yeniden açılır), sonra tekrar bas.";
+            return;
+        }
+        var present = DirectModeDriver.Instances().FindAll(i => i.Present);
+        if (present.Count == 0) { DirectModeStatus.Text = "Kolu Xbox modunda bağla (kablo ya da kablosuz adaptör)."; return; }
+        string nl = Environment.NewLine;
+        var answer = System.Windows.MessageBox.Show(this,
+            "Doğrudan mod kurulsun mu?" + nl + nl +
+            "• Wolverine Windows'un Xbox sürücüsünden alınıp Microsoft'un WinUSB sürücüsüne geçer: " + string.Join(", ", present.ConvertAll(i => i.Id)) + nl +
+            "• Oyunlar kolu yalnızca RW3'ün sanal kolu olarak görür; RW3 kapalıyken kol çalışmaz." + nl +
+            "• Razer Synapse ve Xbox Aksesuarları kolu görmez; Xbox tuşu Windows'ta Game Bar açmaz." + nl + nl +
+            "Geri almak için: Ayarlar → Doğrudan modu kaldır (ya da docs/WINUSB_DIRECT_MODE.md'deki elle geri alma).",
+            "RW3 · Doğrudan mod", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        DirectModeStatus.Text = "Kuruluyor…";
+        StopAll();
+        var (ok, msg) = await Task.Run(DirectModeDriver.Install);
+        DiagnosticsService.Info("Direct mode install: " + (ok ? "ok" : "FAILED") + " · " + msg.Replace(nl, " | "));
+        RefreshDirectModeStatus();
+        System.Windows.MessageBox.Show(this, (ok ? "Doğrudan mod kuruldu." + nl + nl + "Kolu çıkarıp tak; RW3 kolu kendi bağlantısıyla açar." : "Doğrudan mod kurulamadı:") + nl + nl + msg,
+            "RW3 · Doğrudan mod", MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Error);
+        _orch.ResetRetry();
+        _ = EnsureModeRunningAsync();
+    }
+
+    private async void DirectModeRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (!VirtualDualSenseBridge.IsElevated)
+        {
+            DirectModeStatus.Text = "Yönetici izni gerekli: önce Xbox Series kolunu seç (RW3 yönetici olarak yeniden açılır), sonra tekrar bas. Ya da docs/WINUSB_DIRECT_MODE.md'deki elle geri alma.";
+            return;
+        }
+        if (System.Windows.MessageBox.Show(this, "Doğrudan mod kaldırılsın mı? Kol Windows'un Xbox sürücüsüne geri döner.", "RW3 · Doğrudan mod",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        string nl = Environment.NewLine;
+        DirectModeStatus.Text = "Kaldırılıyor…";
+        StopAll();
+        WinUsbGipTransport.Shared.Close();
+        var (ok, msg) = await Task.Run(DirectModeDriver.Remove);
+        DiagnosticsService.Info("Direct mode remove: " + (ok ? "ok" : "FAILED") + " · " + msg.Replace(nl, " | "));
+        RefreshDirectModeStatus();
+        System.Windows.MessageBox.Show(this, (ok ? "Doğrudan mod kaldırıldı." : "Kaldırma tamamlanamadı:") + nl + nl + msg +
+            (ok ? "" : nl + nl + "Elle geri alma: Aygıt Yöneticisi → Evrensel Seri Veri Yolu aygıtları → WinUsb Device → Aygıtı kaldır, sonra kolu çıkarıp tak."),
+            "RW3 · Doğrudan mod", MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Error);
+        _orch.ResetRetry();
+        _ = EnsureModeRunningAsync();
     }
 
     private void XboxStrictHide_Changed(object sender, RoutedEventArgs e)
