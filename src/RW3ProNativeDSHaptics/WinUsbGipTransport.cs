@@ -119,6 +119,8 @@ public sealed class WinUsbGipTransport : IDisposable
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
                 if (m.WantsAck) Send(GipCodec.Ack(m));
+                if (m.Command == 0x10 && m.Payload.Length >= 8 && Interlocked.Increment(ref _razerLogged) <= 10)
+                    Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} tx {m.Payload[1]} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
                     case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); break;   // (re)connected: power on again
@@ -143,8 +145,16 @@ public sealed class WinUsbGipTransport : IDisposable
         lock (_write) { pad = _pad; return IsOpen; }
     }
 
-    public bool Rumble(double bodyLeft, double bodyRight, double triggerLeft, double triggerRight) =>
-        IsOpen && Send(GipCodec.Rumble(NextSeq(), bodyLeft, bodyRight, triggerLeft, triggerRight));
+    public bool Rumble(double bodyLeft, double bodyRight, double triggerLeft, double triggerRight)
+    {
+        if (!IsOpen) return false;
+        var msg = GipCodec.Rumble(NextSeq(), bodyLeft, bodyRight, triggerLeft, triggerRight);
+        // 2026-11-22: the trigger part was felt, the body part not: log a few packets that carry body values
+        if ((bodyLeft > .05 || bodyRight > .05) && Interlocked.Increment(ref _bodyLogged) <= 6)
+            Log("Direct mode: GIP out rumble " + Convert.ToHexString(msg));
+        return Send(msg);
+    }
+    private int _bodyLogged, _razerLogged;
 
     /// <summary>Razer's 60-byte 0x0F packet (Sensa frame, RGB, battery…), the same bytes WGI's SendMessage carried.</summary>
     public bool SendRazer(ReadOnlySpan<byte> packet60) => IsOpen && Send(GipCodec.Razer(NextSeq(), packet60, RazerOptions));
