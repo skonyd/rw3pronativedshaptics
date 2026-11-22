@@ -303,6 +303,11 @@ contracts but still fails that missing type at `MainWindow.xaml.cs:2859`.
 Firmware 21/21 is an independent offline result; these failed desktop
 runs did not produce a Windows package.
 
+Published firmware-source commit `4e934a4`, CI `45072940309`, also has
+576 passing contracts but fails the existing `ChromaEffect` reference
+at `MainWindow.xaml.cs:2885` (E-20261123-92). No Windows package was
+produced; this is separate from the 22/22 offline firmware result.
+
 Published firmware-source commit `0dd1ab7`, CI `45033468390`, also has
 576 passing contracts but fails the existing `ChromaEffect` reference
 at `MainWindow.xaml.cs:2884` (E-20261122-72). No Windows package was

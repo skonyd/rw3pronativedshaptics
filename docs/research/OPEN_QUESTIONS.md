@@ -254,3 +254,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   contracts but WPF still fails CS0246 ChromaEffect at line 2884.
   Complete/review the separate pending desktop helper dependency
   before claiming a published package; firmware 21/21 is independent.
+
+- E-20261123-92: Windows CI 45072940309 on 4e934a4 has 576 passing
+  contracts but WPF still fails CS0246 ChromaEffect at line 2885.
+  Complete/review the separate pending desktop helper dependency
+  before claiming a published package; firmware 22/22 is independent.

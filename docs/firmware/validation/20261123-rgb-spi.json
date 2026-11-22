@@ -1354,5 +1354,15 @@
     "combined_spi_i2s_batches": 41,
     "independent_runtime_frame_checks": 45,
     "checked_irq_returns": 11395
+  },
+  "desktop_ci_after_source_publication": {
+    "run_id": 45072940309,
+    "source_commit": "4e934a4918348d8a81237d6edf3ea7e66300db71",
+    "conclusion": "failure",
+    "app_contracts_passed": 576,
+    "app_contracts_failed": 0,
+    "wpf_error": "CS0246 ChromaEffect missing, MainWindow.xaml.cs:2885",
+    "windows_package_produced": false,
+    "firmware_offline_stages_unchanged": 22
   }
 }
