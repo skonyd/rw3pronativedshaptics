@@ -24,6 +24,13 @@ public sealed class WinUsbGipTransport : IDisposable
 
     private SafeFileHandle? _file;
     private IntPtr _usb;
+    // GIP interrupt pipes; read from the interface (cable: OUT 0x01 / IN 0x81, E-20261122-58; the wireless adapter's
+    // descriptor was never read, so nothing is assumed for it)
+    private byte _in = 0x81, _out = 0x01;
+    private string _path = "";
+    // with the cable and the adapter both on WinUSB, which one RW3 tries (moves on when one gives no input)
+    private static int s_pathIndex;
+    private static readonly HashSet<string> s_resetPaths = new(StringComparer.OrdinalIgnoreCase);
     private Thread? _reader;
     private volatile bool _stop;
     private readonly object _write = new();
@@ -63,24 +70,29 @@ public sealed class WinUsbGipTransport : IDisposable
         {
             if (IsOpen) return true;
             if (Suspended) { State = "askıda (sürücü değişiyor)"; return false; }
+            FreeHandles();   // the reader stopped (read errors / no input): WinUSB opens a device only once
             var paths = DevicePaths();
             if (paths.Count == 0) { State = "WinUSB'de Wolverine yok"; return false; }
-            var f = CreateFile(paths[0], 0xC0000000, 3, IntPtr.Zero, 3, 0x40000080 /*OVERLAPPED|NORMAL*/, IntPtr.Zero);
+            string path = paths[(int)((uint)s_pathIndex % (uint)paths.Count)];
+            var f = CreateFile(path, 0xC0000000, 3, IntPtr.Zero, 3, 0x40000080 /*OVERLAPPED|NORMAL*/, IntPtr.Zero);
             if (f.IsInvalid) { State = "açılamadı " + Marshal.GetLastWin32Error(); f.Dispose(); return false; }
             if (!WinUsb_Initialize(f, out var usb)) { State = "WinUsb_Initialize " + Marshal.GetLastWin32Error(); f.Dispose(); return false; }
             // no selective suspend: a suspended pad answered reads with error 22 (2026-11-22)
             byte off = 0;
             WinUsb_SetPowerPolicy(usb, 0x81 /*AUTO_SUSPEND*/, 1, ref off);
+            var (pin, pout, pipes) = FindPipes(usb);
+            _in = pin; _out = pout;
             uint timeout = 250;
-            WinUsb_SetPipePolicy(usb, 0x81, 0x03 /*PIPE_TRANSFER_TIMEOUT*/, 4, ref timeout);
+            WinUsb_SetPipePolicy(usb, _in, 0x03 /*PIPE_TRANSFER_TIMEOUT*/, 4, ref timeout);
             uint wt = 100;
-            WinUsb_SetPipePolicy(usb, 0x01, 0x03, 4, ref wt);
-            _file = f; _usb = usb; _stop = false;
+            WinUsb_SetPipePolicy(usb, _out, 0x03, 4, ref wt);
+            _file = f; _usb = usb; _stop = false; _path = path;
+            Log($"Direct mode: interface 0 pipes {pipes}; using IN 0x{_in:X2} OUT 0x{_out:X2}.");
             _reader = new Thread(ReadLoop) { IsBackground = true, Name = "RW3 direct mode GIP reader" };
             _reader.Start();
             Send(GipCodec.PowerOn(NextSeq()));
             State = "açık";
-            Log("Direct mode: WinUSB GIP pipe open (" + paths[0] + "), power-on sent.");
+            Log("Direct mode: WinUSB GIP pipe open (" + path + (paths.Count > 1 ? $", 1 of {paths.Count}" : "") + "), power-on sent.");
             return true;
         }
     }
@@ -94,27 +106,37 @@ public sealed class WinUsbGipTransport : IDisposable
         long nextSummary = Environment.TickCount64 + 10_000, opened = Environment.TickCount64;
         // at most one reset per RW3 run: the reset makes the pad leave and rejoin USB, the pipe reopens, and a reset on
         // every reopen made it cycle endlessly (2026-11-22, Windows' connect/disconnect sound looping)
-        bool resetSent = Interlocked.Exchange(ref s_resetDone, 1) == 1;
+        bool resetSent;
+        lock (s_resetPaths) resetSent = !s_resetPaths.Add(_path);
+        long inputsAtOpen = Interlocked.Read(ref _inputs);
         while (!_stop)
         {
             // a pad that was already connected ignores power-on until it re-announces: reset it once (no input in 1.5 s)
-            if (!resetSent && Interlocked.Read(ref _inputs) == 0 && Environment.TickCount64 - opened > 1500)
+            if (!resetSent && Interlocked.Read(ref _inputs) == inputsAtOpen && Environment.TickCount64 - opened > 1500)
             {
                 resetSent = true;
                 Log("Direct mode: no input 1.5 s after open, sending GIP power reset (the pad re-announces).");
                 Send(GipCodec.PowerReset(NextSeq()));
+            }
+            // cable and adapter both on WinUSB: the one without the pad stays silent; try the other (the bridge reopens)
+            if (Interlocked.Read(ref _inputs) == inputsAtOpen && Environment.TickCount64 - opened > 5000 && DevicePaths().Count > 1)
+            {
+                Log("Direct mode: no input 5 s on " + _path + ", trying the other Wolverine connection.");
+                Interlocked.Increment(ref s_pathIndex);
+                State = "diğer bağlantı deneniyor";
+                break;
             }
             if (Environment.TickCount64 >= nextSummary)
             {
                 nextSummary = Environment.TickCount64 + 10_000;
                 Log("Direct mode: " + Summary + $", last pad btn 0x{_pad.Buttons:X4} LT {_pad.LeftTrigger} RT {_pad.RightTrigger} LX {_pad.LX}");
             }
-            if (!WinUsb_ReadPipe(_usb, 0x81, buf, (uint)buf.Length, out uint n, IntPtr.Zero))
+            if (!WinUsb_ReadPipe(_usb, _in, buf, (uint)buf.Length, out uint n, IntPtr.Zero))
             {
                 int e = Marshal.GetLastWin32Error();
                 if (e == 121 /*SEM_TIMEOUT*/) continue;
                 if (errors == 0 || errors % 20 == 0) Log($"Direct mode: GIP read error {e} (#{errors + 1}), resetting the pipe.");
-                WinUsb_ResetPipe(_usb, 0x81);
+                WinUsb_ResetPipe(_usb, _in);
                 // ~1 s of errors (unplugged, or the pad reset itself): close; the bridge reopens it within a second
                 if (++errors > 20) { State = "okuma hatası " + e; Log("Direct mode: GIP read failed " + e + " 20 times, closing (reopen follows)."); break; }
                 Thread.Sleep(50);
@@ -175,7 +197,6 @@ public sealed class WinUsbGipTransport : IDisposable
         return Send(msg);
     }
     private int _bodyLogged, _razerLogged;
-    private static int s_resetDone;
 
     /// <summary>Razer's 60-byte 0x0F packet (Sensa frame, RGB, battery…), the same bytes WGI's SendMessage carried.</summary>
     public bool SendRazer(ReadOnlySpan<byte> packet60) => IsOpen && Send(GipCodec.Razer(NextSeq(), packet60, RazerOptions));
@@ -185,7 +206,7 @@ public sealed class WinUsbGipTransport : IDisposable
         lock (_write)
         {
             if (_usb == IntPtr.Zero) return false;
-            bool ok = WinUsb_WritePipe(_usb, 0x01, message, (uint)message.Length, out uint w, IntPtr.Zero) && w == message.Length;
+            bool ok = WinUsb_WritePipe(_usb, _out, message, (uint)message.Length, out uint w, IntPtr.Zero) && w == message.Length;
             if (ok) Interlocked.Increment(ref _writes); else Interlocked.Increment(ref _writeFailures);
             return ok;
         }
@@ -199,13 +220,41 @@ public sealed class WinUsbGipTransport : IDisposable
         try { _reader?.Join(600); } catch { }
         lock (_write)
         {
-            if (_usb != IntPtr.Zero) { try { Send(GipCodec.Rumble(NextSeq(), 0, 0, 0, 0)); } catch { } WinUsb_Free(_usb); _usb = IntPtr.Zero; }
-            _file?.Dispose(); _file = null;
+            if (_usb != IntPtr.Zero) { try { Send(GipCodec.Rumble(NextSeq(), 0, 0, 0, 0)); } catch { } }
+            FreeHandles();
             State = "kapalı";
         }
     }
 
     public void Dispose() => Close();
+
+    private void FreeHandles()
+    {
+        if (_usb != IntPtr.Zero) { WinUsb_Free(_usb); _usb = IntPtr.Zero; }
+        _file?.Dispose(); _file = null;
+    }
+
+    /// <summary>The interrupt IN/OUT pipes of interface 0 (GIP), or the cable's 0x81/0x01 when the query fails.</summary>
+    private static (byte In, byte Out, string All) FindPipes(IntPtr usb)
+    {
+        byte pin = 0, pout = 0; var all = new List<string>();
+        if (WinUsb_QueryInterfaceSettings(usb, 0, out var d))
+            for (byte i = 0; i < d.bNumEndpoints; i++)
+                if (WinUsb_QueryPipe(usb, 0, i, out var pi))
+                {
+                    all.Add($"0x{pi.PipeId:X2}/{pi.PipeType}/{pi.MaximumPacketSize}");
+                    if (pi.PipeType != 3 /*interrupt*/) continue;
+                    if ((pi.PipeId & 0x80) != 0) { if (pin == 0) pin = pi.PipeId; } else if (pout == 0) pout = pi.PipeId;
+                }
+        return (pin != 0 ? pin : (byte)0x81, pout != 0 ? pout : (byte)0x01, all.Count > 0 ? string.Join(" ", all) : "query failed");
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct UsbInterfaceDescriptor { public byte bLength, bDescriptorType, bInterfaceNumber, bAlternateSetting, bNumEndpoints, bInterfaceClass, bInterfaceSubClass, bInterfaceProtocol, iInterface; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WinUsbPipeInformation { public int PipeType; public byte PipeId; public ushort MaximumPacketSize; public byte Interval; }
+    [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_QueryInterfaceSettings(IntPtr h, byte alt, out UsbInterfaceDescriptor d);
+    [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_QueryPipe(IntPtr h, byte alt, byte index, out WinUsbPipeInformation p);
 
     private static List<string> InterfacePaths(Guid g)
     {

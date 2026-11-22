@@ -1,7 +1,9 @@
 # Direct mode (WinUSB): RW3 drives the Wolverine without Windows' controller stack
 
-Status (2026-11-22): **phases 1-4 implemented, not yet tested on hardware.** Nothing here changes a driver until the
-user presses the button in Settings and confirms. Code: `GipCodec.cs`, `WinUsbGipTransport.cs`, `DirectModeDriver.cs`,
+Status (2026-11-22): **works on the cable** (E-20261122-65): input, the Xbox button, game rumble (also played in the
+palms), trigger motors and sound → palms, with the Xbox Series and the DualSense output, a game in front. The wireless
+adapter is next (same button; untested). Nothing here changes a driver until the user presses the button in Settings
+and confirms. Code: `GipCodec.cs`, `WinUsbGipTransport.cs`, `DirectModeDriver.cs`,
 the direct branch in `XboxAudioGameBridge.cs` and `GipSensaTransport.cs`, Settings in `MainWindow.xaml(.cs)`.
 
 ## Why
@@ -97,6 +99,14 @@ Same button again. Switching back and forth is safe: both drivers are inbox, not
 4. **Driver switch + Settings UI + direct-mode.json**, then the hardware test with the user's consent (cable first,
    then the wireless adapter).
 
-Open questions to settle on hardware: the GIP options byte Razer's 0x0F command needs (WGI sends it as
-`GipMessageClass.Command`), whether the pad needs more than power-on to start reporting, and whether the wireless
-adapter exposes the same USB GIP interface.
+Settled on the cable: Razer's 0x0F command works with options 0x00 (Razer replies 0x10, status 0x02); a pad that was
+already connected needs one GIP power reset (0x05 0x07) before it reports. Body rumble from 0x09 is not felt while RW3
+streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 Hz).
+
+## Wireless adapter
+
+The adapter is its own instance (`USB\VID_1532&PID_0A3F\0000000000000001`) and is switched by the same button while
+it is plugged in (the pad connected to it). Its USB descriptor was never read, so RW3 reads the interrupt pipes from the
+interface instead of assuming the cable's 0x01/0x81 (logged as `Direct mode: interface 0 pipes …`). With the cable and
+the adapter both on WinUSB, RW3 opens one, and moves to the other when it gives no input for 5 s. Open: whether the
+adapter passes Razer's Sensa frames (palms) on this pipe; over Windows' stack it did not (E-20261122-52…54).
