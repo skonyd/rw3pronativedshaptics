@@ -2447,6 +2447,41 @@ public partial class MainWindow : Window
         catch (Exception ex) { DirectModeStatus.Text = "Durum okunamadı: " + ex.Message; }
     }
 
+    // Login bridge (docs/WINUSB_DIRECT_MODE.md, "Sign-in screen"): the pad on the Windows sign-in screen in direct mode.
+    private async void LoginBridge_Click(object sender, RoutedEventArgs e)
+    {
+        if (!VirtualDualSenseBridge.IsElevated)
+        {
+            DirectModeStatus.Text = "Yönetici izni gerekli: önce Xbox Series kolunu seç (RW3 yönetici olarak yeniden açılır), sonra tekrar bas.";
+            return;
+        }
+        string nl = Environment.NewLine;
+        bool installed = await Task.Run(LoginBridgeTask.IsInstalled);
+        if (!installed)
+        {
+            var answer = System.Windows.MessageBox.Show(this,
+                "Kol Windows giriş ekranında da çalışsın mı?" + nl + nl +
+                "• Windows açılırken SYSTEM yetkisiyle, pencere açmadan küçük bir RW3 köprüsü başlar: kolu okur ve sanal Xbox kolu oluşturur, giriş ekranında kolla PIN / şifre girebilirsin." + nl +
+                "• Oturum açıp RW3 başlayınca köprü kolu RW3'e bırakır; RW3 ya da oturum kapanınca kolu geri alır." + nl +
+                "• Köprü yalnızca yöneticilerin değiştirebildiği klasöre kopyalanır ve oradan çalışır:" + nl + "  " + LoginBridgeTask.InstallDir + nl + nl +
+                "Kapatmak için aynı düğme: görev ve kopya silinir.",
+                "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+            DirectModeStatus.Text = "Giriş ekranı köprüsü kuruluyor…";
+            var (_, msg) = await Task.Run(LoginBridgeTask.Install);
+            DirectModeStatus.Text = msg;
+        }
+        else
+        {
+            if (System.Windows.MessageBox.Show(this, "Giriş ekranı köprüsü kaldırılsın mı? Görev ve " + LoginBridgeTask.InstallDir + " silinir.",
+                    "RW3 · Giriş ekranı", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            DirectModeStatus.Text = "Giriş ekranı köprüsü kaldırılıyor…";
+            var (_, msg) = await Task.Run(LoginBridgeTask.Uninstall);
+            DirectModeStatus.Text = msg;
+        }
+        LoginBridgeBtn.Content = await Task.Run(LoginBridgeTask.IsInstalled) ? "Giriş ekranı köprüsünü kaldır" : "Giriş ekranında da çalışsın";
+    }
+
     private async void DirectModeInstall_Click(object sender, RoutedEventArgs e)
     {
         if (!VirtualDualSenseBridge.IsElevated)
