@@ -1335,5 +1335,17 @@
     "wpf_error": "CS0246 ChromaEffect missing, MainWindow.xaml.cs:2937",
     "windows_package_produced": false,
     "scope": "separate prior desktop source commit, not GPIO firmware validation"
+  },
+  "desktop_ci_after_source_publication": {
+    "run_id": 45077139967,
+    "source_commit": "d17cbbae8b04748bc56b43eea21798c3874c42f4",
+    "conclusion": "failure",
+    "app_contracts_passed": 578,
+    "app_contracts_failed": 0,
+    "wpf_error": "CS0246 ChromaEffect missing, MainWindow.xaml.cs:2937",
+    "windows_package_produced": false,
+    "firmware_offline_stages_unchanged": 23,
+    "fresh_stages": 4,
+    "audited_reused_stages": 19
   }
 }

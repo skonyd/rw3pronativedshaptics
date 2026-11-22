@@ -308,6 +308,11 @@ at 0x10BB6/0x40088800 (FLEXCOMM2 I2C); the original caller targets slave
 Instruction budgets and a latch fixture do not establish silicon timing,
 pin direction/mux, full power-down, complete boot or flashable firmware.
 
+Published firmware-source commit `d17cbba`, CI `45077139967`, also has
+578 passing contracts but fails the existing `ChromaEffect` reference
+at `MainWindow.xaml.cs:2937` (E-20261123-102). No Windows package was
+produced; this is separate from the offline firmware validation.
+
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen
