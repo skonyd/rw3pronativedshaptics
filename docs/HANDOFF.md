@@ -135,14 +135,36 @@ Default cadence and source timeout are 12/250 stock-counter ticks; busy
 can defer stops. A stale-before-commit check fixes a race found while
 testing. Strict shared C types/state-size assertions build cleanly, and
 three separate output/cache directories produce identical module bytes.
-The [latest validation](firmware/validation/20261122-publication.json)
-records all 17 stages with module SHA256 starting `f2c5f153`, 8,464 encoder
+The [publication validation](firmware/validation/20261122-publication.json)
+records the preceding 17 stages with module SHA256 starting `f2c5f153`, 8,464 encoder
 cases and three compiled continuous streams (synthetic/wired/dongle).
 The old host-built routes stay as references. Module text is mapped in
 an 8 KiB simulator region; neither that nor private RAM is a validated
-device allocation. Next close the real counter/foreground/IRQ schedule,
-check masked worst-case timing, implement actual runtime controls and
-arbitrate non-Sensa GIP rumble/trigger feedback. No firmware was flashed.
+device allocation. The clock increment below covers the original counter;
+full foreground scheduling, masked worst-case timing, actual runtime controls
+and non-Sensa GIP rumble/trigger arbitration remain open. No firmware was flashed.
+
+Clock continuation (E-20261122-30): read
+[STOCK_CLOCK_REPLAY.md](firmware/STOCK_CLOCK_REPLAY.md).
+`replay_nxp_clock.py` now runs original MRT initialization and IRQ9 to
+advance the publisher's counter, sharing a supplied 96 MHz virtual
+schedule with stock-initialized CTIMER2/3 and DMA completions. The new
+models cover bounded repeat/one-shot/W1C behavior and reject unmodeled
+modes/reconfiguration. Four continuous streams preserve PCM, render
+palms without triggers and stop. Each steady case checks 2,226 exception
+returns; the pause case checks 2,562. A supplied 2 ms masked-copy delay
+coalesces fifteen MRT events, reaching source counter 250 at 252 ms
+virtual time. This is a modeled safety limitation, not measured stock
+execution time. Do not repair it with host counter catch-up. Next close
+full foreground scheduling, investigate an independent time source and
+measure masked worst-case timing; busy decoding remains another stop
+delay. The compiled module bytes are unchanged (`f2c5f153...`).
+The [latest full validation](firmware/validation/20261122-clock.json)
+passes all 18 stages (E-20261122-31). Four active clock flows check
+9,240 returns, plus separate silent references. Activity and final
+eight snapshots match the appropriate active/idle criteria; silent,
+missing-left and stuck-tail corruptions are rejected. Startup PWM
+120 is not the idle oracle: the silent streams end at 288/288/0/0.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

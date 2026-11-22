@@ -125,10 +125,17 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   host CPU context, and deliberately corrupted stack words are rejected.
   E-20261122-20 moves candidate Xbox packing/publication into compiled
   ARM code, with an accepted-class-16 notice, protected copy/decode and
-  a game-owner latch. Older host-built paths remain references. Next
-  close the real stock counter/foreground/IRQ schedule and measure the
-  masked decoder's worst-case timing; the 250-tick foreground safeguard
-  is not an independent watchdog and a busy decoder can delay its stop.
+  a game-owner latch. Older host-built paths remain references.
+  E-20261122-30 now advances the source counter only through original
+  MRT IRQ9 stores: every eight delivered interrupts under the initialized
+  12,000-clock MRT interval. The common 96 MHz virtual schedule includes
+  CTIMER2/3 and DMA blocks, but CPU instruction time and full main-loop
+  scheduling remain supplied/unclosed. A 2 ms masked-copy input coalesces
+  fifteen MRT events and reaches counter 250 at 252 ms virtual time;
+  never conceal that loss with host counter catch-up. Next investigate
+  an independent elapsed-time safety source, close other foreground
+  tasks and measure masked worst-case time. A busy decoder can delay
+  the foreground stop separately. See [clock limits](../firmware/STOCK_CLOCK_REPLAY.md).
   Add/verify real control commands and arbitrate separate normal GIP
   rumble/trigger feedback, which is outside the class-16 ownership latch.
   Stock reads write-only

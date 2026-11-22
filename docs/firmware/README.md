@@ -81,6 +81,11 @@ and publishes its own candidate Xbox frames with accepted-game ownership,
 protected decoding and source-age checks. The decoder-only helper now
 also explicitly selects M4. Other standalone legacy helpers are not
 claimed to have changed CPU model by this increment.
+The [stock-clock replay](STOCK_CLOCK_REPLAY.md) drives the publisher's
+counter through original MRT stores and shares a virtual schedule with
+the initialized motor timers. A masked-event test exposes counter lag;
+the foreground safeguard is not an independent wall-clock watchdog.
+Instruction time, full main-loop tasks and physical timing remain open.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -88,9 +93,11 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-publication.json)
-preserves the 17-stage result, input/source hashes, reproducible module
-hash and compiled publication results. The
+The [latest 2026-11-22 validation summary](validation/20261122-clock.json)
+preserves the 18-stage result, input/source hashes, unchanged module
+hash and stock-clock results with silent-PCM motor references. The
+[publication summary](validation/20261122-publication.json) retains the
+17-stage run and three reproducible module builds. The
 [DMA summary](validation/20261122-dma-preemption.json) retains the earlier
 16-stage result and DMA/worker results. The [FP summary](validation/20261122-fpu.json)
 retains the 15-stage result, core/FP contracts and six timer comparisons.

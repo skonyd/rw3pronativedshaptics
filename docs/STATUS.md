@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 17 stages passed with the local pinned images on 2026-11-22,
+All 18 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-publication.json)
+The [public validation summary](firmware/validation/20261122-clock.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -212,9 +212,22 @@ races pass. Synthetic and recorded wired/dongle PCM windows each play
 host-constructed candidate frames. A stale-before-commit race was found
 and fixed; the earlier module fails the new regression. Strict typed
 builds from separate output/cache directories are byte-identical.
-The foreground safeguard uses 250 stock-counter ticks, not measured ms;
-a blocked decoder can delay a stop. Masked instruction observations are
-not physical latency/WCET. Real control commands, clock/loop closure,
+The [stock-clock continuation](firmware/STOCK_CLOCK_REPLAY.md) now
+advances that counter only through original MRT IRQ9 stores, every eight
+delivered interrupts, on a common virtual schedule with CTIMER2/3 and
+DMA completions. Four 96-block flows preserve PCM and stop with palm
+positive/trigger-negative controls. Ten MRT checks/five rejections and
+four motor checks/two rejections pass. The stock timer ISR and callback
+each clear the same W1C bit; they count as one acknowledged event.
+Activity and final duty are compared with separate silent-PCM streams,
+not startup duty 120. Steady idle ends at 288/288/0/0 in this fixture;
+all-silent, missing-left and stuck-tail traces are rejected.
+A supplied 2 ms delay while masked coalesces fifteen MRT events and
+reaches source counter 250 at 252 ms virtual time. No host catch-up is
+used. This confirms the foreground safeguard is not an independent
+elapsed-time watchdog; a blocked decoder can separately delay a stop.
+CPU instruction time, full main-loop tasks and physical timing/WCET
+remain unmodeled. Real control commands, full clock/loop closure,
 separate GIP rumble/trigger arbitration, image placement, bootloader
 acceptance and recovery remain open. No loadable-image claim follows.
 The firmware suite result is separate from desktop packaging: Windows
@@ -222,7 +235,9 @@ CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen
 on parent `04f9ab3`). The local working tree builds with 575 contracts
 but includes separate, uncommitted RGB/shortcut additions; that is not
-a clean published-main build. See E-20261122-05.
+a clean published-main build. See E-20261122-05. A newer check on
+`ecc493b`, Windows CI `45021366034`, has 575 passing contracts and the
+same missing `ChromaEffect` WPF failure (E-20261122-32).
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

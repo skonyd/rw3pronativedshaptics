@@ -6,6 +6,13 @@ The C module now constructs and publishes its own candidate Sensa frames;
 the harness no longer writes those frames for this new path. Older
 host-built references remain separate regression tests.
 
+The later [stock-clock stage](STOCK_CLOCK_REPLAY.md) compares active
+motor duty and drained output with separate silent-PCM replays. This
+is stronger than this older stage's activity check against startup duty
+120: the operational idle value can differ from startup, so that older
+check alone cannot establish non-silent motor output. Its packet/decoder
+and ownership checks remain separate evidence.
+
 ## Build and run
 
 Requires Zig 0.15.2 and Unicorn 2.1.4. Keep the locally extracted stock

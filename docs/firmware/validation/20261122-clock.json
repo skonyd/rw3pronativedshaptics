@@ -1,0 +1,425 @@
+{
+  "date": "2026-11-22",
+  "scope": "offline stock and candidate replay with modeled peripherals",
+  "complete": true,
+  "passed": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "tool_source_lf_sha256": {
+    "tools/firmware/audio_haptics_core.c": "a412be2ec3ee3cdc13d7118aa2f6afc69ce9807a32f244200540216aeb913717",
+    "tools/firmware/audio_haptics_core.h": "555e424e124acc2b75ded6642c51abacb2e8b7859fa8f505a86f3d63f94676ac",
+    "tools/firmware/audio_haptics_publish.c": "754d353a6dbd3a684571c542a1f9918f4fe0bdf806fff3c207c5530e3710da81",
+    "tools/firmware/audio_haptics_tap.S": "d35054748ed6d40d31c4903215e7c9416603ab3a35de75f0cd9bde56997fdb76",
+    "tools/firmware/audio_haptics_sim.ld": "b4c37baea9685d2d008025c1a1323a09c25906a355e93740020af5d2525e2ebc",
+    "tools/firmware/build_audio_replay.ps1": "e96b4ad9aa820e87e325bb291f1cd17201f5d6d93e32ab33771ec06b6a321493",
+    "tools/firmware/cortex_m_irq.py": "074c83fe0c385047ce97d56346bcfb22c69e5afd2416b983230c7cc74bc99d09",
+    "tools/firmware/cortex_m_fpu.py": "3da7488a2f844d732eaff4e3d1f5196d0099e0982650f4191bb7b9db4e1bf706",
+    "tools/firmware/nxp_dma_status.py": "1b286205f3ea86b01bed2fd26e56abe3545a14b01c0df8eac78bc56cb41e5f1c",
+    "tools/firmware/emulate_decoder.py": "e2b5d8a0340cc102d28dcaa5336188ad7dc9f5934647bed4db51483bd05bd618",
+    "tools/firmware/replay_nxp_startup.py": "cb3c2a5bd7d09ccdf0d82b4d3c09ce69ea1534b0e907c36b2a7d924efb1fbfe9",
+    "tools/firmware/replay_nxp_exceptions.py": "97695d5fa50067f08202e7a50a42f54a4a89edbbc10862a2ecfae3401fc8c15c",
+    "tools/firmware/replay_nxp_fpu.py": "e4e3a1e915d3642ecbbb31c96eeb67688a42ae67d5627b4f41497c27b9b0ddaf",
+    "tools/firmware/replay_nxp_dma_preemption.py": "ed1efbb98883d4bc8822f2cc74e46c0fc3e2977e9fbdd2896e5ca029cb3412f2",
+    "tools/firmware/replay_nxp_publication.py": "2f6342614f9a783bb9f30169d90dda67b5495e1a99178eb8aa7b529d81bf5fa0",
+    "tools/firmware/simulate_audio_haptics.py": "ecb9e81da27e475ab3dece06842f9f9c03fa966a466856e7e024d1aa542079ca",
+    "tools/firmware/run_simulator_suite.py": "d91b4f6af9aa3dcae164ee56bad64e190fe784a88b4d3bdc2ec99da88e6bddf9",
+    "tools/firmware/nxp_mrt_model.py": "af4331f94e8274303239776a78c9883dc4f1a0df5b543690549e591aa2165416",
+    "tools/firmware/nxp_ctimer_clock.py": "3484ad6ea15cfcef4100bcbf3ff581e3112315a1fc21f6609dac9ec578c15889",
+    "tools/firmware/replay_nxp_clock.py": "161340d5da22858809e81778b4dfc93073354fe85e5751f005a270e292460477"
+  },
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-startup-i2c": true,
+    "nxp-exceptions": true,
+    "nxp-fpu-exceptions": true,
+    "nxp-dma-preemption": true,
+    "nxp-publication": true,
+    "nxp-clock": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true
+  },
+  "stage_report_sha256": {
+    "telink-startup": "63d297c4e0c80b4415d7787caead6a1b5bc893c496bee6bde27e8e53268d21b7",
+    "dongle-usb": "1815126adf0d9a0405d517c587fabca347937d973501b8ba5f92ac019352cb17",
+    "telink-radio-audio": "a39d500bc16817aef912131a3d0114e0379a00804a09b7af72a22f6f4595bf8e",
+    "telink-dongle-to-radio": "95fb5e083048436d909018f707344a5226859a3c70c650b873c18bc4fc65714e",
+    "telink-duplex-retry": "4d393c8ea49790a4d80a023d991d1205448187a943e8858b925849d5ca29ab8c",
+    "voice-usb-capture": "18a948d30b3c77c4304eb4b560a2adfdd1a1cae45d2b92b04e138492a9a97b53",
+    "telink-voice-uplink": "48798a5e4f250242fe2663ab95017dd8b827feb6a6a508efaa503da494c79d6c",
+    "controller-spi": "7fc40cf3032593dd63257e34d04729b94027ce7ec553754527cda6bbd3828b71",
+    "controller-i2s": "40bc7ba06a1d04df675dca43c6f204df48d2af562395ea873da84714550f991f",
+    "nxp-analog": "7d543b233de9aab4b7285e994c61e4e16270a1855e4a82aaa42cefc3714bb201",
+    "nxp-startup-i2c": "8a3494eb851a4626269e219a94d96b9f951c97489b774490eb5c80cd06074c29",
+    "nxp-exceptions": "c7193fd672088ed41d61cb3077185ec398f247a2f9892c45433772a841c35797",
+    "nxp-fpu-exceptions": "3abfb00852d423c89bad309b085fc777c903373f82109ca705303a05b02848cc",
+    "nxp-dma-preemption": "ea21a9e2d9cb5c2325e9c871172b11486be28bb871d3f1510b113e4a1bafc954",
+    "nxp-publication": "dc159f5b0d0dcf6f1e69c2e2dc4a573544a9af81728968cfd3bde56898a96833",
+    "nxp-clock": "7ad721748fafe6394dd23f2efeb683e63ce1b2ce3d546dc552bee36afddda270",
+    "nxp-wired-dsp": "25154b298d690ec16805cbfab3b7556c1c9a7515a8aa6bba7879f9b674342e63",
+    "nxp-dongle-dsp": "adcf221ce90d37a747f498ccff5a1be23ada9679cc3f75acf02335c9e4a3d33b"
+  },
+  "active_stereo_excerpt": 3000,
+  "compiled_module": {
+    "text_bytes": 6206,
+    "sha256": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f",
+    "toolchain": "Zig 0.15.2, thumb-freestanding-eabi, cortex_m4, -Oz, -Wall -Wextra -Werror",
+    "independent_output_cache_builds": 3,
+    "all_build_bytes_identical": true,
+    "memory_map": "8 KiB simulator-only text at 0x00100000; 128-byte publication state at 0x20024200",
+    "complete_controller_image": false,
+    "shared_state_type_size_assertions": true
+  },
+  "module_build_provenance_reference": "20261122-publication.json; unchanged module reused, not rebuilt in this clock run",
+  "stock_clock": {
+    "scope": "register-derived virtual MRT clock and original ISR stores, not physical timing",
+    "registers": {
+      "mrt": {
+        "checks": [
+          "reset_identity",
+          "interval_minus_one_readback",
+          "repeat_boundary",
+          "w1c_zero_noop",
+          "deferred_reload",
+          "force_reload_and_writeonly_load",
+          "coalesced_flag",
+          "force_stop",
+          "oneshot_and_cross_channel_ack",
+          "retained_disabled_flag"
+        ],
+        "rejected": [
+          "stall",
+          "reserved_mode",
+          "oversized_interval",
+          "multitask",
+          "readonly_timer"
+        ]
+      },
+      "motor": {
+        "checks": [
+          "match_boundary_and_reset",
+          "zero_w1c",
+          "redundant_w1c",
+          "coalesced_flag"
+        ],
+        "rejected": [
+          "reconfigure",
+          "other_match"
+        ]
+      }
+    },
+    "counters": {
+      "normal": {
+        "mrt_irqs": 160,
+        "counter_writes": 20,
+        "counter": 20,
+        "virtual_elapsed_us": 20000,
+        "checked_returns": 160
+      },
+      "masked": [
+        {
+          "mask": "primask",
+          "elapsed_us_to_counter_one": 2875,
+          "coalesced_expirations": 15,
+          "checked_returns": 8
+        },
+        {
+          "mask": "basepri",
+          "elapsed_us_to_counter_one": 2875,
+          "coalesced_expirations": 15,
+          "checked_returns": 8
+        },
+        {
+          "mask": "nvic",
+          "elapsed_us_to_counter_one": 2875,
+          "coalesced_expirations": 15,
+          "checked_returns": 8
+        }
+      ],
+      "counter_and_phase_wrap": true,
+      "nominal_mrt_period_us": 125,
+      "nominal_counter_period_us_without_loss": 1000
+    },
+    "publication": {
+      "source_stop": {
+        "counter_at_stop": 250,
+        "nominal_elapsed_us": 250000,
+        "mrt_entries": 2000,
+        "counter_writes": 250,
+        "checked_returns": 2000
+      },
+      "cadence_12_counter_ticks": true,
+      "original_game_rate_gate_11_ticks": true,
+      "masked_copy_coalescence": {
+        "elapsed_us_at_stop": 252000,
+        "firmware_counter_at_stop": 250,
+        "coalesced_expirations": 15,
+        "not_a_physical_latency_measurement": true
+      }
+    },
+    "continuous": {
+      "synthetic_stereo": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "stock_counter": 159,
+        "mrt_entries": 1272,
+        "motor_entries": [
+          636,
+          159
+        ],
+        "checked_returns": 2226,
+        "motor_w1c_writes": [
+          1272,
+          318
+        ],
+        "compiled_frames": 9,
+        "stop_frames": 1,
+        "final_eight_motor_snapshots_neutral": true,
+        "silent_pcm_reference_final_pwm": [
+          288,
+          288,
+          0,
+          0
+        ],
+        "motor_trace_rejections": [
+          "silent_output",
+          "missing_left",
+          "stuck_tail"
+        ],
+        "activity_and_stop_compared_to_separate_silent_pcm_stream": true,
+        "counter_writes_from_host_after_initialization": 0,
+        "host_constructed_candidate_frames": 0,
+        "scope": "Virtual timer events from initialized registers; DMA words and CPU execution time remain supplied"
+      },
+      "synthetic_pause": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [
+          8
+        ],
+        "underrun_selected_silence": true,
+        "stock_counter": 183,
+        "mrt_entries": 1464,
+        "motor_entries": [
+          732,
+          183
+        ],
+        "checked_returns": 2562,
+        "motor_w1c_writes": [
+          1464,
+          366
+        ],
+        "compiled_frames": 10,
+        "stop_frames": 2,
+        "final_eight_motor_snapshots_neutral": true,
+        "silent_pcm_reference_final_pwm": [
+          288,
+          288,
+          0,
+          0
+        ],
+        "motor_trace_rejections": [
+          "silent_output",
+          "missing_left",
+          "stuck_tail"
+        ],
+        "activity_and_stop_compared_to_separate_silent_pcm_stream": true,
+        "counter_writes_from_host_after_initialization": 0,
+        "host_constructed_candidate_frames": 0,
+        "scope": "Virtual timer events from initialized registers; DMA words and CPU execution time remain supplied"
+      },
+      "wired_capture": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "stock_counter": 159,
+        "mrt_entries": 1272,
+        "motor_entries": [
+          636,
+          159
+        ],
+        "checked_returns": 2226,
+        "motor_w1c_writes": [
+          1272,
+          318
+        ],
+        "compiled_frames": 9,
+        "stop_frames": 1,
+        "final_eight_motor_snapshots_neutral": true,
+        "silent_pcm_reference_final_pwm": [
+          288,
+          288,
+          0,
+          0
+        ],
+        "motor_trace_rejections": [
+          "silent_output",
+          "missing_left",
+          "stuck_tail"
+        ],
+        "activity_and_stop_compared_to_separate_silent_pcm_stream": true,
+        "counter_writes_from_host_after_initialization": 0,
+        "host_constructed_candidate_frames": 0,
+        "scope": "Captured PCM payload bytes; GIP sequence and schedule regenerated by the fixture",
+        "source_trace_sha256": "be72855cd061cd3f6096c4e6febdda0148d4e6619c59c9ae8cfd0168398a2dba",
+        "start_slot": 3000,
+        "payload_sha256": "69d2c208e1677a6b59a116b6c11ad0f9783f57d076093535606018a7f8921a57"
+      },
+      "dongle_capture": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "stock_counter": 159,
+        "mrt_entries": 1272,
+        "motor_entries": [
+          636,
+          159
+        ],
+        "checked_returns": 2226,
+        "motor_w1c_writes": [
+          1272,
+          318
+        ],
+        "compiled_frames": 9,
+        "stop_frames": 1,
+        "final_eight_motor_snapshots_neutral": true,
+        "silent_pcm_reference_final_pwm": [
+          288,
+          288,
+          0,
+          0
+        ],
+        "motor_trace_rejections": [
+          "silent_output",
+          "missing_left",
+          "stuck_tail"
+        ],
+        "activity_and_stop_compared_to_separate_silent_pcm_stream": true,
+        "counter_writes_from_host_after_initialization": 0,
+        "host_constructed_candidate_frames": 0,
+        "scope": "Captured PCM payload bytes; GIP sequence and schedule regenerated by the fixture",
+        "source_trace_sha256": "6a007763a52a48890dd6b9d00aa3d38a4e1e0c582d266bb546145e22d4877ed9",
+        "start_slot": 3000,
+        "payload_sha256": "0ad77d65664e94585209caad12cc78a8cae69fa0b23ed5f92a0e4561f52dea25"
+      }
+    },
+    "counter_write_provenance": "Only original IRQ9 stores at 0x148E0; no host clock writes after explicit initial state",
+    "clock_hz_from_stock": 96000000,
+    "stock_mrt_interval": 12000,
+    "whole_device_equivalence_proven": false,
+    "flashable_candidate_ready": false,
+    "input_sha256": {
+      "stock": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+      "dsp": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f"
+    }
+  },
+  "optimized_register_checks": {
+    "python_optimization_enabled": true,
+    "mrt_checks": 10,
+    "mrt_rejections": 5,
+    "motor_checks": 4,
+    "motor_rejections": 2,
+    "removable_asserts_in_new_sources": 0
+  },
+  "motor_positive_control_correction": {
+    "startup_pwm": [
+      120,
+      120,
+      0,
+      0
+    ],
+    "observed_silent_pcm_final_pwm": [
+      288,
+      288,
+      0,
+      0
+    ],
+    "activity_and_stop_use_separate_silent_pcm_replays": true,
+    "silent_reference_schedules": 2,
+    "active_streams": 4,
+    "active_stream_checked_returns": 9240,
+    "earlier_startup_value_comparison_alone_is_insufficient": true
+  },
+  "publication_regression": {
+    "encoder": {
+      "byte_oracle_cases": 8464,
+      "stock_decoder_cases": 32,
+      "invalid_strength_cases": 12,
+      "case_output_sha256": "40cc5bc49fcfaa33c833489b99b43bbe42ff308bb9df51c13988b22e289626e0",
+      "output_guards_and_zero_tail": true
+    },
+    "control_checks": 15,
+    "interleaving_cases": 8,
+    "original_command_hook_contracts": [
+      {
+        "case": "accepted",
+        "stock_ram_and_response_match": true
+      },
+      {
+        "case": "rate_rejected",
+        "stock_ram_and_response_match": true
+      },
+      {
+        "case": "bad_marker",
+        "stock_ram_and_response_match": true
+      },
+      {
+        "case": "oversized",
+        "stock_ram_and_response_match": true
+      }
+    ],
+    "negative_controls": [
+      "audio_publication_corruption",
+      "game_publication_corruption"
+    ]
+  },
+  "known_limits": [
+    "Lossy fixed two-band palm mapping, not raw PCM or preserved phase",
+    "One-slot PCM tap skips new haptic copies while busy",
+    "250-counter-tick stop is foreground dependent; coalesced MRT events delay counter time and decoder busy can delay stop",
+    "Virtual time advances at supplied event boundaries, not per CPU instruction; DMA word transfer is supplied"
+  ],
+  "unverified": [
+    "Full foreground/main-loop execution and other stock task flags",
+    "Physical clocks, dynamic clock gating/PLL, masked worst-case execution time and interrupt latency",
+    "An independent elapsed-time safety source",
+    "Real USB runtime controls, ordinary GIP rumble/trigger ownership and valid device memory placement",
+    "General system exceptions/faults, whole-board peripherals, second I2C peer and radio synchronization acquisition",
+    "Resident bootloader image acceptance, recovery and actuator fidelity"
+  ],
+  "desktop_packaging_note": "Separate inspected CI run 45021366034 on ecc493b: 575 contracts pass, WPF fails missing ChromaEffect (E-20261122-32). Firmware suite success is not desktop package success.",
+  "local_full_reports": "TestResults/firmware-lab/suite-20261122-clock",
+  "hardware_access": "None; pinned local stock images, unchanged original compiled simulator module and historical USB captures only"
+}
