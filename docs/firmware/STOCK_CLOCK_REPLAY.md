@@ -105,3 +105,7 @@ arbitration. Whole-board peripherals, Telink synchronization, USB/console
 authentication, physical timer clocks, validated memory placement,
 bootloader image acceptance and recovery remain separate open boundaries.
 This module is not a complete or loadable controller firmware.
+The later [watchdog/header replay](WATCHDOG_AND_LOOP_GATE.md) tests
+stock WWDT as a separate safety boundary. An enabled warning ISR can
+reload it while foreground is stalled, so it does not close the
+independent audio-stop requirement.

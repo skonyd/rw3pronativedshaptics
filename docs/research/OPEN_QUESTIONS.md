@@ -136,6 +136,17 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   an independent elapsed-time safety source, close other foreground
   tasks and measure masked worst-case time. A busy decoder can delay
   the foreground stop separately. See [clock limits](../firmware/STOCK_CLOCK_REPLAY.md).
+  E-20261122-40 follows the original loop header, watchdog setup/feed
+  and IRQ0. A specialized fixture supplies WDTOSCCTRL reset 0x140,
+  giving nominal 800 kHz and stock TC 400000. Blocked-delivery cases
+  request reset without falsely executing recovery. But the original
+  warning ISR feeds WWDT itself: explicitly enabling IRQ0 lets it
+  prevent reset while foreground/audio ownership stays stalled. Determine
+  the actual board IRQ0 enable/priority path before relying on WWDT for
+  foreground safety. Close the changed-tick tasks/background USB branch,
+  oscillator power/reset inheritance and APB/WDCLK synchronization.
+  A watchdog reset request is not a verified bootloader/actuator stop.
+  See [watchdog limits](../firmware/WATCHDOG_AND_LOOP_GATE.md).
   Add/verify real control commands and arbitrate separate normal GIP
   rumble/trigger feedback, which is outside the class-16 ownership latch.
   Stock reads write-only

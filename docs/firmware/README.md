@@ -86,6 +86,11 @@ counter through original MRT stores and shares a virtual schedule with
 the initialized motor timers. A masked-event test exposes counter lag;
 the foreground safeguard is not an independent wall-clock watchdog.
 Instruction time, full main-loop tasks and physical timing remain open.
+The [WWDT/header stage](WATCHDOG_AND_LOOP_GATE.md) adds stock watchdog
+setup, masked feed, warning IRQ and the main loop's counter gate. It
+detects terminal reset requests and shows that an enabled warning ISR
+can keep feeding WWDT during a foreground stall. Actual IRQ0 setup and
+reset/recovery remain open; this is not an independent audio-only stop.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -93,9 +98,11 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-clock.json)
-preserves the 18-stage result, input/source hashes, unchanged module
-hash and stock-clock results with silent-PCM motor references. The
+The [latest 2026-11-22 validation summary](validation/20261122-watchdog.json)
+preserves the 19-stage result, input/source hashes, unchanged module
+hash and watchdog/header results with terminal reset guards. The
+[clock summary](validation/20261122-clock.json) retains the 18-stage
+result and separate silent-PCM motor references. The
 [publication summary](validation/20261122-publication.json) retains the
 17-stage run and three reproducible module builds. The
 [DMA summary](validation/20261122-dma-preemption.json) retains the earlier

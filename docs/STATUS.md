@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 18 stages passed with the local pinned images on 2026-11-22,
+All 19 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-clock.json)
+The [public validation summary](firmware/validation/20261122-watchdog.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -230,6 +230,18 @@ CPU instruction time, full main-loop tasks and physical timing/WCET
 remain unmodeled. Real control commands, full clock/loop closure,
 separate GIP rumble/trigger arbitration, image placement, bootloader
 acceptance and recovery remain open. No loadable-image claim follows.
+The [watchdog/main-loop-header continuation](firmware/WATCHDOG_AND_LOOP_GATE.md)
+now executes original setup/feed/IRQ0 and both counter-gate branches.
+The specialized fixture supplies documented WDTOSCCTRL reset 0x140,
+nominal 800 kHz; setup yields TC 400000, warning 512, MOD 3. Thirty-four
+headers and 128 MRT returns pass. Thirteen register checks, three reset
+controls, nine rejected inputs and two stock-code/clock guards pass.
+Blocked delivery requests reset while MRT counter RAM stalls, but no
+reset/bootloader/PWM recovery is invented. If IRQ0 is explicitly enabled,
+its original warning handler reloads WWDT even with foreground stalled;
+the actual board's IRQ0 configuration remains open. This is not a new
+independent 250 ms audio-only stop. Full loop tasks, clock-domain timing,
+reset execution and physical safety remain unverified.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen

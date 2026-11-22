@@ -159,12 +159,30 @@ execution time. Do not repair it with host counter catch-up. Next close
 full foreground scheduling, investigate an independent time source and
 measure masked worst-case timing; busy decoding remains another stop
 delay. The compiled module bytes are unchanged (`f2c5f153...`).
-The [latest full validation](firmware/validation/20261122-clock.json)
+The [clock-stage validation](firmware/validation/20261122-clock.json)
 passes all 18 stages (E-20261122-31). Four active clock flows check
 9,240 returns, plus separate silent references. Activity and final
 eight snapshots match the appropriate active/idle criteria; silent,
 missing-left and stuck-tail corruptions are rejected. Startup PWM
 120 is not the idle oracle: the silent streams end at 288/288/0/0.
+
+Watchdog/loop-header continuation (E-20261122-40): read
+[WATCHDOG_AND_LOOP_GATE.md](firmware/WATCHDOG_AND_LOOP_GATE.md).
+The original header feeds WWDT and chooses changed/unchanged counter
+branches in 34 calls; the test stops before the tick tasks/background
+USB path. The specialized clock fixture supplies reset WDTOSCCTRL 0x140
+and runs original setup at nominal 800 kHz (TC 400000, warning 512).
+Blocked-source cases request reset without executing recovery. The
+original warning ISR can itself keep WWDT fed when IRQ0 is enabled,
+despite stalled foreground/audio ownership. That condition is supplied;
+the real board IRQ0 setup is not yet traced. Do not claim the hardware
+watchdog fixes the independent 250 ms audio-stop gap. APB synchronization,
+instruction time, the logical inclusive zero-edge convention and actual
+reset/actuator recovery remain unverified. The C module is unchanged.
+The [latest full validation](firmware/validation/20261122-watchdog.json)
+passes all 19 stages (E-20261122-41). The complete new stage also passes
+under optimized Python with identical output; attempted core resume
+after reset is rejected. The preceding clock report is unchanged.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

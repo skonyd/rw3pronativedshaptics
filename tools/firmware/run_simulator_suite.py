@@ -89,6 +89,7 @@ def main():
         ("nxp-dma-preemption", "replay_nxp_dma_preemption.py", (nxp, args.dsp)),
         ("nxp-publication", "replay_nxp_publication.py", (nxp, args.dsp, *publication_captures)),
         ("nxp-clock", "replay_nxp_clock.py", (nxp, args.dsp, *publication_captures)),
+        ("nxp-watchdog", "replay_nxp_watchdog.py", (nxp, args.dsp)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )
