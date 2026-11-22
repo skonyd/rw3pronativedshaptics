@@ -95,13 +95,27 @@ public sealed class XboxAudioGameBridge : IDisposable
         ushort l = (ushort)(BodyMotorLimit.Big(frame.BodyLeft * rumble) * 65535), r = (ushort)(Math.Clamp(frame.BodyRight * rumble, 0, 1) * 65535);
         long now = Environment.TickCount64;
         // Only on change (or every 100 ms as a keep-alive): the loop runs every 8 ms.
+        bool bodyWritten = false;
         if (_xinputSlot >= 0 && (l != _bodyL || r != _bodyR || (l | r) != 0 && now - _bodyTick >= 100))
         {
             var v = new XInput.Vibration { wLeftMotorSpeed = l, wRightMotorSpeed = r };
-            if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; _xinputWrites++; }
+            if (XInput.XInputSetState((uint)_xinputSlot, ref v) == 0) { _bodyL = l; _bodyR = r; _bodyTick = now; _xinputWrites++; bodyWritten = true; }
         }
-        XboxSensa.SetTriggers(XboxNativeMix.TriggerGain(frame.TriggerLeft, TriggerPercent), XboxNativeMix.TriggerGain(frame.TriggerRight, TriggerPercent));
+        double tl = XboxNativeMix.TriggerGain(frame.TriggerLeft, TriggerPercent), tr = XboxNativeMix.TriggerGain(frame.TriggerRight, TriggerPercent);
+        XboxSensa.SetTriggers(tl, tr);   // Razer Sensa frames: cable only (the wireless adapter did not pass them)
+        // The same triggers on the standard Xbox path too (wireless works, as with PowerA). An XInput write carries
+        // trigger 0, so after one the triggers are written again; then on change or every 50 ms while they run.
+        bool on = tl > .004 || tr > .004;
+        if (on || _wgiTriggersOn)
+        {
+            if (bodyWritten || !on || Math.Abs(tl - _wgiL) > .01 || Math.Abs(tr - _wgiR) > .01 || now - _wgiTick >= 50)
+                if (_wgi.Set(l / 65535.0, r / 65535.0, on ? tl : 0, on ? tr : 0)) { _wgiL = tl; _wgiR = tr; _wgiTick = now; _wgiTriggersOn = on; }
+        }
     });
+    private readonly WgiPadOutput _wgi = new();
+    private double _wgiL, _wgiR;
+    private long _wgiTick;
+    private bool _wgiTriggersOn;
 
     public bool IsRunning => _running && (Strict || _audio?.IsCapturing == true);
     public bool HasRecentSound => _audio?.HasRecentSound == true;
@@ -518,7 +532,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         nextLog = now + 10_000;
                         string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                         DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
-                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
+                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
                             $"INPUT physical changes {_physChanges} ({_physSeen.TakeNote()}) → virtual XInput {VirtualXInputNote()} ({_virtSeen.TakeNote()}) → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
                             (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
