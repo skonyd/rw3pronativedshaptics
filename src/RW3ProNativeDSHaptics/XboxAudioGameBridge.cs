@@ -111,6 +111,14 @@ public sealed class XboxAudioGameBridge : IDisposable
             if (bodyWritten || !on || Math.Abs(tl - _wgiL) > .01 || Math.Abs(tr - _wgiR) > .01 || now - _wgiTick >= 50)
                 if (_wgi.Set(l / 65535.0, r / 65535.0, on ? tl : 0, on ? tr : 0)) { _wgiL = tl; _wgiR = tr; _wgiTick = now; _wgiTriggersOn = on; }
         }
+        // Raw GIP rumble through \\.\XboxGIP (below GameInputSvc / WGI, where the focus gate sits): the experiment that
+        // may finally reach the trigger motors while a game is in front (E-20261122-56).
+        if (_gip.Ready && (on || _gipTriggersOn))
+        {
+            if (bodyWritten || !on || Math.Abs(tl - _gipL) > .01 || Math.Abs(tr - _gipR) > .01 || now - _gipTick >= 50)
+                if (_gip.Rumble(l / 65535.0, r / 65535.0, on ? tl : 0, on ? tr : 0)) { _gipL = tl; _gipR = tr; _gipTick = now; _gipTriggersOn = on; }
+                else if (!on) _gipTriggersOn = false;
+        }
         // Experiment: the same as a HID output report to the pad's XInput HID child, which may pass the focus gate that
         // drops RW3's GameInput / WGI / Sensa output while another controller app is in front (E-20261122-54).
         if (on || _hidTriggersOn)
@@ -122,6 +130,10 @@ public sealed class XboxAudioGameBridge : IDisposable
     });
     private readonly WgiPadOutput _wgi = new();
     private readonly GipHidTriggerOutput _hid = new();
+    private readonly XboxGipRawOutput _gip = new();
+    private double _gipL, _gipR;
+    private long _gipTick;
+    private bool _gipTriggersOn;
     private double _hidL, _hidR;
     private long _hidTick;
     private bool _hidTriggersOn;
@@ -302,6 +314,12 @@ public sealed class XboxAudioGameBridge : IDisposable
             {
                 try { _hid.TryOpen(); DiagnosticsService.Info("Virtual Xbox pad (strict): HID trigger path probe: " + _hid.State + " · " + _hid.Description); }
                 catch (Exception ex) { DiagnosticsService.Info("Virtual Xbox pad (strict): HID trigger path probe failed: " + ex.Message); }
+                // \\.\XboxGIP: reading the announces blocks up to a few seconds, so off the start path
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { _gip.Open(); DiagnosticsService.Info("Virtual Xbox pad (strict): raw XboxGIP path: " + _gip.State + " · " + _gip.Description); }
+                    catch (Exception ex) { DiagnosticsService.Info("Virtual Xbox pad (strict): raw XboxGIP path failed: " + ex.Message); }
+                });
             }
             _watchdog = new System.Threading.Timer(_ =>
             {
@@ -549,7 +567,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         nextLog = now + 10_000;
                         string engine = ""; try { engine = EngineProbe?.Invoke() ?? ""; } catch { }
                         DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
-                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, HID triggers {_hid.State} writes {_hid.Writes} fail {_hid.Failures}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
+                            $"XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, HID triggers {_hid.State} writes {_hid.Writes} fail {_hid.Failures}, XboxGIP {_gip.State} writes {_gip.Writes} fail {_gip.Failures}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
                             $"INPUT physical changes {_physChanges} ({_physSeen.TakeNote()}) → virtual XInput {VirtualXInputNote()} ({_virtSeen.TakeNote()}) → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
                             (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
                         _maxGameBody = _maxGameTrig = 0;
@@ -671,6 +689,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     {
         _running = false;
         try { _hid.Dispose(); } catch { }
+        try { _gip.Dispose(); } catch { }
         ForeignPads = null;
         VirtualSlot = -1;
         try { _probeThread?.Join(500); _inputProbe?.Dispose(); } catch { }
