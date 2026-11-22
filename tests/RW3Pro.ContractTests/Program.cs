@@ -1831,6 +1831,18 @@ SpectralContracts.Run(Check);
     Check(shape && locked, "Login bridge task: SYSTEM at boot, runs the Program Files copy with --login-bridge, owner objects SYSTEM/admins only");
 }
 
+// Input delay meter: one sample per new report, repeats ignored, average and worst case, reset after reading.
+{
+    long f = System.Diagnostics.Stopwatch.Frequency, t0 = 1_000_000_000;
+    var m = new InputDelayMeter();
+    m.Note(t0, t0 + f * 2 / 1000);          // 2 ms
+    m.Note(t0, t0 + f * 9 / 1000);          // same report again: ignored
+    m.Note(t0 + 10, t0 + 10 + f * 4 / 1000); // 4 ms
+    string first = m.Take(), second = m.Take();
+    Check(first.Contains("avg 3.0") && first.Contains("max 4.0") && first.Contains("(2 reports)") && second == "",
+        "Input delay meter: per new report, repeats ignored, avg/max, reset after reading");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)

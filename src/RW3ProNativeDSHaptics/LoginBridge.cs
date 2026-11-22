@@ -98,7 +98,7 @@ public static class LoginBridge
                 if (lostSince == 0) lostSince = now;
                 if (!WinUsbGipTransport.DevicePresent() && now - lostSince > 5000) return "pad gone";
             }
-            Thread.Sleep(4);
+            transport.InputArrived.WaitOne(8);   // wake on the pad's next report
         }
 #else
         return "built without HIDMaestro";

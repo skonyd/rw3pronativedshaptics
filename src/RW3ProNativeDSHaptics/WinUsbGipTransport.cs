@@ -77,6 +77,25 @@ public sealed class WinUsbGipTransport : IDisposable
 
     public static bool DevicePresent() => DevicePaths().Count > 0;
 
+    private static long s_presentAt = long.MinValue;
+    private static volatile bool s_present;
+    /// <summary><see cref="DevicePresent"/> refreshed at most once a second: the bridges ask on every loop pass
+    /// (250 times a second), and each answer is two Configuration Manager queries.</summary>
+    public static bool DevicePresentCached()
+    {
+        long now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref s_presentAt) >= 1000) { s_present = DevicePresent(); Interlocked.Exchange(ref s_presentAt, now); }
+        return s_present;
+    }
+
+    private readonly AutoResetEvent _inputArrived = new(false);
+    private long _inputStamp;
+    /// <summary>Signalled on every input report and Xbox-button message: a bridge waits on it instead of sleeping, so a
+    /// press reaches the virtual pad at once (Thread.Sleep(4) can last a whole 15.6 ms timer tick).</summary>
+    public WaitHandle InputArrived => _inputArrived;
+    /// <summary>Stopwatch timestamp of the latest input (for the bridges' input-delay figure).</summary>
+    public long LastInputStamp => Interlocked.Read(ref _inputStamp);
+
     /// <summary>Opens the first WinUSB Wolverine, starts the reader and powers the pad on. Safe to call repeatedly.</summary>
     public bool TryOpen()
     {
@@ -202,12 +221,15 @@ public sealed class WinUsbGipTransport : IDisposable
                         {
                             _pad = _pad with { Buttons = (ushort)(_guide ? _pad.Buttons | XInputPad.Guide : _pad.Buttons & ~XInputPad.Guide) };
                             _padTick = Environment.TickCount64;
+                            _inputStamp = System.Diagnostics.Stopwatch.GetTimestamp();
+                            _inputArrived.Set();
                         }
                         break;
                     case GipCodec.CmdInput:
                         if (GipCodec.TryParseInput(m.Payload, _guide, out var pad))
                         {
-                            lock (_write) { _pad = pad; _padTick = Environment.TickCount64; }
+                            lock (_write) { _pad = pad; _padTick = Environment.TickCount64; _inputStamp = System.Diagnostics.Stopwatch.GetTimestamp(); }
+                            _inputArrived.Set();
                             Interlocked.Increment(ref _inputs);
                         }
                         break;

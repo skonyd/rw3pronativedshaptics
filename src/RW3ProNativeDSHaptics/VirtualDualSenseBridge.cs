@@ -417,7 +417,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
                 ClearGameState();
                 nextAcquire = 0;
             }
-            if (_mode == WolverineControllerMode.Xbox && WinUsbGipTransport.DevicePresent() && !WinUsbGipTransport.Suspended)
+            bool directRead = false;
+            if (_mode == WolverineControllerMode.Xbox && WinUsbGipTransport.DevicePresentCached() && !WinUsbGipTransport.Suspended)
             {
                 // Direct mode (docs/WINUSB_DIRECT_MODE.md): the pad is on WinUSB, RW3 reads it over GIP. No focus gate.
                 var t = WinUsbGipTransport.Shared;
@@ -427,6 +428,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     if (t.TryOpen()) DiagnosticsService.Info("Virtual DualSense: direct mode, input/output on the pad's GIP pipe.");
                 }
                 read = t.TryReadPad(out pad);
+                directRead = read;
             }
             else if (_mode == WolverineControllerMode.Xbox && StrictHide)
             {
@@ -502,6 +504,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     axes[kv.Key] = kv.Value;
                 _verifier.RecordExpected(NowMs, DualSenseInputMapping.Expected(pad));
                 _ctrl.SubmitState(in state); // a failed virtual input submission must also stop physical output
+                if (directRead) _delay.Note(WinUsbGipTransport.Shared.LastInputStamp);
                 double lt, rt; byte rl, rr;
                 bool motors = _mode == WolverineControllerMode.Xbox && TriggerMotors;
                 int tuning = !motors ? 0 : XboxSensa.Active ? 2 : 1;
@@ -592,10 +595,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
                     $"readback {_readback?.Reports ?? 0} reports, match {_verifier.Matches}/{_verifier.Checks}; mode {_mode}" +
                     (_mode == WolverineControllerMode.Xbox ? $" (GameInput {(_xbox?.HasDevice == true ? "ok" : "no device: " + _xbox?.LastError)}, writes {XboxMotorWrites}, " +
                         $"{(TriggerMotors ? "trigger motors" : "classic")}; max body {_wBodyL:F2}/{_wBodyR:F2} trig {_wTrigL:F2}/{_wTrigR:F2})" : "") +
-                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : ""));
+                    $"; pull max L2 {_wPullL:F2} R2 {_wPullR:F2}; {_triggerNote}; {engine}" + (healed != null ? "; " + healed : "") + _delay.Take());
                 _wPullL = _wPullR = _wBodyL = _wBodyR = _wTrigL = _wTrigR = 0;
             }
-            Thread.Sleep(4);
+            // direct mode: wake on the pad's next report (a press goes out at once), else every 4 ms for the motors
+            if (directRead) WinUsbGipTransport.Shared.InputArrived.WaitOne(4); else Thread.Sleep(4);
         }
         }
         catch (Exception ex)
@@ -614,6 +618,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     }
 
     private int _pcOutputSlot = -1;
+    private readonly InputDelayMeter _delay = new();
     private readonly double[] _dRum = new double[4];
     private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)

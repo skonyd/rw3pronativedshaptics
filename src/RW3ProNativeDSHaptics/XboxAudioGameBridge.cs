@@ -81,6 +81,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     }
     private XInputPad _lastPad;
     private VirtualPadInputProbe? _inputProbe;
+    private readonly InputDelayMeter _delay = new();
     private Thread? _probeThread;
     private int _virtualXSlot = -2;
     private uint _virtualXPacket0;
@@ -521,6 +522,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         DualSenseInputMapping.Trigger(pad.LeftTrigger), DualSenseInputMapping.Trigger(pad.RightTrigger)))
                         axes[axis.Key] = axis.Value;
                     controller.SubmitState(in state);
+                    if (_direct) _delay.Note(WinUsbGipTransport.Shared.LastInputStamp);
                 }
 #endif
                 long now = Environment.TickCount64;
@@ -555,7 +557,7 @@ public sealed class XboxAudioGameBridge : IDisposable
                         DiagnosticsService.Info($"Virtual {VirtualProfile} (strict): game reports {FeedbackReports}, game max body {_maxGameBody:F2} trig {_maxGameTrig:F2}, " +
                             $"{(_direct ? "DIRECT " + WinUsbGipTransport.Shared.Summary + ", " : "")}XInput writes {_xinputWrites} (slot {_xinputSlot}), WGI triggers {_wgi.State} writes {_wgi.Writes}, foreground takes pad {ControllerFocusGuard.ForegroundTakesController()}; " +
                             $"INPUT physical changes {_physChanges} ({_physSeen.TakeNote()}) → virtual XInput {VirtualXInputNote()} ({_virtSeen.TakeNote()}) → GameInput {_inputProbe?.Device ?? "-"} changes {_inputProbe?.Changes ?? 0}" +
-                            (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}");
+                            (_inputProbe?.LastError is { Length: > 0 } pe ? $" ({pe})" : "") + $"; {engine}" + _delay.Take());
                         _maxGameBody = _maxGameTrig = 0;
                         var foreign = FindForeignPads();
                         if (foreign != ForeignPads)
@@ -563,7 +565,8 @@ public sealed class XboxAudioGameBridge : IDisposable
                         ForeignPads = foreign;
                     }
                 }
-                Thread.Sleep(8);
+                // direct mode: wake on the pad's next report (a press goes out at once), else every 8 ms
+                if (_direct) WinUsbGipTransport.Shared.InputArrived.WaitOne(8); else Thread.Sleep(8);
             }
         }
         catch (Exception ex) { Fail(ex.Message); }

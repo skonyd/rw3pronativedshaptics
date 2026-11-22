@@ -45,6 +45,7 @@
     <Compile Include="../../src/RW3ProNativeDSHaptics/LoginBridge.cs" Link="LoginBridge.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/LoginBridgeTask.cs" Link="LoginBridgeTask.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/DiagnosticsService.cs" Link="DiagnosticsService.cs" />
+    <Compile Include="../../src/RW3ProNativeDSHaptics/InputDelayMeter.cs" Link="InputDelayMeter.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/DemoRoutePolicy.cs" Link="DemoRoutePolicy.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/MultiResolutionSpectrumAnalyzer.cs" Link="MultiResolutionSpectrumAnalyzer.cs" />
     <Compile Include="../../src/RW3ProNativeDSHaptics/AudioPanTest.cs" Link="AudioPanTest.cs" />
