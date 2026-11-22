@@ -220,3 +220,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
     change this result.
   - The `101` "tail" is explained: it was the right hand's first bits.
 - **Next step:** repeat the mic A/B for transient records with the fixed encoder.
+
+## Published desktop package (2026-11-22)
+
+- E-20261122-62: CI 45028884831 on 32809ef has 575 passing contracts
+  but fails WPF CS0246 on the referenced ChromaEffect type. Review and
+  commit the missing dependency with the ongoing RGB work, then rerun
+  Windows packaging/smoke on published source. A local working-tree
+  build and the independent 20-stage firmware replay do not prove a
+  clean-main Windows package. Preserve other in-progress desktop edits.

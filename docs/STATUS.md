@@ -262,6 +262,10 @@ but includes separate, uncommitted RGB/shortcut additions; that is not
 a clean published-main build. See E-20261122-05. A newer check on
 `ecc493b`, Windows CI `45021366034`, has 575 passing contracts and the
 same missing `ChromaEffect` WPF failure (E-20261122-32).
+Latest inspected package CI `45028884831` on firmware-source commit
+`32809ef` has 575 passing contracts and the same CS0246 `ChromaEffect`
+failure at `MainWindow.xaml.cs:2790` (E-20261122-62). Firmware 20/20 is
+an independent offline result; no Windows package was produced by that run.
 Bootloader acceptance, recovery, wireless audio, pin-level PWM and integration timing
 remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 

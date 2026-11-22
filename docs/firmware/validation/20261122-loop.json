@@ -318,7 +318,16 @@
     "Later foreground I2C/peer-state integration and actual raw-gate meanings",
     "Physical button/analog mapping through complete game reports"
   ],
-  "desktop_packaging_note": "Separate Windows package status is not established by firmware replay; unrelated in-progress app work is excluded.",
+  "desktop_packaging_note": "Windows CI 45028884831 on 32809ef: 575 contracts pass; WPF fails existing missing ChromaEffect at MainWindow.xaml.cs:2790 (E-20261122-62). Firmware 20/20 is separate and no package was produced by this run.",
   "local_full_reports": "TestResults/firmware-lab/suite-20261122-loop",
-  "hardware_access": "None; offline images, unchanged original compiled module and historical captures only"
+  "hardware_access": "None; offline images, unchanged original compiled module and historical captures only",
+  "desktop_ci": {
+    "run_id": 45028884831,
+    "source_commit": "32809efdf840ce243cdacc1feefe7d2e9cec88ca",
+    "conclusion": "failure",
+    "app_contracts_passed": 575,
+    "app_contracts_failed": 0,
+    "wpf_error": "CS0246 ChromaEffect missing, MainWindow.xaml.cs:2790",
+    "windows_package_produced": false
+  }
 }
