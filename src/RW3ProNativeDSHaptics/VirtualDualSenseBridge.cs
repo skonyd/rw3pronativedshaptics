@@ -172,6 +172,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
             if (!_ctx.IsDriverInstalled || !HMContext.IsUsbipBackendAvailable) { Status = "HIDMaestro kurulu değil (Ayarlar → Sanal DualSense → Kur)."; Stop(); return false; }
             var profile = _ctx.GetProfile(VirtualControllerSetup.DualSenseCompositeProfile)
                           ?? throw new InvalidOperationException("dualsense-composite profili yok");
+            DiagnosticsService.Info("Virtual DualSense: full input report " + ArmFullInputReport(profile));
             var before = VirtualPadReadback.DualSensePaths();
             _ctrl = _ctx.CreateController(profile, "rw3pro-bridge");
             var audio = _ctrl.UsbAudio;
@@ -643,6 +644,29 @@ public sealed class VirtualDualSenseBridge : IDisposable
             lock (_peakGate) { _envStateL = _envStateR = _envL = _envR = 0; _envTick = 0; }
             _target?.ClearForSilence();
         }
+    }
+
+    /// <summary>
+    /// HIDMaestro's dualsense-composite profile describes the full DualSense report (touch points, gyro, counter,
+    /// timestamp) but arms it only through a trigger it does not list, so the virtual pad sent the short layout forever:
+    /// touch bytes 0 = a finger at (0,0) in every report, which any DualSense reader (the test range, a game parsing the
+    /// raw report) takes as a constant touch (2026-11-23, E-20261123-69: crosshair pinned to the corner, raw report
+    /// 01 80 80 80 80 00 00 00 08 00…). Its loader supports "alwaysArmed"; set it on this context's copy of the profile
+    /// (same profile id, so the same virtual device). Returns what happened, for the log.
+    /// </summary>
+    private static string ArmFullInputReport(HMProfile profile)
+    {
+        const System.Reflection.BindingFlags all = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        try
+        {
+            object? inner = profile.GetType().GetProperty("Inner", all)?.GetValue(profile);
+            object? ext = inner?.GetType().GetProperty("ExtendedReport", all)?.GetValue(inner);
+            var armed = ext?.GetType().GetProperty("AlwaysArmed", all);
+            if (ext == null || armed == null || !armed.CanWrite) return "not available (HIDMaestro changed)";
+            armed.SetValue(ext, true);
+            return "armed";
+        }
+        catch (Exception ex) { return "failed: " + ex.Message; }
     }
 
     internal static HMButton MapButtons(ushort b)
