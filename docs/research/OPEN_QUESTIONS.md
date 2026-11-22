@@ -236,3 +236,8 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   Windows packaging/smoke on published source. A local working-tree
   build and the independent 20-stage firmware replay do not prove a
   clean-main Windows package. Preserve other in-progress desktop edits.
+
+- E-20261122-72: Windows CI 45033468390 on 0dd1ab7 has 576 passing
+  contracts but WPF still fails CS0246 ChromaEffect at line 2884.
+  Complete/review the separate pending desktop helper dependency
+  before claiming a published package; firmware 21/21 is independent.

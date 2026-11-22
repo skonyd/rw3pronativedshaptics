@@ -986,5 +986,15 @@
     "tools/firmware/run_simulator_suite.py",
     "tools/firmware/replay_nxp_loop.py",
     "tools/firmware/replay_nxp_loop_i2c.py"
-  ]
+  ],
+  "desktop_ci_after_source_publication": {
+    "run_id": 45033468390,
+    "source_commit": "0dd1ab7301547cb2465cd39058896118e6afe96f",
+    "conclusion": "failure",
+    "app_contracts_passed": 576,
+    "app_contracts_failed": 0,
+    "wpf_error": "CS0246 ChromaEffect missing, MainWindow.xaml.cs:2884",
+    "windows_package_produced": false,
+    "firmware_offline_stages_unchanged": 21
+  }
 }
