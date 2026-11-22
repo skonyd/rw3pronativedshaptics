@@ -389,6 +389,11 @@ public sealed class VirtualDualSenseBridge : IDisposable
         try
         {
         state.Hat = HMHat.None;
+        // No finger on the touchpad. A DualSense marks an idle touch point with bit 7 of its id byte; with the defaults
+        // (inactive, id 0) the virtual pad reported a finger at (0,0) in every report, so a game that reads the touchpad
+        // saw a constant touch: the test range pinned its crosshair to the corner (2026-11-23, 330/330 reports).
+        state.TouchpadFinger0Active = state.TouchpadFinger1Active = false;
+        state.TouchpadFinger0Id = state.TouchpadFinger1Id = 0x80;
         _ctrl.SubmitState(in state); // neutral even when physical input is initially unavailable
         while (!_stop)
         {
