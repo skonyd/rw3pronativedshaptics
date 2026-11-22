@@ -63,6 +63,9 @@ public sealed class WinUsbGipTransport : IDisposable
             var f = CreateFile(paths[0], 0xC0000000, 3, IntPtr.Zero, 3, 0x40000080 /*OVERLAPPED|NORMAL*/, IntPtr.Zero);
             if (f.IsInvalid) { State = "açılamadı " + Marshal.GetLastWin32Error(); f.Dispose(); return false; }
             if (!WinUsb_Initialize(f, out var usb)) { State = "WinUsb_Initialize " + Marshal.GetLastWin32Error(); f.Dispose(); return false; }
+            // no selective suspend: a suspended pad answered reads with error 22 (2026-11-22)
+            byte off = 0;
+            WinUsb_SetPowerPolicy(usb, 0x81 /*AUTO_SUSPEND*/, 1, ref off);
             uint timeout = 250;
             WinUsb_SetPipePolicy(usb, 0x81, 0x03 /*PIPE_TRANSFER_TIMEOUT*/, 4, ref timeout);
             uint wt = 100;
@@ -82,14 +85,22 @@ public sealed class WinUsbGipTransport : IDisposable
     private void ReadLoop()
     {
         var buf = new byte[512];
-        int errors = 0;
+        int errors = 0, logged = 0;
+        long nextSummary = Environment.TickCount64 + 10_000;
         while (!_stop)
         {
+            if (Environment.TickCount64 >= nextSummary)
+            {
+                nextSummary = Environment.TickCount64 + 10_000;
+                Log("Direct mode: " + Summary + $", last pad btn 0x{_pad.Buttons:X4} LT {_pad.LeftTrigger} RT {_pad.RightTrigger} LX {_pad.LX}");
+            }
             if (!WinUsb_ReadPipe(_usb, 0x81, buf, (uint)buf.Length, out uint n, IntPtr.Zero))
             {
                 int e = Marshal.GetLastWin32Error();
                 if (e == 121 /*SEM_TIMEOUT*/) continue;
-                if (++errors > 20) { State = "okuma hatası " + e; Log("Direct mode: GIP read failed " + e + ", closing."); break; }
+                if (errors == 0 || errors % 20 == 0) Log($"Direct mode: GIP read error {e} (#{errors + 1}), resetting the pipe.");
+                WinUsb_ResetPipe(_usb, 0x81);
+                if (++errors > 200) { State = "okuma hatası " + e; Log("Direct mode: GIP read failed " + e + " 200 times, closing."); break; }
                 Thread.Sleep(50);
                 continue;
             }
@@ -97,6 +108,11 @@ public sealed class WinUsbGipTransport : IDisposable
             foreach (var m in GipCodec.Decode(buf.AsSpan(0, (int)n)))
             {
                 Interlocked.Increment(ref _messages);
+                if (logged < 16 && (m.Command != GipCodec.CmdInput || logged < 12))
+                {
+                    logged++;
+                    Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
+                }
                 if (m.WantsAck) Send(GipCodec.Ack(m));
                 switch (m.Command)
                 {
@@ -172,6 +188,8 @@ public sealed class WinUsbGipTransport : IDisposable
     [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_Initialize(SafeFileHandle device, out IntPtr handle);
     [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_Free(IntPtr handle);
     [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_SetPipePolicy(IntPtr h, byte pipe, uint policy, uint len, ref uint value);
+    [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_SetPowerPolicy(IntPtr h, uint policy, uint len, ref byte value);
+    [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_ResetPipe(IntPtr h, byte pipe);
     [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_ReadPipe(IntPtr h, byte pipe, byte[] buf, uint len, out uint read, IntPtr ov);
     [DllImport("winusb.dll", SetLastError = true)] private static extern bool WinUsb_WritePipe(IntPtr h, byte pipe, byte[] buf, uint len, out uint written, IntPtr ov);
 }

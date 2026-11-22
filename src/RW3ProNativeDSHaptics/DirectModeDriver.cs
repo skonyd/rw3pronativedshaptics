@@ -170,9 +170,16 @@ public static class DirectModeDriver
     }
 
     /// <summary>"Scan for hardware changes": Windows re-detects the pad and installs its best matching driver.</summary>
+    /// Asynchronous: the synchronous root rescan never returned on 2026-11-22 and left the Settings card on
+    /// "Kaldırılıyor…" although the pad was already back on dc1-controller. Then waits up to 8 s for the pad to settle.
     public static void Rescan()
     {
-        if (CM_Locate_DevNode(out uint root, null, 0) == 0) CM_Reenumerate_DevNode(root, 0x1 /*SYNCHRONOUS*/);
+        if (CM_Locate_DevNode(out uint root, null, 0) == 0) CM_Reenumerate_DevNode(root, 0x4 /*ASYNCHRONOUS*/);
+        for (int i = 0; i < 16; i++)
+        {
+            System.Threading.Thread.Sleep(500);
+            if (Instances().Exists(x => x.Present && !x.Service.Equals("WinUSB", StringComparison.OrdinalIgnoreCase))) break;
+        }
     }
 
     private static string? Property(IntPtr set, ref SP_DEVINFO_DATA did, uint prop)
