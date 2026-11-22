@@ -93,12 +93,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 19 stages passed with the local pinned images on 2026-11-22,
+All 20 stages passed with the local pinned images on 2026-11-22,
 including active stereo excerpts from wired and dongle captures in the
 PWM model. This is the modeled replay scope, not whole-device equivalence.
 Its JSON
 reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261122-watchdog.json)
+The [public validation summary](firmware/validation/20261122-loop.json)
 retains the scope, hashes, results and unverified boundaries on GitHub.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
@@ -242,6 +242,18 @@ its original warning handler reloads WWDT even with foreground stalled;
 the actual board's IRQ0 configuration remains open. This is not a new
 independent 250 ms audio-only stop. Full loop tasks, clock-domain timing,
 reset execution and physical safety remain unverified.
+The [foreground/GPIO continuation](firmware/FOREGROUND_LOOP_REPLAY.md)
+executes complete original iterations in one explicitly selected raw-gate
+fixture, reaching Sensa dispatch through the loop itself. Twenty-nine
+pins pack into the expected raw word in 63 cases; missing/invalid GPIO
+operations fail. Idle stock/candidate loops match 81,192 RAM bytes,
+persistent registers and PWM. Five optimized active streams preserve
+96 PCM blocks each, check left/right isolation, original decoder frames
+and return to idle. Normal and optimized new-stage reports are identical;
+the full suite passes 20/20 (E-20261122-61). Unknown foreground MMIO fails. Other gate settings
+stop at I2C configuration; flag meanings, full startup and physical
+button/report mapping remain open. USB receive calls/clock events are
+still supplied at loop boundaries; no continuous CPU timing is claimed.
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen

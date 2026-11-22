@@ -147,6 +147,18 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   oscillator power/reset inheritance and APB/WDCLK synchronization.
   A watchdog reset request is not a verified bootloader/actuator stop.
   See [watchdog limits](../firmware/WATCHDOG_AND_LOOP_GATE.md).
+  E-20261122-60 now executes complete original foreground iterations
+  with explicit GPIO byte inputs and raw fields 0x200019C0/0x2000A538
+  both set to one. The loop itself reaches Sensa dispatch; the host no
+  longer calls that dispatcher directly in this path. Raw scanning
+  covers 29 pins/63 scenes; physical button names and debounce/report
+  mapping remain open. Three other flag combinations stop at the real
+  FLEXCOMM3 configuration read 0x10E5E/0x40089800. Integrate the existing
+  startup I2C model/peer state there and establish those flags' real
+  meanings, rather than bypassing the read. The selected loop fixture
+  still uses boundary-supplied USB receive calls/clock events and does
+  not close continuous CPU timing or actual board IRQ0 configuration.
+  See [foreground limits](../firmware/FOREGROUND_LOOP_REPLAY.md).
   Add/verify real control commands and arbitrate separate normal GIP
   rumble/trigger feedback, which is outside the class-16 ownership latch.
   Stock reads write-only

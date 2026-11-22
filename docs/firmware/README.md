@@ -91,6 +91,12 @@ setup, masked feed, warning IRQ and the main loop's counter gate. It
 detects terminal reset requests and shows that an enabled warning ISR
 can keep feeding WWDT during a foreground stall. Actual IRQ0 setup and
 reset/recovery remain open; this is not an independent audio-only stop.
+The [foreground/GPIO stage](FOREGROUND_LOOP_REPLAY.md) executes whole
+iterations in one explicit raw-gate fixture and reaches the original
+Sensa dispatcher from the loop. Strict byte inputs, stock comparisons,
+runtime packet checks and mono/stereo PWM controls keep unknown devices
+from silently becoming a pass. The other gates still stop at I2C and
+full production boot/timing remain open.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -98,9 +104,11 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-22 validation summary](validation/20261122-watchdog.json)
-preserves the 19-stage result, input/source hashes, unchanged module
-hash and watchdog/header results with terminal reset guards. The
+The [latest 2026-11-22 validation summary](validation/20261122-loop.json)
+preserves the 20-stage result, input/source hashes, unchanged module
+hash and foreground/GPIO results with explicit unsupported gates. The
+[watchdog summary](validation/20261122-watchdog.json) retains the 19-stage
+result and terminal reset guards. The
 [clock summary](validation/20261122-clock.json) retains the 18-stage
 result and separate silent-PCM motor references. The
 [publication summary](validation/20261122-publication.json) retains the

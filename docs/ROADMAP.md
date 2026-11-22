@@ -2,7 +2,7 @@
 
 **Firmware lab, 2026-11-22:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[19-stage validation](firmware/validation/20261122-watchdog.json)
+[20-stage validation](firmware/validation/20261122-loop.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -15,7 +15,12 @@ a known safety boundary. The [WWDT/header replay](firmware/WATCHDOG_AND_LOOP_GAT
 executes the original loop counter gate, watchdog setup/feed and warning
 IRQ. Reset is a terminal simulation boundary; an enabled warning ISR
 can keep feeding WWDT during a foreground stall. This leaves the
-independent audio-only stop open. Next: remaining loop tasks/USB branch,
+independent audio-only stop open. The [foreground/GPIO replay](firmware/FOREGROUND_LOOP_REPLAY.md)
+now runs complete iterations in one explicit raw-gate state; the loop
+reaches Sensa itself. Raw pin packing, stock/inactive-candidate state,
+five audio sources, stereo isolation and drained output are checked.
+Three other gate combinations stop at I2C. Next: integrate that later
+I2C state, establish gate/button meanings and complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime
 controls and non-Sensa GIP feedback arbitration. Resolve actual

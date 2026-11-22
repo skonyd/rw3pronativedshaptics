@@ -179,10 +179,29 @@ the real board IRQ0 setup is not yet traced. Do not claim the hardware
 watchdog fixes the independent 250 ms audio-stop gap. APB synchronization,
 instruction time, the logical inclusive zero-edge convention and actual
 reset/actuator recovery remain unverified. The C module is unchanged.
-The [latest full validation](firmware/validation/20261122-watchdog.json)
+The [watchdog full validation](firmware/validation/20261122-watchdog.json)
 passes all 19 stages (E-20261122-41). The complete new stage also passes
 under optimized Python with identical output; attempted core resume
 after reset is rejected. The preceding clock report is unchanged.
+
+Foreground/GPIO continuation (E-20261122-60): read
+[FOREGROUND_LOOP_REPLAY.md](firmware/FOREGROUND_LOOP_REPLAY.md).
+`replay_nxp_loop.py` executes a complete original iteration and its
+Sensa call in one explicit raw-gate fixture; the host no longer invokes
+that dispatcher directly. Byte GPIO inputs are strict, with 29 pins
+checked in 63 raw scenes. Stock/inactive-candidate RAM/register/PWM
+comparisons and stereo/mono/captured PCM flows pass in the optimized
+stage. Opposite outputs stay at the stock idle reference. Three other
+gate combinations reach an unmodeled I2C configuration read; do not
+label them full-loop passes. Integrate startup I2C/peer state there,
+establish raw-gate/button meanings and actual IRQ0 setup, and then
+extend continuous CPU/USB/peripheral timing. Module bytes are unchanged.
+The [latest full validation](firmware/validation/20261122-loop.json)
+passes all 20 stages (E-20261122-61). Normal and optimized foreground
+reports are identical. Five active flows execute 795 iterations,
+11,130 checked IRQ returns and 45 independently checked decoder frames.
+The preceding clock/watchdog reports and tool sources are unchanged
+except the runner. Gate failure boundaries remain explicit.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

@@ -94,6 +94,10 @@ reset request is not proof of bootloader recovery or physical actuator
 silence. Next follow the two loop branches and actual IRQ0 configuration,
 model relevant clock-domain timing, and choose a verified elapsed-time
 source for audio safety without assuming the warning handler provides it.
+The later [foreground/GPIO replay](FOREGROUND_LOOP_REPLAY.md) executes
+complete iterations in one explicit raw-gate state. Other gate states
+still stop at a later I²C boundary; this does not close all production
+main-loop paths or the actual IRQ0 setup.
 
 ## Reproduce and primary references
 
