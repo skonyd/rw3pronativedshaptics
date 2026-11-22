@@ -80,6 +80,10 @@ public sealed class WinUsbGipTransport : IDisposable
         {
             if (IsOpen) return true;
             if (Suspended) { State = "askıda (sürücü değişiyor)"; return false; }
+            // Only the elevated RW3 drives the pad: a non-elevated start hands over to the elevated one within a second,
+            // and both opening the pipe reset the pad twice (2026-11-23, E-20261123-68). Without elevation there is no
+            // virtual pad either, so a directly driven pad would reach no game.
+            if (!Environment.IsPrivilegedProcess) { State = "yönetici olarak çalışan RW3 bekleniyor"; return false; }
             FreeHandles();   // the reader stopped (read errors / no input): WinUSB opens a device only once
             var paths = DevicePaths();
             if (paths.Count == 0) { State = "WinUSB'de Wolverine yok"; return false; }
@@ -101,6 +105,7 @@ public sealed class WinUsbGipTransport : IDisposable
             _reader = new Thread(ReadLoop) { IsBackground = true, Name = "RW3 direct mode GIP reader" };
             _reader.Start();
             Send(GipCodec.PowerOn(NextSeq()));
+            Send(GipCodec.LedOn(NextSeq()));
             State = "açık";
             Log("Direct mode: WinUSB GIP pipe open (" + path + (paths.Count > 1 ? $", 1 of {paths.Count}" : "") + "), power-on sent.");
             return true;
@@ -166,7 +171,7 @@ public sealed class WinUsbGipTransport : IDisposable
                     Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} tx {m.Payload[1]} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
-                    case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); break;   // (re)connected: power on again
+                    case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); break;   // (re)connected: power on, LED on
                     case GipCodec.CmdGuide:
                         // The Xbox button comes in its own message; the next input report may be far away (nothing else
                         // moved), so the pad state takes it now. Waiting for 0x20 made the button work only sometimes.

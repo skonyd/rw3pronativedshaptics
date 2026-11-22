@@ -90,6 +90,7 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
         Check(vn == 2 && varint[0] == 0xAC && varint[1] == 0x02
             && power.SequenceEqual(new byte[] { 0x05, 0x20, 7, 0x01, 0x00 })
             && GipCodec.PowerReset(3).SequenceEqual(new byte[] { 0x05, 0x20, 3, 0x01, 0x07 })
+            && GipCodec.LedOn(4).SequenceEqual(new byte[] { 0x0A, 0x20, 4, 0x03, 0x00, 0x01, 0x14 })
             && rumble.SequenceEqual(new byte[] { 0x09, 0x00, 9, 0x09, 0x00, 0x0F, 25, 0, 50, 100, 0xFF, 0x00, 0xEB })
             && two.Count == 2 && two[0].Command == 0x05 && two[0].Internal && two[1].Command == 0x09 && two[1].Payload.Length == 9
             && raz.Count == 1 && raz[0].Command == 0x0F && raz[0].Payload.Length == 60
@@ -97,7 +98,7 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
             && parsed && gp.Buttons == (XInputPad.A | XInputPad.DpadUp | XInputPad.LeftShoulder | XInputPad.Guide)
             && gp.LeftTrigger == 255 && gp.RightTrigger == 0 && gp.LX == 12345 && gp.LY == -200 && gp.RY == 32767
             && !GipCodec.TryParseInput(new byte[10], false, out _) && GipCodec.GuidePressed(new byte[] { 1, 0x5B }),
-            "GIP codec: varint length, power-on, four-motor rumble (0..100), several messages per transfer, Razer 0x0F, ACK echo, input report → XInput pad");
+            "GIP codec: varint length, power-on, LED on, four-motor rumble (0..100), several messages per transfer, Razer 0x0F, ACK echo, input report → XInput pad");
     }
     // 2026-11-22 live: slot 0 = a paired Bluetooth Xbox controller (045E:0B13, stick drift), slot 1 = the Wolverine in Xbox
     // mode (045E:02FF, child of USB\VID_1532&PID_0A3F).

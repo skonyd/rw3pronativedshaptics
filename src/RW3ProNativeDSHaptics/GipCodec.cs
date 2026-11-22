@@ -79,6 +79,10 @@ public static class GipCodec
     /// Needed when RW3 opens a pad that was already connected: power-on alone did not start its input (2026-11-22).</summary>
     public static byte[] PowerReset(byte sequence) => Encode(CmdPower, OptInternal, sequence, new byte[] { 0x07 });
 
+    /// <summary>Xbox button LED on (0x0A, as xpad's GIP_LED_ON: mode 0x01 steady, brightness 0x14). Windows' driver sends it
+    /// after power-on; without Windows in direct mode nobody did, and the pad's LEDs stayed dark (2026-11-23).</summary>
+    public static byte[] LedOn(byte sequence, byte brightness = 0x14) => Encode(CmdLed, OptInternal, sequence, new byte[] { 0x00, 0x01, brightness });
+
     /// <summary>ACK for a message that asked for one (xone gip_send_ack): echoes its command, options and length.</summary>
     public static byte[] Ack(in GipMessage m) =>
         Encode(CmdAck, OptInternal, m.Sequence, new byte[]
