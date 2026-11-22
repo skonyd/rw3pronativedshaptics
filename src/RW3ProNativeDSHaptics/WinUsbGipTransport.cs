@@ -54,11 +54,21 @@ public sealed class WinUsbGipTransport : IDisposable
     /// <summary>Device paths of WinUSB-bound Razer GIP pads (our GUID first, then WinUSB's default).</summary>
     public static List<string> DevicePaths()
     {
+        // One path per device: the cable registered under both GUIDs, and RW3 took the two paths for two connections,
+        // switching between them and resetting the pad on each (2026-11-22 23:58, E-20261122-66).
         var list = new List<string>();
+        var devices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var g in new[] { InterfaceGuid, DefaultWinUsbGuid })
             foreach (var p in InterfacePaths(g))
-                if (p.Contains("vid_1532&pid_0a3f", StringComparison.OrdinalIgnoreCase) && !list.Contains(p)) list.Add(p);
+                if (p.Contains("vid_1532&pid_0a3f", StringComparison.OrdinalIgnoreCase) && devices.Add(DeviceKey(p))) list.Add(p);
         return list;
+    }
+
+    /// <summary>The device part of an interface path (<c>\\?\USB#VID_1532&amp;PID_0A3F#serial</c>), without the interface GUID.</summary>
+    internal static string DeviceKey(string path)
+    {
+        int i = path.LastIndexOf('#');
+        return i > 0 ? path[..i] : path;
     }
 
     public static bool DevicePresent() => DevicePaths().Count > 0;
@@ -107,7 +117,7 @@ public sealed class WinUsbGipTransport : IDisposable
         // at most one reset per RW3 run: the reset makes the pad leave and rejoin USB, the pipe reopens, and a reset on
         // every reopen made it cycle endlessly (2026-11-22, Windows' connect/disconnect sound looping)
         bool resetSent;
-        lock (s_resetPaths) resetSent = !s_resetPaths.Add(_path);
+        lock (s_resetPaths) resetSent = !s_resetPaths.Add(DeviceKey(_path));   // once per device and run
         long inputsAtOpen = Interlocked.Read(ref _inputs);
         while (!_stop)
         {
