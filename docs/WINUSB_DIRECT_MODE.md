@@ -1,8 +1,8 @@
 # Direct mode (WinUSB): RW3 drives the Wolverine without Windows' controller stack
 
 Status (2026-11-22): **works on the cable** (E-20261122-65): input, the Xbox button, game rumble (also played in the
-palms), trigger motors and sound → palms, with the Xbox Series and the DualSense output, a game in front. The wireless
-adapter is next (same button; untested). Nothing here changes a driver until the user presses the button in Settings
+palms), trigger motors and sound → palms, with the Xbox Series and the DualSense output, a game in front. Works on the
+wireless adapter too (E-20261123-68). Nothing here changes a driver until the user presses the button in Settings
 and confirms. Code: `GipCodec.cs`, `WinUsbGipTransport.cs`, `DirectModeDriver.cs`,
 the direct branch in `XboxAudioGameBridge.cs` and `GipSensaTransport.cs`, Settings in `MainWindow.xaml(.cs)`.
 
@@ -108,5 +108,8 @@ streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 H
 The adapter is its own instance (`USB\VID_1532&PID_0A3F\0000000000000001`) and is switched by the same button while
 it is plugged in (the pad connected to it). Its USB descriptor was never read, so RW3 reads the interrupt pipes from the
 interface instead of assuming the cable's 0x01/0x81 (logged as `Direct mode: interface 0 pipes …`). With the cable and
-the adapter both on WinUSB, RW3 opens one, and moves to the other when it gives no input for 5 s. Open: whether the
-adapter passes Razer's Sensa frames (palms) on this pipe; over Windows' stack it did not (E-20261122-52…54).
+the adapter both on WinUSB, RW3 opens one, and moves to the other when it gives no input for 5 s.
+
+Works (E-20261123-68): the adapter's pipes are OUT 0x05 / IN 0x84 (not the cable's), and unlike
+Windows' stack it passes Razer's Sensa frames, so palms and trigger motors work wirelessly too. The first install on the
+adapter needed a restart (Ubisoft Connect and Microsoft's GameInputRedistService held it, E-20261123-67).
