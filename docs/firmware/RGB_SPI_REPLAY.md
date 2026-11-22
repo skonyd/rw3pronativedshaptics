@@ -112,8 +112,10 @@ check shared-handler coexistence and byte preservation, not real bus timing.
 With P3_17 high, both supplied P0_23 levels reach an unmodeled GPIO
 write at `0xD7F8 / 0x4008C028` after 19 complete iterations when USB events
 are present. Both runs stop and are **not** full-run successes. That
-output, its following delay/power state and the pins' board meanings
-are next integration tasks. The selected low-input run cannot prove them.
+output and its calibrated busy wait are followed by the later
+[GPIO extension](GPIO_BUSYWAIT_REPLAY.md). This original stage retains
+its boundary controls. The falling-input I2C path, board pin meanings
+and physical timing remain open; the selected low-input run cannot prove them.
 
 ## Validation
 

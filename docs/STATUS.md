@@ -93,13 +93,15 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-All 22 stages passed with the local pinned images on 2026-11-23,
-including active stereo excerpts from wired and dongle captures in the
-PWM model. This is the modeled replay scope, not whole-device equivalence.
-Its JSON
-reports record input hashes and individual stage outcomes.
-The [public validation summary](firmware/validation/20261123-rgb-spi.json)
-retains the scope, hashes, results and unverified boundaries on GitHub.
+The [latest validation](firmware/validation/20261123-gpio-delay.json),
+2026-11-23, covers 23 passing stages: four ran afresh and nineteen reuse
+unchanged reports after pinned-input, source-dependency and report-hash
+checks. The three affected earlier stage reports remain identical; the
+new GPIO/delay stage matches its separate optimized-Python execution.
+The preceding [full 22-stage run](firmware/validation/20261123-rgb-spi.json)
+includes active stereo capture excerpts in the PWM model. This is
+modeled replay evidence, not whole-device equivalence. JSON records
+input/source hashes, execution provenance and unverified boundaries.
 Physical input mapping, host USB packet delivery and Xbox
 authentication remain outside the analog replay.
 Windows wired Xbox and dongle USB captures both carry 192-byte GIP audio
@@ -278,16 +280,34 @@ All four initial raw-gate combinations now have a bounded idle-loop
 fixture. Selected low-GPIO audio fixtures combine original I2S/SPI DMA
 handlers, actual Sensa main dispatch and explicit original RGB boundary
 calls. Physical clock/bus timing and a real USB RGB-command IRQ remain open.
-Two high-P3_17 GPIO variants still stop at 0xD7F8/0x4008C028, not full-run
-successes. Supplied SPI DMA ERRINT flags reveal that stock callbacks can
+That stage retains two high-P3_17 GPIO boundaries at 0xD7F8/0x4008C028;
+the later GPIO extension below follows their output and busy wait.
+Supplied SPI DMA ERRINT flags reveal that stock callbacks can
 set ready without FIFO data; error propagation for custom firmware is
 still required. No stock code is patched to erase this observation.
-The complete suite passes 22/22 (E-20261123-91); all 21 preceding
+That full RGB suite passed 22/22 (E-20261123-91); all 21 preceding
 reports remain identical. Normal/optimized RGB-stage reports match.
 The new stage covers 780 RGB cases, 64 idle iterations across four
 initial gate states, 25 rejection controls and five active audio cases.
 Those audio cases run 795 iterations, 41 combined SPI/I2S IRQ batches,
 11,395 checked IRQ returns and 45 independently checked Sensa frames.
+The [GPIO/busy-wait extension](firmware/GPIO_BUSYWAIT_REPLAY.md) declares
+only the P1_8 byte latch and executes the original D620 routine; argument
+200 is not evidence of 200ms. Seven delay profiles and a masked case
+check loop arithmetic, pending interrupt coalescing and supplied CPI
+budgets. Seven invalid GPIO operations and nine delay negative controls
+fail explicitly. Six active cases run 954 foreground iterations,
+13,689 checked IRQ returns and 54 independent Sensa frame checks,
+including mono isolation and drained idle.
+Short-high and later-rise inputs exercise the original input filter.
+Normal/optimized new-stage output and the three affected prior reports
+match. Nineteen other reports are explicitly reused, not freshly rerun.
+Lowering P3_17 at iteration 70 stops both P0_23 variants after 89 iterations
+at 0x10BB6/0x40088800 (FLEXCOMM2 I2C); the original caller targets slave
+0x1A. Physical peer identity and the final low latch write are unverified.
+Instruction budgets and a latch fixture do not establish silicon timing,
+pin direction/mux, full power-down, complete boot or flashable firmware.
+
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF
 compilation on the pre-existing missing `ChromaEffect` type (also seen

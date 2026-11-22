@@ -93,6 +93,7 @@ def main():
         ("nxp-foreground-loop", "replay_nxp_loop.py", (nxp, args.dsp, *publication_captures)),
         ("nxp-foreground-i2c", "replay_nxp_loop_i2c.py", (nxp, args.dsp)),
         ("nxp-rgb-spi", "replay_nxp_rgb_spi.py", (nxp, args.dsp)),
+        ("nxp-gpio-delay", "replay_nxp_power_gpio.py", (nxp, args.dsp)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )

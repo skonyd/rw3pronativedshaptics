@@ -161,9 +161,14 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   FLEXCOMM5 radio control replay. Global DMA initialization/reset and
   I2S reconstruction precede it. The selected low-GPIO fixtures support
   this path and active audio in (1,0); the raw flags/pin meanings remain
-  unverified. With P3_17 high and USB events, both P0_23 levels stop at
-  0xD7F8 writing GPIO 0x4008C028 after 19 iterations. Model this output
-  and its following delay/power state, then extend continuous scheduling.
+  unverified. E-20261123-100 adds an explicit P1_8 byte latch and runs
+  the original D620 busy wait with a supplied CPI budget; argument 200
+  is not proof of 200ms. Both falling-input variants now stop after 89
+  iterations at 0x10BB6 / 0x40088800 (FLEXCOMM2 I2C), before the low latch
+  write. Its caller targets slave 0x1A; peer identity is unknown. Next
+  model the actual controller/driver state and release path, with NACK,
+  timeout and IRQ controls. Do not invent a successful peer or call this
+  full power-down. See [GPIO/busy-wait scope](../firmware/GPIO_BUSYWAIT_REPLAY.md).
   SPI DMA error flags also expose a delivery-evidence gap: original driver
   callbacks receive transfer-done=0 but still publish application status 0
   and ready with no FIFO clocks. Future custom firmware must preserve
@@ -171,7 +176,13 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   E-20261123-91 passes all 22 stages, with unchanged prior 21 reports
   and full normal/optimized RGB equality. Five active audio cases
   cover 41 shared IRQ batches and 45 independent frame checks, but
-  the high-GPIO and real timing/error-safety limits above remain open.
+  the falling-GPIO I2C and real timing/error-safety limits above remain open.
+  E-20261123-101 covers 23 stages (four fresh, nineteen audited unchanged
+  report reuses), with affected prior reports and full normal/optimized new
+  output identical. Six audio/filter scenes drain safely in their fixtures.
+  The new instruction clock is limited to D620 and its IRQs; supplied CPI
+  is not physical timing or a complete event scheduler. Falling-input
+  FLEXCOMM2/0x1A remains the next integration boundary.
   The I2C wait schedule supplies 125us logical quanta, not CPU cycle timing.
   E-20261122-71 passes all 21 stages, with prior 20 reports unchanged
   and normal/optimized I2C equality; the saved run records validated

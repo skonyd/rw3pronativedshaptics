@@ -243,8 +243,23 @@ and identical normal/optimized new-stage output. It has 780 RGB cases,
 64 idle iterations, 25 rejection controls and five active audio cases
 (795 iterations, 41 shared IRQ batches, 11,395 checked IRQ returns,
 45 independent frame checks). Module bytes remain unchanged. Next
-model high-P3_17 GPIO output/delay and preserve SPI DMA error status
+follow the GPIO/delay extension below and preserve SPI DMA error status
 in a future candidate; whole-device/flashable flags remain false.
+
+GPIO/delay continuation (E-20261123-100/101): read
+[GPIO_BUSYWAIT_REPLAY.md](firmware/GPIO_BUSYWAIT_REPLAY.md). An explicit
+P1_8 latch permits original high-input execution through D620. It is a
+calibrated busy loop, not an MRT wait or proven 200ms. Supplied CPI
+budgets advance timers/WWDT only during that routine and its IRQs;
+other events remain boundary-scheduled. The
+[latest validation](firmware/validation/20261123-gpio-delay.json) covers 23 stages: four
+fresh executions, nineteen dependency/input/hash-checked report reuses.
+Affected old reports and normal/optimized new output match. Six active
+cases cover 954 iterations and 54 independent frames. Falling P3_17
+now exposes FLEXCOMM2 I2C at 0x10BB6/0x40088800, slave 0x1A in the caller,
+before the low latch write. Next model its real driver/initialization
+with NACK/timeout/IRQ controls; peer identity is unknown. Retain masked
+MRT coalescing, SPI error evidence and the partial timing scope.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

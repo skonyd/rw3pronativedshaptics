@@ -109,7 +109,10 @@ chains and paired IRQ callbacks. It compares RGB bytes with an independent
 symbol oracle and exercises shared SPI/I2S completion during haptics.
 Stock error callbacks can set ready without sending data; this is retained
 as a failure of ready-only evidence, not a successful delivery. Selected
-GPIO states are covered; high-P3_17 output/delay and physical timing stay open.
+GPIO states are covered. The later [GPIO/busy-wait extension](GPIO_BUSYWAIT_REPLAY.md)
+follows the high-input latch write and original delay with supplied
+instruction budgets. The falling path exposes a different I2C controller
+and unverified slave 0x1A; full release and physical timing stay open.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -117,9 +120,13 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-23 validation summary](validation/20261123-rgb-spi.json)
-preserves the 22-stage result, unchanged preceding 21 reports, input/
-source hashes and unchanged module. The RGB stage has 780 codec cases,
+The [latest 2026-11-23 validation summary](validation/20261123-gpio-delay.json)
+covers 23 stages: four fresh executions and nineteen audited unchanged
+report reuses, not 23 new runs. Affected prior reports and complete
+normal/optimized GPIO reports match; input/source hashes and unchanged
+module provenance are retained. The preceding
+[full RGB validation](validation/20261123-rgb-spi.json) preserves its
+original 22-stage run. The RGB stage has 780 codec cases,
 four initial gate states, five audio cases and explicit failure boundaries.
 The [I2C summary](validation/20261122-loop-i2c.json) retains the earlier
 21-stage result and its execution-recovery metadata.
