@@ -106,6 +106,7 @@ public sealed class WinUsbGipTransport : IDisposable
             _reader.Start();
             Send(GipCodec.PowerOn(NextSeq()));
             Send(GipCodec.LedOn(NextSeq()));
+            ScheduleConnectedLight();
             State = "açık";
             Log("Direct mode: WinUSB GIP pipe open (" + path + (paths.Count > 1 ? $", 1 of {paths.Count}" : "") + "), power-on sent.");
             return true;
@@ -171,7 +172,7 @@ public sealed class WinUsbGipTransport : IDisposable
                     Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} tx {m.Payload[1]} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
-                    case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); break;   // (re)connected: power on, LED on
+                    case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight(); break;   // (re)connected: power on, LED on
                     case GipCodec.CmdGuide:
                         // The Xbox button comes in its own message; the next input report may be far away (nothing else
                         // moved), so the pad state takes it now. Waiting for 0x20 made the button work only sometimes.
@@ -235,13 +236,57 @@ public sealed class WinUsbGipTransport : IDisposable
         try { _reader?.Join(600); } catch { }
         lock (_write)
         {
-            if (_usb != IntPtr.Zero) { try { Send(GipCodec.Rumble(NextSeq(), 0, 0, 0, 0)); } catch { } }
+            if (_usb != IntPtr.Zero)
+            {
+                try { Send(GipCodec.Rumble(NextSeq(), 0, 0, 0, 0)); } catch { }
+                // lights out: RW3 no longer drives the pad, and in direct mode nothing else does
+                if (ConnectedLight) try { Send(GipCodec.Razer(NextSeq(), GipCodec.RazerBrightness(_razerTx++, 0), RazerOptions)); } catch { }
+            }
             FreeHandles();
             State = "kapalı";
         }
     }
 
     public void Dispose() => Close();
+
+    /// <summary>Dim white on the pad's RGB while RW3 drives it in direct mode, off when RW3 lets go: the user sees that
+    /// it works (2026-11-23: in direct mode nothing lit the pad). Razer lighting in RAM only, profile 0.</summary>
+    public static volatile bool ConnectedLight = true;
+    public static byte ConnectedBrightness = 0x26;   // ~15 %
+    private byte _razerTx = 0x40;
+    private long _lightAt;
+
+    private void ScheduleConnectedLight()
+    {
+        if (!ConnectedLight) return;
+        long now = Environment.TickCount64;
+        if (now - Interlocked.Exchange(ref _lightAt, now) < 2000) return;   // announces repeat every few ms
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Thread.Sleep(400);   // let the pad finish powering on
+            if (!IsOpen) return;
+            SendRazer(GipCodec.RazerBrightness(_razerTx++, ConnectedBrightness));
+            Thread.Sleep(150);   // the firmware handles one lighting command per pass (WolverineLightingAndBattery)
+            bool ok = SendRazer(GipCodec.RazerStatic(_razerTx++, 0xFF, 0xFF, 0xFF));
+            Log("Direct mode: connected light (dim white) " + (ok ? "sent" : "not sent"));
+        });
+    }
+
+    /// <summary>The direct-mode pad's buttons for RW3's own menus, left stick as D-pad; 0 while the pipe is closed.
+    /// RW3's menus read XInput and skip RW3's own virtual pad, so in direct mode they saw no pad at all (2026-11-23).</summary>
+    public ushort ButtonsForUi()
+    {
+        if (!IsOpen) return 0;
+        XInputPad p;
+        lock (_write) p = _pad;
+        ushort b = p.Buttons;
+        const short t = 20000;
+        if (p.LX < -t) b |= XInputPad.DpadLeft;
+        if (p.LX > t) b |= XInputPad.DpadRight;
+        if (p.LY > t) b |= XInputPad.DpadUp;
+        if (p.LY < -t) b |= XInputPad.DpadDown;
+        return b;
+    }
 
     private void FreeHandles()
     {

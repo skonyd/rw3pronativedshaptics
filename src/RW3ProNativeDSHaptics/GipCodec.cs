@@ -102,6 +102,27 @@ public static class GipCodec
     /// The options byte WGI uses for it (GipMessageClass.Command) is still to be confirmed on hardware.</summary>
     public static byte[] Razer(byte sequence, ReadOnlySpan<byte> packet60, byte options = 0x00) => Encode(CmdRazer, options, sequence, packet60);
 
+    /// <summary>Razer command in its 60-byte tunnel form (as Razer's own tools wrap it in 0x0F):
+    /// [status 0, transaction, 0, 0, 0, args length, class, command, args…], XOR of bytes 2..57 at byte 58.</summary>
+    public static byte[] RazerPacket(byte transaction, byte commandClass, byte command, ReadOnlySpan<byte> args)
+    {
+        if (args.Length > 48) throw new ArgumentOutOfRangeException(nameof(args));
+        var p = new byte[60];
+        p[1] = transaction; p[5] = (byte)args.Length; p[6] = commandClass; p[7] = command;
+        args.CopyTo(p.AsSpan(8));
+        byte x = 0;
+        for (int i = 2; i < 58; i++) x ^= p[i];
+        p[58] = x;
+        return p;
+    }
+
+    /// <summary>Razer lighting (class 0x0F, RAM, profile 0, all zones 0x05): brightness 0..255 (command 0x04).</summary>
+    public static byte[] RazerBrightness(byte transaction, byte brightness) => RazerPacket(transaction, 0x0F, 0x04, new byte[] { 0x00, 0x05, brightness });
+
+    /// <summary>Razer lighting: one static colour (command 0x02, effect 0x0D, custom colour slot).</summary>
+    public static byte[] RazerStatic(byte transaction, byte r, byte g, byte b) =>
+        RazerPacket(transaction, 0x0F, 0x02, new byte[] { 0x00, 0x05, 0x0D, 0x08, 0x01, 0x01, r, g, b });
+
     /// <summary>Input report 0x20 → XInput-style state. Payload offsets (xpad xpadone_process_packet minus its 4-byte
     /// header): [0] Menu 0x04, View 0x08, A 0x10, B 0x20, X 0x40, Y 0x80; [1] up, down, left, right, LB, RB, LS, RS;
     /// [2..3] LT 0..1023, [4..5] RT, [6..13] LX, LY, RX, RY (signed, up = +).</summary>

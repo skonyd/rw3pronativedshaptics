@@ -2030,6 +2030,7 @@ public partial class MainWindow : Window
     private void PadTimer_Tick(object? sender, EventArgs e)
     {
         ushort buttons = XInputHaptics.ReadButtonsAnyPad();
+        buttons |= WinUsbGipTransport.Shared.ButtonsForUi();   // direct mode: the pad is not on XInput
         ushort pressed = (ushort)(buttons & ~_prevPadButtons);
         _prevPadButtons = buttons;
         if (pressed == 0 || !IsVisible) return;
