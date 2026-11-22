@@ -1816,6 +1816,21 @@ SpectralContracts.Run(Check);
         "UAC-free bridge task: highest privileges, interactive user, normal priority, escaped exe path, only this exe");
 }
 
+// Login bridge task (sign-in screen in direct mode): SYSTEM at boot, the Program Files copy only, no time limit.
+{
+    string exe = @"C:\Program Files\RW3ProNativeDSHaptics\LoginBridge\RW3ProNativeDSHaptics.exe";
+    var doc = System.Xml.Linq.XDocument.Parse(LoginBridgeTask.BuildXml(exe));
+    System.Xml.Linq.XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+    string? V(string name) => doc.Descendants(ns + name).FirstOrDefault()?.Value;
+    bool shape = V("UserId") == "S-1-5-18" && doc.Descendants(ns + "BootTrigger").Any() && !doc.Descendants(ns + "LogonType").Any()
+        && V("Command") == exe && V("Arguments") == LoginBridge.Arg && V("ExecutionTimeLimit") == "PT0S"
+        && V("MultipleInstancesPolicy") == "IgnoreNew" && V("Count") == "3";
+    bool locked = LoginBridgeTask.InstallDir.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase)
+        && DirectModeOwnership.Sddl == "D:(A;;GA;;;SY)(A;;GA;;;BA)"
+        && DirectModeOwnership.MutexName.StartsWith(@"Global\") && LoginBridgeTask.StopName.StartsWith(@"Global\");
+    Check(shape && locked, "Login bridge task: SYSTEM at boot, runs the Program Files copy with --login-bridge, owner objects SYSTEM/admins only");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)

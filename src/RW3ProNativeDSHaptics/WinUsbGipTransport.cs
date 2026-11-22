@@ -51,6 +51,9 @@ public sealed class WinUsbGipTransport : IDisposable
     /// again. On 2026-11-22 the Sensa engine reopened it while the instance was being uninstalled; with another app
     /// (Ubisoft Connect) also vetoing the removal, Windows' device manager locked up and shutdown hung for 10 minutes.</summary>
     public static volatile bool Suspended;
+    /// <summary>This process is the login bridge (SYSTEM, LoginBridge): it owns the pad through DirectModeOwnership
+    /// itself; RW3 in the user's session first asks the bridge to let go.</summary>
+    public static volatile bool IsLoginBridge;
 
     /// <summary>Device paths of WinUSB-bound Razer GIP pads (our GUID first, then WinUSB's default).</summary>
     public static List<string> DevicePaths()
@@ -77,6 +80,14 @@ public sealed class WinUsbGipTransport : IDisposable
     /// <summary>Opens the first WinUSB Wolverine, starts the reader and powers the pad on. Safe to call repeatedly.</summary>
     public bool TryOpen()
     {
+        if (IsOpen) return true;
+        // RW3 in the user's session: take the pad from the login bridge first (WinUSB opens a device only once).
+        // Outside the write lock: the bridge may need a few seconds to let go.
+        if (!IsLoginBridge && !Suspended && Environment.IsPrivilegedProcess && DevicePresent() && !DirectModeOwnership.AcquireForSession())
+        {
+            State = "giriş ekranı köprüsü kolu bırakmadı";
+            return false;
+        }
         lock (_write)
         {
             if (IsOpen) return true;

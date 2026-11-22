@@ -100,7 +100,7 @@ public static class ElevatedLaunchTask
         return code == 0 ? (0, "UAC'siz başlatma kapatıldı.") : (code, "Görev silinemedi: " + output.Trim());
     }
 
-    private static (int Code, string Output) Schtasks(string args)
+    internal static (int Code, string Output) Schtasks(string args)
     {
         try
         {

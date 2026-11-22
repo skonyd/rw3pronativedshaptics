@@ -116,6 +116,32 @@ streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 H
   reset at most once per run.
 * HidHide is not used while every connected Wolverine is on WinUSB: Windows cannot see the pad, nothing to hide.
 
+## Sign-in screen (login bridge)
+
+Without Windows' Xbox driver nothing reads the pad until the user signs in and RW3 starts, so in direct mode the
+Windows sign-in / lock screen saw no pad. *Ayarlar → Doğrudan mod → "Giriş ekranında da çalışsın"* (with confirmation)
+installs a boot task that runs RW3 without a window as SYSTEM (`--login-bridge`, `LoginBridge.cs`): it reads the pad and
+feeds a virtual Xbox Series pad (buttons and sticks; no rumble, Sensa or audio).
+
+* **Handover.** RW3 in the user's session asks for the pad (Global release event) and holds a Global owner mutex until
+  it ends; the bridge lets go (its virtual pad closes) and takes the pad back when that RW3 ends, crashes or the user
+  signs out. Both objects allow SYSTEM and administrators only (`DirectModeOwnership.cs`). While RW3 runs, the lock
+  screen (Win+L) works through RW3's own virtual pad.
+* **Where it runs.** The task starts a copy in `C:\Program Files\RW3ProNativeDSHaptics\LoginBridge`, which only
+  administrators can change (RW3 itself lives in the user's profile; a SYSTEM task must not run an exe from there).
+  RW3 refreshes the copy when it starts elevated and finds it older than itself (`LoginBridgeTask.RefreshIfStale`).
+* **Stopping.** Removing (same button, or *Doğrudan modu kaldır*, which removes the bridge first) signals the bridge to
+  stop, ends and deletes the task and deletes the copy.
+* **Log.** The bridge writes to SYSTEM's profile: `C:\Windows\System32\config\systemprofile\AppData\Local\RW3ProNativeDSHaptics\logs\rw3.log`.
+
+Manual removal (elevated PowerShell):
+
+```powershell
+schtasks /end /tn "RW3ProNativeDSHaptics LoginBridge"
+schtasks /delete /tn "RW3ProNativeDSHaptics LoginBridge" /f
+Remove-Item -Recurse -Force "C:\Program Files\RW3ProNativeDSHaptics\LoginBridge"
+```
+
 ## Wireless adapter
 
 The adapter is its own instance (`USB\VID_1532&PID_0A3F\0000000000000001`) and is switched by the same button while

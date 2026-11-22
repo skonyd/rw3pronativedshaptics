@@ -2440,6 +2440,9 @@ public partial class MainWindow : Window
             DirectModeStatus.Text = (needsVirtualPad ? "⚠ Doğrudan modda oyun kolu RW3'ün sanal kolundan görür: ana sayfada Xbox Series, DualSense, Xbox 360 veya PS4 seç. · " : "") +
                 list + (recorded > 0 ? $" · kayıtlı {recorded} geçiş" : "") +
                 (WinUsbGipTransport.Shared.IsOpen ? " · GIP borusu: " + WinUsbGipTransport.Shared.Summary : "");
+            bool loginBridge = LoginBridgeTask.IsInstalled();
+            LoginBridgeBtn.Content = loginBridge ? "Giriş ekranı köprüsünü kaldır" : "Giriş ekranında da çalışsın";
+            if (loginBridge) DirectModeStatus.Text += " · giriş ekranı köprüsü kurulu";
         }
         catch (Exception ex) { DirectModeStatus.Text = "Durum okunamadı: " + ex.Message; }
     }
@@ -2499,6 +2502,9 @@ public partial class MainWindow : Window
         WinUsbGipTransport.Suspended = true;
         WinUsbGipTransport.Shared.Close();
         await Task.Delay(500);
+        // the login bridge (SYSTEM) may hold the pad, and without direct mode it has nothing to do: remove it first
+        if (await Task.Run(LoginBridgeTask.IsInstalled))
+            DiagnosticsService.Info("Direct mode remove: " + (await Task.Run(LoginBridgeTask.Uninstall)).Message);
         var remove = Task.Run(DirectModeDriver.Remove);
         if (await Task.WhenAny(remove, Task.Delay(30_000)) != remove)
         {

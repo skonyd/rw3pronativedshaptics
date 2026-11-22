@@ -15,6 +15,13 @@ public partial class App : System.Windows.Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Login bridge (SYSTEM, boot task): no window, no tray, no single-instance mutex; runs until stopped.
+        if (e.Args.FirstOrDefault() == LoginBridge.Arg)
+        {
+            base.OnStartup(e);
+            Shutdown(await Task.Run(LoginBridge.Run));
+            return;
+        }
         // A separate synthetic source process never owns HAR or a mode window.
         // It must run alongside the receiver's single-instance mutex.
         // Elevated HIDMaestro setup step (install / self-test / uninstall): no window, no mutex.
@@ -56,6 +63,8 @@ public partial class App : System.Windows.Application
             return;
         }
         base.OnStartup(e);
+        // Elevated RW3: bring the login bridge's Program Files copy up to this build (no-op when it is not installed).
+        if (Environment.IsPrivilegedProcess) _ = Task.Run(LoginBridgeTask.RefreshIfStale);
         // CI / packaged-app smoke check: no device, window or vendor DLL needed.
         if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {

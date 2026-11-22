@@ -478,6 +478,8 @@
                 <WrapPanel>
                   <Button x:Name="DirectModeInstallBtn" Content="Doğrudan modu kur" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeInstall_Click"/>
                   <Button x:Name="DirectModeRemoveBtn" Content="Doğrudan modu kaldır" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="DirectModeRemove_Click"/>
+                  <Button x:Name="LoginBridgeBtn" Content="Giriş ekranında da çalışsın" Style="{StaticResource Btn}" Margin="0,0,8,6" Click="LoginBridge_Click"
+                          ToolTip="Doğrudan modda kol Windows giriş ekranında da çalışır (açılışta SYSTEM olarak başlayan RW3 köprüsü)."/>
                 </WrapPanel>
                 <TextBlock x:Name="DirectModeStatus" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
               </StackPanel>
