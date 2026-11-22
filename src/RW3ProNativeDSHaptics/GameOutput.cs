@@ -9,8 +9,9 @@ public enum GameOutput
     Physical,
     /// <summary>A virtual Xbox 360 pad (XUSB): two rumble motors, no impulse triggers. Game Pass games accept it.</summary>
     Xbox360,
-    /// <summary>A virtual Xbox Series pad: rumble; Windows hands it trigger rumble as 0 (E-20261122-12), so trigger
-    /// vibration comes from RW3. Works in Banishers on a freshly booted system (E-20261122-14).</summary>
+    /// <summary>A virtual Xbox Series pad: rumble; Windows handed it the test range's trigger rumble as 0
+    /// (E-20261122-12), so trigger vibration normally comes from RW3. The game's triggers stay selectable as an
+    /// experiment (user request). Works in Banishers on a freshly booted system (E-20261122-14).</summary>
     XboxSeries,
     /// <summary>A virtual DualShock 4: rumble only.</summary>
     DualShock4,
@@ -72,12 +73,12 @@ public static class OutputMatrix
         OutputFeature.PalmAudio => FeatureSupport.Yes,
         OutputFeature.PalmGame => output == GameOutput.DualSense ? FeatureSupport.Yes : FeatureSupport.No,
         OutputFeature.GameRumble => output == GameOutput.Physical ? FeatureSupport.ByGame : FeatureSupport.Yes,
-        // The HIDMaestro Xbox One/Series pads get trigger rumble from Windows (xinputhid) as 0 in every report
-        // (E-20261122-12): only the Wolverine itself and the DualSense carry the game's own trigger effects.
+        // Series: experimental. Windows (xinputhid) handed the test range's trigger rumble to it as 0 in every report
+        // (E-20261122-12); kept selectable so other games can be tried. RW3's triggers can run alongside.
         OutputFeature.GameTriggers => output switch
         {
             GameOutput.Physical => FeatureSupport.ByGame,
-            GameOutput.DualSense => FeatureSupport.Yes,
+            GameOutput.XboxSeries or GameOutput.DualSense => FeatureSupport.Yes,
             _ => FeatureSupport.No
         },
         OutputFeature.SynthTriggers => output is GameOutput.Xbox360 or GameOutput.XboxSeries or GameOutput.DualShock4 ? FeatureSupport.Yes : FeatureSupport.No,
@@ -227,7 +228,7 @@ public static class OutputMatrix
     {
         GameOutput.Physical => "Oyun Wolverine'i olduğu gibi görür; rumble ve tetik titreşimini oyun kendisi gönderir.",
         GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
-        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble. Windows oyunun tetik komutunu bu sanal kola iletmiyor; tetik titreşimini istersen RW3 oyunun rumble'ından ve sesinden üretir. Oyunun kendi tetik efektleri için \"Kolun kendisi\". Yönetici izni ister.",
+        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble. \"Oyunun tetik titreşimi\" deneysel: testte Windows oyunun tetik komutunu bu sanal kola 0 olarak iletti. \"RW3'ün tetik titreşimi\" tetikleri oyunun rumble'ından ve sesinden titretir; ikisi birlikte açık olabilir. Oyunun kendi tetik efektleri kesin olarak \"Kolun kendisi\" ile gelir. Yönetici izni ister.",
         GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
         _ => "Oyun bir DualSense görür: HD haptik avuçlarda, tetik efektleri tetik motorlarında. DualSense destekli oyunlar için."
     };
