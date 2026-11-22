@@ -148,7 +148,8 @@ public static class DirectModeDriver
             if (!SetupDiSetSelectedDriver(set, ref did, ref drv)) return (false, "sürücü seçilemedi " + Marshal.GetLastWin32Error());
             if (!DiInstallDevice(IntPtr.Zero, set, ref did, ref drv, 0x02 /*NOFINISHINSTALLUI*/, out bool reboot))
                 return (false, "kurulum başarısız " + Marshal.GetLastWin32Error());
-            return (true, "WinUSB kuruldu" + (reboot ? " (yeniden başlatma isteniyor)" : ""));
+            if (reboot) return (false, "Windows değişikliği tamamlamak için yeniden başlatma istiyor" + VetoHint() + ". Bilgisayarı yeniden başlat (ya da önce Doğrudan modu kaldır).");
+            return (true, "WinUSB kuruldu");
         }
         catch (Exception ex) { return (false, ex.Message); }
         finally { SetupDiDestroyDeviceInfoList(set); }
@@ -163,10 +164,30 @@ public static class DirectModeDriver
             var did = NewDid();
             if (!SetupDiOpenDeviceInfo(set, instanceId, IntPtr.Zero, 0, ref did)) return (true, "kayıt yok (zaten kaldırılmış)");
             if (!DiUninstallDevice(IntPtr.Zero, set, ref did, 0, out bool reboot)) return (false, "kaldırılamadı " + Marshal.GetLastWin32Error());
-            return (true, "kaldırıldı, Windows kendi sürücüsünü kuracak" + (reboot ? " (yeniden başlatma isteniyor)" : ""));
+            if (reboot) return (false, "kaldırma Windows yeniden başlatılınca tamamlanacak" + VetoHint());
+            return (true, "kaldırıldı, Windows kendi sürücüsünü kuracak");
         }
         catch (Exception ex) { return (false, ex.Message); }
         finally { SetupDiDestroyDeviceInfoList(set); }
+    }
+
+    /// <summary>Which application stopped the last device removal (System log, Kernel-PnP event 225, last 5 minutes):
+    /// e.g. Ubisoft Connect's upc.exe held the pad on 2026-11-22. Empty when none is found.</summary>
+    public static string VetoHint()
+    {
+        try
+        {
+            var q = new System.Diagnostics.Eventing.Reader.EventLogQuery("System", System.Diagnostics.Eventing.Reader.PathType.LogName,
+                "*[System[Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=225) and TimeCreated[timediff(@SystemTime) <= 300000]]]") { ReverseDirection = true };
+            using var r = new System.Diagnostics.Eventing.Reader.EventLogReader(q);
+            var e = r.ReadEvent();
+            if (e == null) return "";
+            string msg = e.FormatDescription() ?? "";
+            int a = msg.IndexOf(@"\Device", StringComparison.OrdinalIgnoreCase);
+            string app = a >= 0 ? msg[a..].Split(' ')[0] : msg;
+            return " (kolu tutan uygulama: " + System.IO.Path.GetFileName(app) + "; onu kapat)";
+        }
+        catch { return ""; }
     }
 
     /// <summary>"Scan for hardware changes": Windows re-detects the pad and installs its best matching driver.</summary>

@@ -39,6 +39,10 @@ public sealed class WinUsbGipTransport : IDisposable
     public long WriteFailures => Interlocked.Read(ref _writeFailures);
     /// <summary>Options byte for Razer's 0x0F command (to be confirmed on hardware; see GipCodec.Razer).</summary>
     public static volatile byte RazerOptions = 0x00;
+    /// <summary>Set before a driver switch (and kept until RW3 restarts): no part of RW3 may open the pad's WinUSB handle
+    /// again. On 2026-11-22 the Sensa engine reopened it while the instance was being uninstalled; with another app
+    /// (Ubisoft Connect) also vetoing the removal, Windows' device manager locked up and shutdown hung for 10 minutes.</summary>
+    public static volatile bool Suspended;
 
     /// <summary>Device paths of WinUSB-bound Razer GIP pads (our GUID first, then WinUSB's default).</summary>
     public static List<string> DevicePaths()
@@ -58,6 +62,7 @@ public sealed class WinUsbGipTransport : IDisposable
         lock (_write)
         {
             if (IsOpen) return true;
+            if (Suspended) { State = "askıda (sürücü değişiyor)"; return false; }
             var paths = DevicePaths();
             if (paths.Count == 0) { State = "WinUSB'de Wolverine yok"; return false; }
             var f = CreateFile(paths[0], 0xC0000000, 3, IntPtr.Zero, 3, 0x40000080 /*OVERLAPPED|NORMAL*/, IntPtr.Zero);

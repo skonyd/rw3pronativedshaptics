@@ -2463,7 +2463,17 @@ public partial class MainWindow : Window
         if (answer != MessageBoxResult.Yes) return;
         DirectModeStatus.Text = "Kuruluyor…";
         StopAll();
-        var (ok, msg) = await Task.Run(DirectModeDriver.Install);
+        // never wait on Windows' device manager without a limit (2026-11-22: a stuck PnP call kept RW3 and shutdown hanging)
+        var install = Task.Run(DirectModeDriver.Install);
+        if (await Task.WhenAny(install, Task.Delay(30_000)) != install)
+        {
+            WinUsbGipTransport.Suspended = true;
+            DirectModeStatus.Text = "Windows sürücü değişikliğini 30 sn içinde bitiremedi. Kolu tutan uygulamaları (Ubisoft Connect, Steam, tarayıcı) kapatıp bilgisayarı yeniden başlat; sonra Ayarlar'dan durumu kontrol et.";
+            DiagnosticsService.Info("Direct mode install: timed out after 30 s.");
+            return;
+        }
+        var (ok, msg) = await install;
+        if (!ok) WinUsbGipTransport.Suspended = true;   // half-switched instance: do not open it until a restart
         DiagnosticsService.Info("Direct mode install: " + (ok ? "ok" : "FAILED") + " · " + msg.Replace(nl, " | "));
         RefreshDirectModeStatus();
         System.Windows.MessageBox.Show(this, (ok ? "Doğrudan mod kuruldu." + nl + nl + "Kolu çıkarıp tak; RW3 kolu kendi bağlantısıyla açar." : "Doğrudan mod kurulamadı:") + nl + nl + msg,
@@ -2484,8 +2494,18 @@ public partial class MainWindow : Window
         string nl = Environment.NewLine;
         DirectModeStatus.Text = "Kaldırılıyor…";
         StopAll();
+        // no part of RW3 may reopen the pad's WinUSB handle while Windows uninstalls it (it vetoes the removal)
+        WinUsbGipTransport.Suspended = true;
         WinUsbGipTransport.Shared.Close();
-        var (ok, msg) = await Task.Run(DirectModeDriver.Remove);
+        await Task.Delay(500);
+        var remove = Task.Run(DirectModeDriver.Remove);
+        if (await Task.WhenAny(remove, Task.Delay(30_000)) != remove)
+        {
+            DirectModeStatus.Text = "Windows kaldırmayı 30 sn içinde bitiremedi. Kolu tutan uygulamaları kapatıp bilgisayarı yeniden başlat: kol Windows'un sürücüsüne döner.";
+            DiagnosticsService.Info("Direct mode remove: timed out after 30 s.");
+            return;
+        }
+        var (ok, msg) = await remove;
         DiagnosticsService.Info("Direct mode remove: " + (ok ? "ok" : "FAILED") + " · " + msg.Replace(nl, " | "));
         RefreshDirectModeStatus();
         System.Windows.MessageBox.Show(this, (ok ? "Doğrudan mod kaldırıldı." : "Kaldırma tamamlanamadı:") + nl + nl + msg +

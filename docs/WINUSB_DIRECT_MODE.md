@@ -44,6 +44,17 @@ Games keep seeing RW3's virtual Xbox Series pad (HIDMaestro), which RW3 feeds fr
   (which instances were switched, when, their previous driver), so removal knows what to undo even after a reinstall
   of RW3.
 
+## Before switching (either way)
+
+* Close every app that holds controllers: **Ubisoft Connect, Steam, browsers, Xbox app, PowerA, test range, games**.
+  Windows cannot change a device's driver while an app has it open; on 2026-11-22 Ubisoft Connect's `upc.exe` vetoed
+  the switch (System log: Kernel-PnP event 225), Windows asked for a restart, and an RW3 bug then locked up Windows'
+  device manager so that shutdown hung for 10 minutes (E-20261122-60).
+* If RW3 reports "Windows yeniden başlatma istiyor", restart Windows. The switch (or the rollback) completes during the
+  restart; the result message names the app that held the pad.
+* RW3 never waits on Windows' device manager for more than 30 s and no longer reopens the pad while it is being
+  switched.
+
 ## Settings button
 
 *Ayarlar → Doğrudan mod (WinUSB)*
