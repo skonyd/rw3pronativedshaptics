@@ -32,11 +32,12 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
     var P = GameOutput.Physical; var X = GameOutput.Xbox360; var S = GameOutput.XboxSeries; var D4 = GameOutput.DualShock4; var DS = GameOutput.DualSense;
     var pa = OutputFeature.PalmAudio; var pg = OutputFeature.PalmGame; var ru = OutputFeature.GameRumble; var tr = OutputFeature.GameTriggers;
     Check(OutputMatrix.Support(X, tr) == FeatureSupport.No && OutputMatrix.Support(D4, tr) == FeatureSupport.No
-        && OutputMatrix.Support(S, tr) == FeatureSupport.Yes && OutputMatrix.Support(DS, tr) == FeatureSupport.Yes
+        && OutputMatrix.Support(S, tr) == FeatureSupport.No && OutputMatrix.Support(S, OutputFeature.SynthTriggers) == FeatureSupport.Yes
+        && OutputMatrix.Support(DS, tr) == FeatureSupport.Yes
         && OutputMatrix.Support(P, tr) == FeatureSupport.ByGame && OutputMatrix.Support(P, ru) == FeatureSupport.ByGame
         && OutputMatrix.Support(DS, pg) == FeatureSupport.Yes && OutputMatrix.Support(S, pg) == FeatureSupport.No
         && OutputMatrix.Outputs.All(o => OutputMatrix.Support(o, pa) == FeatureSupport.Yes),
-        "Output matrix: Xbox 360 / PS4 have no trigger row, only DualSense has game HD haptics, sound works everywhere");
+        "Output matrix: only the Wolverine itself and the DualSense carry the game's triggers (the Series pad gets 0, E-20261122-12), only DualSense has game HD haptics, sound works everywhere");
     var (o1, f1) = OutputMatrix.Click(X, pa | ru, tr);
     var (o2, f2) = OutputMatrix.Click(D4, pa | ru, tr);
     var (o3, f3) = OutputMatrix.Click(S, pa | ru | tr, pg);
@@ -44,11 +45,13 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
     var (o5, f5) = OutputMatrix.Click(DS, pg | ru, pa);
     var (o6, f6) = OutputMatrix.Click(P, pa, ru);
     var (o7, f7) = OutputMatrix.Click(P, pa, ru, X);
-    Check(o1 == S && f1 == (pa | ru | tr) && o2 == DS && f2.HasFlag(tr) && f2.HasFlag(pa) && !f2.HasFlag(pg)
-        && o3 == DS && f3 == (pg | ru | tr) && o4 == S && f4 == (pa | tr)
+    var sy = OutputFeature.SynthTriggers;
+    Check(o1 == P && f1 == pa && o2 == DS && f2.HasFlag(tr) && f2.HasFlag(pa) && !f2.HasFlag(pg)
+        && o3 == DS && f3 == (pg | ru | tr) && o4 == S && f4 == (pa | sy)
         && o5 == DS && f5 == (pa | ru) && o6 == P && f6 == pa && o7 == X && f7 == (pa | ru),
         "Output matrix clicks: an unsupported row switches to the closest output that has it; a current cell toggles; palms keep one source");
-    Check(OutputMatrix.OnSelect(X, pa | tr) == pa && OutputMatrix.OnSelect(X, OutputFeature.None) == (pa | ru | OutputFeature.SynthTriggers)
+    Check(OutputMatrix.OnSelect(X, pa | tr) == (pa | OutputFeature.SynthTriggers) && OutputMatrix.OnSelect(X, OutputFeature.None) == (pa | ru | OutputFeature.SynthTriggers)
+        && OutputMatrix.OnSelect(S, OutputFeature.None) == (pa | ru | OutputFeature.SynthTriggers)
         && OutputMatrix.OnSelect(DS, pa | ru) == (pa | ru) && OutputMatrix.OnSelect(DS, OutputFeature.None) == (pg | ru | tr)
         && OutputMatrix.OnSelect(P, ru | tr) == pa,
         "Output selector: keeps what still fits, else the output's defaults");
@@ -57,7 +60,7 @@ Check(valid.Contains("stereo kaynak, çıkış"), "All three independent native 
     Check(pl1.Mode == HapticMode.Normal && pl2.Mode == HapticMode.Audio && pl2.VirtualProfile == null
         && pl3.Mode == HapticMode.Audio && pl3.VirtualProfile == "xbox-360-wired" && !pl3.Palms && pl3.Rumble && !pl3.Triggers
         && pl4.Mode == HapticMode.Native && pl4.Source == NativeHapticSource.Audio && pl4.Triggers && !pl4.Rumble
-        && pl5.VirtualProfile == "xbox-series-xs-bt" && pl5.Palms && pl5.Rumble && pl5.Triggers
+        && pl5.VirtualProfile == "xbox-series-xs-bt" && pl5.Palms && pl5.Rumble && !pl5.Triggers && pl5.SynthTriggers
         && OutputMatrix.Profile(D4) == "dualshock-4-v2",
         "Output plan: maps onto the Normal/Audio/Native pipelines and the virtual pad profile");
     OutputMatrix.SeriesProfile = "xbox-one-s";

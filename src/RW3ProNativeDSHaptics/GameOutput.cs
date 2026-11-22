@@ -9,8 +9,8 @@ public enum GameOutput
     Physical,
     /// <summary>A virtual Xbox 360 pad (XUSB): two rumble motors, no impulse triggers. Game Pass games accept it.</summary>
     Xbox360,
-    /// <summary>A virtual Xbox Series pad: rumble and impulse triggers. Input reaches GameInput (E-20261115-04); not yet
-    /// confirmed in a game (Banishers is no test: it ignores a real DualSense too, E-20261121-01).</summary>
+    /// <summary>A virtual Xbox Series pad: rumble; Windows hands it trigger rumble as 0 (E-20261122-12), so trigger
+    /// vibration comes from RW3. Works in Banishers on a freshly booted system (E-20261122-14).</summary>
     XboxSeries,
     /// <summary>A virtual DualShock 4: rumble only.</summary>
     DualShock4,
@@ -32,7 +32,8 @@ public enum OutputFeature
     /// <summary>The game's trigger vibration (Xbox impulse triggers, DualSense trigger effects) → trigger motors.</summary>
     GameTriggers = 8,
     /// <summary>RW3 makes trigger-motor vibration itself, from the game's rumble hits and the sound's hits, for pads that
-    /// carry no trigger channel to the game (Xbox 360, PS4). The trigger motors exist only in Xbox mode.</summary>
+    /// carry no trigger channel from the game (Xbox 360, PS4, and the Series pad: Windows sends it trigger rumble as 0,
+    /// E-20261122-12). The trigger motors exist only in Xbox mode.</summary>
     SynthTriggers = 16
 }
 
@@ -71,19 +72,25 @@ public static class OutputMatrix
         OutputFeature.PalmAudio => FeatureSupport.Yes,
         OutputFeature.PalmGame => output == GameOutput.DualSense ? FeatureSupport.Yes : FeatureSupport.No,
         OutputFeature.GameRumble => output == GameOutput.Physical ? FeatureSupport.ByGame : FeatureSupport.Yes,
+        // The HIDMaestro Xbox One/Series pads get trigger rumble from Windows (xinputhid) as 0 in every report
+        // (E-20261122-12): only the Wolverine itself and the DualSense carry the game's own trigger effects.
         OutputFeature.GameTriggers => output switch
         {
             GameOutput.Physical => FeatureSupport.ByGame,
-            GameOutput.XboxSeries or GameOutput.DualSense => FeatureSupport.Yes,
+            GameOutput.DualSense => FeatureSupport.Yes,
             _ => FeatureSupport.No
         },
-        OutputFeature.SynthTriggers => output is GameOutput.Xbox360 or GameOutput.DualShock4 ? FeatureSupport.Yes : FeatureSupport.No,
+        OutputFeature.SynthTriggers => output is GameOutput.Xbox360 or GameOutput.XboxSeries or GameOutput.DualShock4 ? FeatureSupport.Yes : FeatureSupport.No,
         _ => FeatureSupport.No
     };
 
-    /// <summary>Keeps only the features RW3 can switch on this output, with one palm source at most.</summary>
+    /// <summary>Keeps only the features RW3 can switch on this output, with one palm source at most. A request for the
+    /// game's triggers becomes RW3's triggers where the game cannot drive them (settings saved before 2026-11-22 had
+    /// game triggers on the Series pad).</summary>
     public static OutputFeature Normalize(GameOutput output, OutputFeature set)
     {
+        if (set.HasFlag(OutputFeature.GameTriggers) && Support(output, OutputFeature.GameTriggers) == FeatureSupport.No &&
+            Support(output, OutputFeature.SynthTriggers) == FeatureSupport.Yes) set |= OutputFeature.SynthTriggers;
         var result = OutputFeature.None;
         foreach (var f in Features)
             if (set.HasFlag(f) && Support(output, f) == FeatureSupport.Yes) result |= f;
@@ -108,13 +115,13 @@ public static class OutputMatrix
         _ => Normalize(output, OutputFeature.PalmAudio | OutputFeature.GameRumble | OutputFeature.GameTriggers | OutputFeature.SynthTriggers)
     };
 
-    /// <summary>The closest output that supports <paramref name="feature"/>: DualSense for its HD haptics; for triggers
-    /// the Series pad from the Xbox side, the DualSense from the PlayStation side.</summary>
+    /// <summary>The closest output that supports <paramref name="feature"/>: DualSense for its HD haptics; for the game's
+    /// triggers the Wolverine itself from the Xbox side, the DualSense from the PlayStation side.</summary>
     public static GameOutput BestFor(OutputFeature feature, GameOutput current) =>
         Support(current, feature) == FeatureSupport.Yes ? current : feature switch
         {
             OutputFeature.PalmGame => GameOutput.DualSense,
-            OutputFeature.GameTriggers => current == GameOutput.DualShock4 ? GameOutput.DualSense : GameOutput.XboxSeries,
+            OutputFeature.GameTriggers => current == GameOutput.DualShock4 ? GameOutput.DualSense : GameOutput.Physical,
             OutputFeature.SynthTriggers => current == GameOutput.DualSense ? GameOutput.DualShock4 : GameOutput.Xbox360,
             _ => current == GameOutput.Physical ? GameOutput.Xbox360 : current
         };
@@ -128,6 +135,7 @@ public static class OutputMatrix
         var support = Support(target, feature);
         if (support == FeatureSupport.ByGame) return (target, target == current ? set : OnSelect(target, set));
         if (support == FeatureSupport.No) target = BestFor(feature, target);
+        if (Support(target, feature) == FeatureSupport.ByGame) return (target, OnSelect(target, set));
         if (Support(target, feature) != FeatureSupport.Yes) return (current, set);
         bool on = target != current || !set.HasFlag(feature);
         var next = target == current ? set : OnSelect(target, set);
@@ -219,7 +227,7 @@ public static class OutputMatrix
     {
         GameOutput.Physical => "Oyun Wolverine'i olduğu gibi görür; rumble ve tetik titreşimini oyun kendisi gönderir.",
         GameOutput.Xbox360 => "Oyun bir Xbox 360 kolu görür. Neredeyse her oyun destekler. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
-        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble + tetik titreşimi. Yönetici izni ister.",
+        GameOutput.XboxSeries => "Oyun bir Xbox Series kolu görür: rumble. Windows oyunun tetik komutunu bu sanal kola iletmiyor; tetik titreşimini istersen RW3 oyunun rumble'ından ve sesinden üretir. Oyunun kendi tetik efektleri için \"Kolun kendisi\". Yönetici izni ister.",
         GameOutput.DualShock4 => "Oyun bir PS4 kolu görür: PlayStation tuş simgeleri ve rumble. Oyun tetiğe komut gönderemez; tetik titreşimini istersen RW3 üretir. Yönetici izni ister.",
         _ => "Oyun bir DualSense görür: HD haptik avuçlarda, tetik efektleri tetik motorlarında. DualSense destekli oyunlar için."
     };

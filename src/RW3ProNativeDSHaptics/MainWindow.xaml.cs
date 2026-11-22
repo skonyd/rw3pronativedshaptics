@@ -1201,7 +1201,9 @@ public partial class MainWindow : Window
         ShowOutputWarning();
         // Level sliders for the game's feedback rows that RW3 drives (not "by the game" on the Wolverine itself).
         bool rumbleRow = _features.HasFlag(OutputFeature.GameRumble) && OutputMatrix.Support(_output, OutputFeature.GameRumble) == FeatureSupport.Yes;
-        bool triggerRow = _features.HasFlag(OutputFeature.GameTriggers) && OutputMatrix.Support(_output, OutputFeature.GameTriggers) == FeatureSupport.Yes;
+        // the trigger level also scales RW3's own trigger vibration (synth triggers), see XboxAudioGameBridge TriggerPercent
+        bool triggerRow = (_features.HasFlag(OutputFeature.GameTriggers) && OutputMatrix.Support(_output, OutputFeature.GameTriggers) == FeatureSupport.Yes)
+            || (_features.HasFlag(OutputFeature.SynthTriggers) && OutputMatrix.Support(_output, OutputFeature.SynthTriggers) == FeatureSupport.Yes);
         RumbleLevelRow.Visibility = rumbleRow ? Visibility.Visible : Visibility.Collapsed;
         TriggerLevelRow.Visibility = triggerRow ? Visibility.Visible : Visibility.Collapsed;
         LevelRowsHint.Text = _output == GameOutput.Physical
