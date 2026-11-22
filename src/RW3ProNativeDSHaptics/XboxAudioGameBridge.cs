@@ -336,6 +336,7 @@ public sealed class XboxAudioGameBridge : IDisposable
 
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
+        LogNewShape(packet);
         if (packet.Source == HMOutputSource.HidOutput && AcceptReport(packet.ReportId, packet.Data.Span)) return;
         if (packet.Source == HMOutputSource.HidOutput && TryDecodeDualShock4(packet.ReportId, packet.Data.Span, out var ds4))
         {
@@ -357,6 +358,24 @@ public sealed class XboxAudioGameBridge : IDisposable
                 Convert.ToHexString(packet.Data.Span[..Math.Min(16, packet.Data.Length)]));
     }
     private int _unknownLogged, _xusbLogged;
+
+    /// <summary>
+    /// Every distinct output packet (source, id, bytes) the game sends, up to 40 per pad: shows on which path and in which
+    /// bytes Windows hands over trigger (impulse) rumble. 2026-11-22: the test range sent GameInput trigger rumble to the
+    /// Series BT pad, body rumble arrived (0x0F report), trigger magnitudes were 0 in every decoded report.
+    /// </summary>
+    private void LogNewShape(HMOutputPacket packet)
+    {
+        if (!Strict || _shapes.Count >= 40) return;
+        var d = packet.Data.Span;
+        // shape = path + which bytes are non-zero (values vary all the time; a new non-zero byte, e.g. a trigger, is news)
+        var mask = new char[Math.Min(24, d.Length)];
+        for (int i = 0; i < mask.Length; i++) mask[i] = d[i] != 0 ? 'x' : '.';
+        string key = $"{packet.Source} id 0x{packet.ReportId:X2} len {d.Length} {new string(mask)}";
+        lock (_shapes) { if (_shapes.Count >= 40 || !_shapes.Add(key)) return; }
+        DiagnosticsService.Info($"Virtual pad output shape: {key} e.g. {Convert.ToHexString(d[..Math.Min(24, d.Length)])}");
+    }
+    private readonly HashSet<string> _shapes = new();
 
     /// <summary>
     /// The Xbox 360 profile's rumble (HIDMaestro hands over the XUSB set-state): 5 bytes
