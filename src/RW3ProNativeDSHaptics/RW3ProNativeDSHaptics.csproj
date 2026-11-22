@@ -8,8 +8,6 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
-    <!-- XboxGipRawOutput: overlapped I/O on \.\XboxGIP -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>RW3ProNativeDSHaptics</RootNamespace>
     <AssemblyName>RW3ProNativeDSHaptics</AssemblyName>
