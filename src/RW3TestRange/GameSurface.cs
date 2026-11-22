@@ -110,7 +110,8 @@ public sealed class GameSurface : FrameworkElement
 
     // quick test state (set by MainWindow each frame)
     public float QLow, QHigh, QLt, QRt;
-    public bool QSound, QVirtualOnly;
+    public bool QSound, QVirtualOnly, QWgiUsed;
+    public int QMode;
     public string QPaths = "-", QWgi = "-";
 
     /// <summary>PowerA-style quick test: hold a face button and pull a trigger; the pull sets the strength.</summary>
@@ -138,10 +139,14 @@ public sealed class GameSurface : FrameworkElement
         Bar(dc, "LT", st.LT, 400 * S, by); Bar(dc, "RT", st.RT, 480 * S, by);
         Text(dc, "Son gönderim: " + QPaths, 600 * S, by + 10 * S, 14, Brushes.White);
         Text(dc, "WGI kolları: " + QWgi, 600 * S, by + 36 * S, 13, Muted);
-        Text(dc, QVirtualOnly
-                ? "X · Hedef: YALNIZ SANAL KOL (Wolverine'e doğrudan gönderilmez: titreşim gelirse RW3 iletmiştir)"
-                : "X · Hedef: bütün kollar (Wolverine de doğrudan alır). X ile \"yalnız sanal kol\"a geç.",
-            20 * S, by + 150 * S, 15, QVirtualOnly ? Warn : Brushes.White, true);
+        string mode = QMode switch
+        {
+            0 => "X · Mod: OYUN GİBİ - yalnız GameInput + XInput (Banishers gibi), WGI hiç kullanılmaz. Tetik komutunu Windows sanal kola 0 iletir; A + tetik (rumble) ile RW3'ün ürettiği tetik titreşimini dene."
+                 + (QWgiUsed ? "  ⚠ WGI bu açılışta kullanıldı: tam oyun gibi test için test oyununu kapatıp yeniden aç." : ""),
+            1 => "X · Mod: bütün kollar + WGI (PowerA gibi; Wolverine'i doğrudan da sürer)",
+            _ => "X · Mod: yalnız sanal kol (WGI dahil; titreşim gelirse RW3 iletmiştir)"
+        };
+        Text(dc, mode, 20 * S, by + 150 * S, 14, QMode == 0 ? Good : Warn, true, TextAlignment.Left, W - 40 * S);
     }
 
     private void DrawPadTest(DrawingContext dc)

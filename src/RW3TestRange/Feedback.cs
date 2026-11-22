@@ -44,13 +44,15 @@ public sealed class FeedbackHub : IDisposable
     /// </summary>
     /// <param name="virtualOnly">Skip the Razer pad itself (WGI sees it even while RW3 hides it from games): then only
     /// RW3's virtual pad gets the command, and a felt vibration can only have come through RW3.</param>
-    public string Direct(float low, float high, float lt, float rt, bool virtualOnly = false)
+    /// <param name="noWgi">Game-like: XInput + GameInput only, Windows.Gaming.Input never touched (a WGI app holds every
+    /// pad it lists, the Wolverine included, which blocks RW3's background output: E-20261122-51).</param>
+    public string Direct(float low, float high, float lt, float rt, bool virtualOnly = false, bool noWgi = false)
     {
-        int x = 0, gi = 0, w;
+        int x = 0, gi = 0, w = 0;
         foreach (var p in XPads) if (!(virtualOnly && p.Name.Contains("1532")) && p.Rumble(low, high)) x++;
         if (GameInput != null) foreach (var d in GameInput.Devices) if (!d.Sony && !(virtualOnly && d.Vid == 0x1532) && d.Rumble(low, high, lt, rt)) gi++;
-        w = Wgi.Rumble(low, high, lt, rt, virtualOnly);
-        return $"XInput {x} · GameInput {gi} · WGI {w}";
+        if (!noWgi) w = Wgi.Rumble(low, high, lt, rt, virtualOnly);
+        return $"XInput {x} · GameInput {gi} · WGI {(noWgi ? "kapalı" : w.ToString())}";
     }
     public readonly List<DualSenseHid> DualSenses = new();
     public readonly List<DualShock4Hid> Ds4s = new();

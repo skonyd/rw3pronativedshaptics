@@ -699,16 +699,18 @@ public sealed class MainWindow : Window
         if (_input.Pressed(Btn.X))
         {
             _fb.Direct(0, 0, 0, 0);
-            _quickVirtualOnly = !_quickVirtualOnly;
-            _surface.QVirtualOnly = _quickVirtualOnly;
-            _log.Event("quick-test", new { virtualOnly = _quickVirtualOnly });
+            // game-like (no WGI, start) → all pads (WGI) → virtual pad only (WGI) → game-like …
+            _quickMode = (_quickMode + 1) % 3;
+            _quickVirtualOnly = _quickMode == 2;
+            _surface.QVirtualOnly = _quickVirtualOnly; _surface.QMode = _quickMode; _surface.QWgiUsed |= _quickMode != 0;
+            _log.Event("quick-test", new { mode = _quickMode });
         }
         if (lt + rt + low + high > .02f || _quickSending)
         {
-            string paths = _fb.Direct(low, high, lt, rt, _quickVirtualOnly);
+            string paths = _fb.Direct(low, high, lt, rt, _quickVirtualOnly, noWgi: _quickMode == 0);
             _surface.QPaths = paths;
             _quickSending = lt + rt + low + high > .02f;
-            if ((_quickLog += dt) >= .5 && _quickSending) { _quickLog = 0; _log.Event("quick-test", new { low, high, lt, rt, paths, virtualOnly = _quickVirtualOnly }); }
+            if ((_quickLog += dt) >= .5 && _quickSending) { _quickLog = 0; _log.Event("quick-test", new { low, high, lt, rt, paths, mode = _quickMode }); }
         }
         if (sound != _quickSound && _fb.Speakers != null)
         {
@@ -719,12 +721,14 @@ public sealed class MainWindow : Window
         }
         if (sound && _fb.Speakers != null) _fb.Speakers.Music.Volume = .4f + .6f * s.RT;
         _surface.QLow = low; _surface.QHigh = high; _surface.QLt = lt; _surface.QRt = rt; _surface.QSound = sound;
-        if ((_quickWgi -= dt) <= 0) { _quickWgi = 1; _surface.QWgi = _fb.Wgi.Count + " · " + _fb.Wgi.Names(); }
+        if (_quickMode != 0 && (_quickWgi -= dt) <= 0) { _quickWgi = 1; _surface.QWgi = _fb.Wgi.Count + " · " + _fb.Wgi.Names(); }
         _surface.MenuHold = s.Down(Btn.Menu) ? _surface.MenuHold + dt : 0;
         if (_surface.MenuHold > 2) { _surface.MenuHold = 0; Enter(Screen.Setup); }
     }
     private double _quickWgi;
     private bool _quickVirtualOnly;
+    /// <summary>0 = game-like (XInput + GameInput, no WGI; the start mode), 1 = all pads incl. WGI, 2 = virtual pad only.</summary>
+    private int _quickMode;
 
     private void PadTest(double dt)
     {
