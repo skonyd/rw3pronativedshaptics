@@ -305,6 +305,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         try {
         _speaker.Push(pcm.Span);   // the controller-speaker channels 1/2 → the PC's speakers (the Wolverine has none)
+        _capture.Note(pcm.Span);   // diagnostics, only while the user asked for it (PcmCapture)
         if (!_inputHealthy) return;
         var span = pcm.Span;
         float pl = 0, pr = 0;
@@ -626,6 +627,7 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private readonly InputDelayMeter _delay = new();
     private readonly SpeakerForwarder _speaker = new();
     private readonly AudioBlockStats _audioStats = new();
+    private readonly PcmCapture _capture = new();
     private readonly double[] _dRum = new double[4];
     private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)
