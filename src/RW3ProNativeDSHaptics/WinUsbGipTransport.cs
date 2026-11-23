@@ -89,7 +89,9 @@ public sealed class WinUsbGipTransport : IDisposable
 
     public static bool DevicePresent() => DevicePaths().Count > 0;
 
-    private static long s_presentAt = long.MinValue;
+    // not long.MinValue: now - MinValue overflows to a negative number, the check never ran and the virtual DualSense
+    // never read the pad in direct mode (E-20261123-79)
+    private static long s_presentAt = long.MinValue / 2;
     private static volatile bool s_present;
     /// <summary><see cref="DevicePresent"/> refreshed at most once a second: the bridges ask on every loop pass
     /// (250 times a second), and each answer is two Configuration Manager queries.</summary>
