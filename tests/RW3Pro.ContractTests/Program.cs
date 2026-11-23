@@ -1876,6 +1876,15 @@ SpectralContracts.Run(Check);
         "GIP chunks (device side): 56-byte parts in 64-byte transfers, first carries the total, last is empty, read back exactly");
 }
 
+// GIP proxy: DecodeSpans gives each message's exact bytes (chunked identify part + input report in one transfer).
+{
+    var transfer = new byte[] { 0x04, 0xF0, 0x05, 0x03, 0x80, 0x02, 0xAA, 0xBB, 0xCC, 0x20, 0x00, 0x06, 0x02, 0x10, 0x00, 0x00, 0x00, 0x00 };
+    var spans = GipCodec.DecodeSpans(transfer);
+    Check(spans.Count == 2 && spans[0].Start == 0 && spans[0].Length == 9 && spans[1].Start == 9 && spans[1].Length == 6
+        && transfer.AsSpan(spans[1].Start, spans[1].Length).SequenceEqual(new byte[] { 0x20, 0x00, 0x06, 0x02, 0x10, 0x00 }),
+        "GIP proxy: DecodeSpans returns each message's exact bytes, chunked ones included, trailing zeros ignored");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)

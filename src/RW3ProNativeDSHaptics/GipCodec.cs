@@ -76,6 +76,25 @@ public static class GipCodec
         return list;
     }
 
+    /// <summary>Like <see cref="Decode"/>, with where each message sits in the transfer (the GIP proxy forwards the
+    /// exact bytes).</summary>
+    public static List<(GipMessage Message, int Start, int Length)> DecodeSpans(ReadOnlySpan<byte> transfer)
+    {
+        var list = new List<(GipMessage, int, int)>();
+        int at = 0;
+        foreach (var m in Decode(transfer))
+        {
+            int lenBytes = 0, v = m.Payload.Length;
+            // header length varint = data length (chunked: without the offset varint, which the payload keeps)
+            int dataLen = m.Chunked ? m.Payload.Length - ChunkHeader(m.Payload).DataStart : m.Payload.Length;
+            v = dataLen; do { lenBytes++; v >>= 7; } while (v != 0);
+            int length = 3 + lenBytes + m.Payload.Length;
+            list.Add((m, at, length));
+            at += length;
+        }
+        return list;
+    }
+
     /// <summary>Power on (system message 0x05, mode 0x00): the pad starts sending input after it.</summary>
     public static byte[] PowerOn(byte sequence) => Encode(CmdPower, OptInternal, sequence, new byte[] { 0x00 });
 

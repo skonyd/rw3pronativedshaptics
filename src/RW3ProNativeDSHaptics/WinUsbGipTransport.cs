@@ -54,6 +54,15 @@ public sealed class WinUsbGipTransport : IDisposable
     /// <summary>This process is the login bridge (SYSTEM, LoginBridge): it owns the pad through DirectModeOwnership
     /// itself; RW3 in the user's session first asks the bridge to let go.</summary>
     public static volatile bool IsLoginBridge;
+    /// <summary>GIP proxy (GipProxy, docs/research/GIP_VIRTUAL_PAD.md): Windows' Xbox driver is the pad's host through a
+    /// virtual clone. While set, this transport stops acting as the host (no power on, LED, identify, ACKs, reset) and
+    /// hands every message from the pad, except Razer's replies to RW3 (0x10), to the sink, byte for byte.</summary>
+    public static volatile Action<byte[]>? ProxySink;
+    public static bool ProxyMode => ProxySink != null;
+    /// <summary>GIP proxy: one message from Windows, as it came.</summary>
+    public bool SendRawMessage(byte[] message) => IsOpen && Send(message);
+    /// <summary>GIP proxy: make the pad leave and announce again, so Windows meets it from the start.</summary>
+    public bool RequestPowerReset() => IsOpen && Send(GipCodec.PowerReset(NextSeq()));
 
     /// <summary>Device paths of WinUSB-bound Razer GIP pads (our GUID first, then WinUSB's default).</summary>
     public static List<string> DevicePaths()
@@ -135,10 +144,13 @@ public sealed class WinUsbGipTransport : IDisposable
             Log($"Direct mode: interface 0 pipes {pipes}; using IN 0x{_in:X2} OUT 0x{_out:X2}.");
             _reader = new Thread(ReadLoop) { IsBackground = true, Name = "RW3 direct mode GIP reader" };
             _reader.Start();
-            Send(GipCodec.PowerOn(NextSeq()));
-            Send(GipCodec.LedOn(NextSeq()));
+            if (!ProxyMode)   // with the GIP proxy, Windows is the host and powers the pad on itself
+            {
+                Send(GipCodec.PowerOn(NextSeq()));
+                Send(GipCodec.LedOn(NextSeq()));
+                ScheduleIdentify();
+            }
             ScheduleConnectedLight();
-            ScheduleIdentify();
             State = "açık";
             Log("Direct mode: WinUSB GIP pipe open (" + path + (paths.Count > 1 ? $", 1 of {paths.Count}" : "") + "), power-on sent.");
             return true;
@@ -161,7 +173,7 @@ public sealed class WinUsbGipTransport : IDisposable
         while (!_stop)
         {
             // a pad that was already connected ignores power-on until it re-announces: reset it once (no input in 1.5 s)
-            if (!resetSent && Interlocked.Read(ref _inputs) == inputsAtOpen && Environment.TickCount64 - opened > 1500)
+            if (!resetSent && !ProxyMode && Interlocked.Read(ref _inputs) == inputsAtOpen && Environment.TickCount64 - opened > 1500)
             {
                 resetSent = true;
                 Log("Direct mode: no input 1.5 s after open, sending GIP power reset (the pad re-announces).");
@@ -198,17 +210,27 @@ public sealed class WinUsbGipTransport : IDisposable
                 continue;
             }
             errors = 0;
-            foreach (var m in GipCodec.Decode(buf.AsSpan(0, (int)n)))
+            var sink = ProxySink;
+            foreach (var (m, mStart, mLength) in GipCodec.DecodeSpans(buf.AsSpan(0, (int)n)))
             {
                 Interlocked.Increment(ref _messages);
+                if (sink != null)
+                {
+                    // GIP proxy: Windows answers, acks and powers the pad; RW3 only keeps the input state and its own Razer replies
+                    if (m.Command != 0x10 && mStart + mLength <= n) { try { sink(buf.AsSpan(mStart, mLength).ToArray()); } catch { } }
+                    if (m.Command is not (GipCodec.CmdInput or GipCodec.CmdGuide)) continue;
+                }
                 // connection messages only (announce, status, power…): input and Razer replies are counted, not logged
                 if (logged < 8 && m.Command is not (GipCodec.CmdInput or 0x10))
                 {
                     logged++;
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
-                if (m.Command == GipCodec.CmdIdentify) { HandleIdentify(m); continue; }   // chunked: acks itself
-                if (m.WantsAck) Send(GipCodec.Ack(m));
+                if (sink == null)
+                {
+                    if (m.Command == GipCodec.CmdIdentify) { HandleIdentify(m); continue; }   // chunked: acks itself
+                    if (m.WantsAck) Send(GipCodec.Ack(m));
+                }
                 // Razer replies: status 0x02 = accepted; anything else is counted and the first one logged
                 if (m.Command == 0x10 && m.Payload.Length >= 8 && m.Payload[0] != 0x02 && m.Payload[0] != 0x00 && Interlocked.Increment(ref _razerErrors) == 1)
                     Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
