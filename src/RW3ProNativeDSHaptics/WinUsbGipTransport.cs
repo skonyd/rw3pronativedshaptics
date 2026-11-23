@@ -215,10 +215,20 @@ public sealed class WinUsbGipTransport : IDisposable
                 switch (m.Command)
                 {
                     case GipCodec.CmdAnnounce:
-                        Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight();   // (re)connected: power on, LED on
-                        // like Windows: ask for the identify data right after the announce (a request sent before the pad's
-                        // reset was lost, 2026-11-23 11:55)
-                        if (!IsLoginBridge && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2) Send(GipCodec.IdentifyRequest(NextSeq()));
+                        // like Windows (E-20261123-74): identify first, power on after it. Asked after power-on, the pad
+                        // never answered (2026-11-23 12:00); without a request pending, power on at once as before.
+                        if (!IsLoginBridge && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2)
+                        {
+                            Send(GipCodec.IdentifyRequest(NextSeq()));
+                            Log("Direct mode: identify request sent after the announce.");
+                            ThreadPool.QueueUserWorkItem(_ =>
+                            {
+                                for (int w = 0; w < 10 && IdentifyData == null; w++) Thread.Sleep(50);
+                                if (!IsOpen) return;
+                                Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight();
+                            });
+                        }
+                        else { Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight(); }   // (re)connected: power on, LED on
                         break;
                     case GipCodec.CmdGuide:
                         // The Xbox button comes in its own message; the next input report may be far away (nothing else
