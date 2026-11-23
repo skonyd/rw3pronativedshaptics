@@ -176,7 +176,6 @@ public sealed class VirtualDualSenseBridge : IDisposable
             var before = VirtualPadReadback.DualSensePaths();
             _ctrl = _ctx.CreateController(profile, "rw3pro-bridge");
             var audio = _ctrl.UsbAudio;
-            if (System.IO.File.Exists(UsbAudioStartFrameFix.FlagFile)) DiagnosticsService.Info("Virtual DualSense: start-frame experiment " + UsbAudioStartFrameFix.TryApply(audio));
             if (audio?.Output != null) audio.Output.FramesReceived += OnFrames;
             _ctrl.OutputReceived += OnOutput;
             _mode = WolverineModeControl.Detect();
