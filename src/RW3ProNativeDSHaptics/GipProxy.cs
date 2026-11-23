@@ -114,6 +114,8 @@ public static class GipProxy
                     }
                 }
             }
+            byte[]? lastToPad = null;
+            long lastToPadAt = 0;
             double rumL = 0, rumR = 0;
             long rumTick = 0;
             ctrl.OutputReceived += (_, pkt) =>
@@ -121,8 +123,17 @@ public static class GipProxy
                 var msg = new byte[1 + pkt.Data.Length];
                 msg[0] = pkt.ReportId;
                 pkt.Data.Span.CopyTo(msg.AsSpan(1));
+                // The same output came again and again 4 ms apart (an ACK 4×, a chunk end 12×: run 7, 20:58) until the next
+                // one; a real Windows-to-pad exchange sends each once, and the copies broke the pad's authentication.
+                // Forward a message once; Windows' own retries carry a new GIP sequence number or come later.
+                long now = Environment.TickCount64;
+                lock (gate)
+                {
+                    if (lastToPad != null && msg.AsSpan().SequenceEqual(lastToPad) && now - lastToPadAt < 150) { Interlocked.Increment(ref s_dupes); return; }
+                    lastToPad = msg; lastToPadAt = now;
+                }
                 Count("win→pad ", msg[0]);
-                Trace("win→pad", msg);
+                Trace($"win→pad #{pkt.SeqNo}", msg);
                 // the game's rumble on the way: [09][opt][seq][len][00 0F LT RT L R …], 0..100
                 if (msg[0] == GipCodec.CmdRumble && msg.Length >= 10)
                 {
@@ -145,7 +156,7 @@ public static class GipProxy
                 if (Environment.TickCount64 - Interlocked.Read(ref nextLog) >= 0)
                 {
                     Interlocked.Exchange(ref nextLog, Environment.TickCount64 + 10_000);
-                    Log($"10 s: {TakeCounts()}; last rumble {lastRumble}; pad {transport.Summary}");
+                    Log($"10 s: {TakeCounts()}; duplicate outputs dropped {Interlocked.Exchange(ref s_dupes, 0)}; last rumble {lastRumble}; pad {transport.Summary}");
                 }
                 if (!transport.IsOpen && !WinUsbGipTransport.Suspended) transport.TryOpen();
                 Thread.Sleep(50);
@@ -165,5 +176,6 @@ public static class GipProxy
 
     private static long nextLog;
     private static int s_exactNoted, s_paddedNoted;
+    private static long s_dupes;
     private static string lastRumble = "-";
 }
