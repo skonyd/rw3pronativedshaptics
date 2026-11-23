@@ -215,6 +215,7 @@ public sealed class WinUsbGipTransport : IDisposable
                 switch (m.Command)
                 {
                     case GipCodec.CmdAnnounce:
+                        SaveOnce(AnnounceFile, m.Payload, ref _announceSaved);   // for the GIP virtual pad (a faithful clone)
                         // like Windows (E-20261123-74): identify first, power on after it. Asked after power-on, the pad
                         // never answered (2026-11-23 12:00); without a request pending, power on at once as before.
                         if (!IsLoginBridge && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2)
@@ -330,6 +331,17 @@ public sealed class WinUsbGipTransport : IDisposable
         });
     }
 
+    private readonly System.Collections.Generic.List<string> _identChunks = new();
+    private int _announceSaved;
+    public static string AnnounceFile => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(IdentifyFile)!, "gip-announce.bin");
+    public static string IdentifyChunksFile => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(IdentifyFile)!, "gip-identify-chunks.txt");
+
+    private void SaveOnce(string file, byte[] data, ref int flag)
+    {
+        if (IsLoginBridge || Interlocked.Exchange(ref flag, 1) == 1) return;
+        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file)!); System.IO.File.WriteAllBytes(file, data); } catch { }
+    }
+
     private void HandleIdentify(in GipMessage m)
     {
         var p = m.Payload;
@@ -341,6 +353,8 @@ public sealed class WinUsbGipTransport : IDisposable
         }
         var (offset, start) = GipCodec.ChunkHeader(p);
         int len = p.Length - start;
+        // how the pad chunks it (options, sequence, data length, offset): the GIP virtual pad sends its reply the same way
+        _identChunks.Add($"{m.Options:X2} {m.Sequence} {len} {offset}");
         if ((m.Options & GipCodec.OptChunkStart) != 0)
         {
             if (offset <= 0 || offset > 65536) { Log($"Direct mode: identify start with odd length {offset}."); return; }
@@ -361,6 +375,8 @@ public sealed class WinUsbGipTransport : IDisposable
     {
         if (IdentifyData != null) return;
         IdentifyData = data;
+        if (_identChunks.Count > 0) Log("Direct mode: identify chunks (options seq length offset): " + string.Join(" | ", _identChunks));
+        try { System.IO.File.WriteAllLines(IdentifyChunksFile, _identChunks); } catch { }
         Log($"Direct mode: identify data {data.Length} bytes: {Convert.ToHexString(data.AsSpan(0, Math.Min(64, data.Length)))}…");
         try
         {

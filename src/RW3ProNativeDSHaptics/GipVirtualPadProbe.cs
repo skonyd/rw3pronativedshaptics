@@ -27,7 +27,15 @@ public static class GipVirtualPadProbe
     /// HID interface (first run, 2026-11-23: "configurationDescriptor: has no HID interface"), so interface 1 is a
     /// placeholder HID (vendor page, IN 0x81) and the device is composite (class 00): Windows then binds a driver per
     /// interface, and the question is whether its Xbox driver takes interface 0.</summary>
-    public static string BuildProfileJson() => """
+    /// <summary>The same device as the real pad (run 6): Razer 1532:0A3F, bcdDevice 0x0101 (E-20261122-58). With
+    /// 045E:0B12 in the announce and Razer identify data, Windows took the whole identify reply (ACK 260 / 0) and asked
+    /// again (run 5, 12:18): the mismatch is the first suspect.</summary>
+    public static string BuildProfileJson() => BuildProfileJsonFor045E().Replace("\"vid\": \"0x045E\"", "\"vid\": \"0x1532\"")
+        .Replace("\"pid\": \"0x0B12\"", "\"pid\": \"0x0A3F\"").Replace("405e04120b0805", "40321 53f0a0101".Replace(" ", ""))
+        .Replace("\"manufacturerString\": \"Microsoft\"", "\"manufacturerString\": \"Razer\"")
+        .Replace("\"productString\": \"Controller\"", "\"productString\": \"Razer Wolverine V3 Pro for Xbox\"");
+
+    public static string BuildProfileJsonFor045E() => """
         {
           "id": "rw3-gip-probe",
           "name": "RW3 GIP probe (wired Xbox pad)",
@@ -74,6 +82,13 @@ public static class GipVirtualPadProbe
         0x05, 0x00, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
     });
 
+    /// <summary>The pad's own chunk size (data bytes of its first identify chunk), or the default.</summary>
+    private static int PadChunkSize(string[] padChunks)
+    {
+        var parts = padChunks.FirstOrDefault()?.Split(' ');
+        return parts is { Length: 4 } && int.TryParse(parts[2], out int n) && n is > 0 and <= 58 ? n : 56;
+    }
+
     public static void RunIfRequested()
     {
         try
@@ -116,8 +131,10 @@ public static class GipVirtualPadProbe
                 if (ident == null) Thread.Sleep(500);
             }
             Log(ident == null ? "no identify data from the pad: identify requests stay unanswered." : $"identify data {ident.Length} bytes ready.");
+            byte[]? padAnnounce = File.Exists(WinUsbGipTransport.AnnounceFile) ? File.ReadAllBytes(WinUsbGipTransport.AnnounceFile) : null;
+            string[] padChunks = File.Exists(WinUsbGipTransport.IdentifyChunksFile) ? File.ReadAllLines(WinUsbGipTransport.IdentifyChunksFile) : Array.Empty<string>();
+            Log($"pad announce {(padAnnounce == null ? "missing (built-in used)" : Convert.ToHexString(padAnnounce))}; pad identify chunks: {string.Join(" | ", padChunks)}");
             int outputs = 0, identReplies = 0;
-            byte devSeq = 1;
             var sendGate = new object();
             void SendRaw(byte[] msg)
             {
@@ -139,7 +156,8 @@ public static class GipVirtualPadProbe
                 if (identifyRequest && ident != null && Interlocked.Increment(ref identReplies) <= 6)
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        var chunks = GipCodec.EncodeChunks(GipCodec.CmdIdentify, devSeq++, ident);
+                        // the request's own sequence number, as a reply (run 5 used a counter of its own)
+                        var chunks = GipCodec.EncodeChunks(GipCodec.CmdIdentify, pkt.Data.Span[1], ident, PadChunkSize(padChunks));
                         foreach (var c in chunks) { SendRaw(c); Thread.Sleep(8); }
                         Log($"identify reply sent in {chunks.Count} chunks.");
                     });
@@ -152,7 +170,7 @@ public static class GipVirtualPadProbe
             {
                 if (Volatile.Read(ref outputs) == 0 || sw.Elapsed.TotalSeconds < 3)
                 {
-                    SendRaw(Announce(seq++));
+                    SendRaw(padAnnounce != null ? GipCodec.Encode(GipCodec.CmdAnnounce, GipCodec.OptInternal, seq++, padAnnounce) : Announce(seq++));
                 }
                 if (!driverLogged && sw.Elapsed.TotalSeconds > 6) { driverLogged = true; Log("PnP: " + DeviceState()); }
                 Thread.Sleep(500);
