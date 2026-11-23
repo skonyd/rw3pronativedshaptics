@@ -201,7 +201,11 @@ public sealed class WinUsbGipTransport : IDisposable
                     lastSummary = summary; lastLogged = Environment.TickCount64;
                 }
             }
-            if (!WinUsb_ReadPipe(_usb, _in, buf, (uint)buf.Length, out uint n, IntPtr.Zero))
+            // One packet per read (64 bytes, the GIP pipes' packet size on cable and adapter). A full 64-byte packet
+            // continues the USB transfer, so a bigger read waited for the short packet that ends it, and the 250 ms
+            // timeout cancelled it midway: the identify reply lost its first chunks (2026-11-23 20:49). A one-packet read
+            // completes on every packet; the timeout only ever cancels an empty read.
+            if (!WinUsb_ReadPipe(_usb, _in, buf, 64, out uint n, IntPtr.Zero))
             {
                 int e = Marshal.GetLastWin32Error();
                 if (e == 121 /*SEM_TIMEOUT*/) continue;
