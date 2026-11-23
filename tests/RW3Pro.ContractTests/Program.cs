@@ -1858,6 +1858,24 @@ SpectralContracts.Run(Check);
         "GIP chunks: length excludes the offset varint, first offset = total, chunk ACK carries received/remaining, identify request");
 }
 
+// GIP chunks, device side: what EncodeChunks writes, Decode + ChunkHeader read back byte for byte (300-byte identify).
+{
+    var data = Enumerable.Range(0, 300).Select(i => (byte)(i * 7)).ToArray();
+    var chunks = GipCodec.EncodeChunks(GipCodec.CmdIdentify, 9, data);
+    byte[]? whole = null; int total = 0; bool shapes = true;
+    foreach (var c in chunks)
+    {
+        var m = GipCodec.Decode(c).Single();
+        var (off, start) = GipCodec.ChunkHeader(m.Payload);
+        if ((m.Options & GipCodec.OptChunkStart) != 0) { total = off; whole = new byte[total]; off = 0; }
+        int len = m.Payload.Length - start;
+        if (whole != null && len > 0) Array.Copy(m.Payload, start, whole, off, len);
+        shapes &= c.Length <= 64 && m.Chunked && m.Internal;
+    }
+    Check(shapes && whole != null && whole.SequenceEqual(data) && chunks.Count == 7 && GipCodec.Decode(chunks[^1]).Single().Payload.Length == 2,
+        "GIP chunks (device side): 56-byte parts in 64-byte transfers, first carries the total, last is empty, read back exactly");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)

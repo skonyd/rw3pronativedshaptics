@@ -86,6 +86,9 @@ public static class GipVirtualPadProbe
     }
 
     private static void Log(string m) => DiagnosticsService.Info("GIP probe: " + m);
+#if HAS_HIDMAESTRO
+    private static HMController? ctrlRef;
+#endif
 
     private static void Run()
     {
@@ -103,31 +106,56 @@ public static class GipVirtualPadProbe
                 string.Join(" | ", ctx.ProfileLoadIssues.Where(i => i.ProfileId == ProfileId || (i.File ?? "").Contains("rw3-gip")).Select(i => $"{i.Kind} {i.JsonPath}: {i.Reason}")));
             var profile = ctx.GetProfile(ProfileId);
             if (profile == null) { Log("profile not available, stopping."); return; }
-            int outputs = 0;
+            // question 2: answer Windows' identify request with the Wolverine's own identify data (read by direct mode
+            // in this run, or saved by an earlier one)
+            byte[]? ident = null;
+            for (int i = 0; i < 30 && ident == null; i++)
+            {
+                ident = WinUsbGipTransport.Shared.IdentifyData;
+                if (ident == null && File.Exists(WinUsbGipTransport.IdentifyFile)) ident = File.ReadAllBytes(WinUsbGipTransport.IdentifyFile);
+                if (ident == null) Thread.Sleep(500);
+            }
+            Log(ident == null ? "no identify data from the pad: identify requests stay unanswered." : $"identify data {ident.Length} bytes ready.");
+            int outputs = 0, identReplies = 0;
+            byte devSeq = 1;
+            var sendGate = new object();
+            void SendRaw(byte[] msg)
+            {
+                var report = new byte[64];
+                msg.AsSpan(0, Math.Min(64, msg.Length)).CopyTo(report);
+                lock (sendGate) try { ctrlRef!.SubmitRawReport(report); } catch (Exception ex) { Log("SubmitRawReport failed: " + ex.Message); }
+            }
             using var ctrl = ctx.CreateController(profile, "rw3-gip-probe");
+            ctrlRef = ctrl;
             Log("virtual device created.");
             ctrl.OutputReceived += (_, pkt) =>
             {
                 int n = Interlocked.Increment(ref outputs);
-                if (n <= 60) Log($"host write #{n}: source {pkt.Source} report 0x{pkt.ReportId:X2} len {pkt.Data.Length}: {Convert.ToHexString(pkt.Data.Span[..Math.Min(48, pkt.Data.Length)])}");
+                bool identifyRequest = pkt.ReportId == GipCodec.CmdIdentify && pkt.Data.Length >= 2 && pkt.Data.Span[1] == 0;
+                // the identify requests repeat every 500 ms until answered: log the first few, and everything else
+                if (n <= 12 || !identifyRequest && n <= 200) Log($"host write #{n}: source {pkt.Source} report 0x{pkt.ReportId:X2} len {pkt.Data.Length}: {Convert.ToHexString(pkt.Data.Span[..Math.Min(48, pkt.Data.Length)])}");
+                if (identifyRequest && ident != null && Interlocked.Increment(ref identReplies) <= 6)
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        var chunks = GipCodec.EncodeChunks(GipCodec.CmdIdentify, devSeq++, ident);
+                        foreach (var c in chunks) { SendRaw(c); Thread.Sleep(8); }
+                        Log($"identify reply sent in {chunks.Count} chunks.");
+                    });
             };
             ctrl.OutputDecoded += (_, a) => Log($"decoded report 0x{a.ReportId:X2}: {Convert.ToHexString(a.RawBytes.Span[..Math.Min(48, a.RawBytes.Length)])}");
             var sw = Stopwatch.StartNew();
             byte seq = 1;
             bool driverLogged = false;
-            while (sw.Elapsed.TotalSeconds < 25)
+            while (sw.Elapsed.TotalSeconds < 30)
             {
                 if (Volatile.Read(ref outputs) == 0 || sw.Elapsed.TotalSeconds < 3)
                 {
-                    var msg = Announce(seq++);
-                    var report = new byte[64];
-                    msg.CopyTo(report, 0);
-                    try { ctrl.SubmitRawReport(report); } catch (Exception ex) { Log("SubmitRawReport failed: " + ex.Message); }
+                    SendRaw(Announce(seq++));
                 }
                 if (!driverLogged && sw.Elapsed.TotalSeconds > 6) { driverLogged = true; Log("PnP: " + DeviceState()); }
                 Thread.Sleep(500);
             }
-            Log($"done: {outputs} host writes in 25 s; removing the device.");
+            Log($"done: {outputs} host writes, {identReplies} identify requests answered in 30 s; removing the device.");
         }
         catch (Exception ex) { Log("failed: " + ex.GetType().Name + ": " + ex.Message); }
 #else

@@ -214,7 +214,12 @@ public sealed class WinUsbGipTransport : IDisposable
                     Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
-                    case GipCodec.CmdAnnounce: Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight(); break;   // (re)connected: power on, LED on
+                    case GipCodec.CmdAnnounce:
+                        Send(GipCodec.PowerOn(NextSeq())); Send(GipCodec.LedOn(NextSeq())); ScheduleConnectedLight();   // (re)connected: power on, LED on
+                        // like Windows: ask for the identify data right after the announce (a request sent before the pad's
+                        // reset was lost, 2026-11-23 11:55)
+                        if (!IsLoginBridge && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2) Send(GipCodec.IdentifyRequest(NextSeq()));
+                        break;
                     case GipCodec.CmdGuide:
                         // The Xbox button comes in its own message; the next input report may be far away (nothing else
                         // moved), so the pad state takes it now. Waiting for 0x20 made the button work only sometimes.
@@ -307,8 +312,9 @@ public sealed class WinUsbGipTransport : IDisposable
         if (IsLoginBridge || Interlocked.Exchange(ref _identAsked, 1) == 1) return;
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            Thread.Sleep(1500);
+            Thread.Sleep(3000);   // fallback when no announce came (a pad that was already on)
             if (!IsOpen) { Interlocked.Exchange(ref _identAsked, 0); return; }
+            if (IdentifyData != null || Volatile.Read(ref _identAsked) == 2) return;
             bool ok = Send(GipCodec.IdentifyRequest(NextSeq()));
             Log("Direct mode: identify request " + (ok ? "sent" : "not sent") + ".");
         });

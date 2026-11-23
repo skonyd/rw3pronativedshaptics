@@ -174,6 +174,31 @@ public static class GipCodec
         return (value, k);
     }
 
+    /// <summary>Device side of a chunked message (identify reply): the first chunk (options chunk + chunk start) carries
+    /// the total length in its offset field, the next ones their offset, and a last empty chunk the total again. The
+    /// header length counts only the data after the offset varint (what <see cref="Decode"/> expects).</summary>
+    public static List<byte[]> EncodeChunks(byte command, byte sequence, ReadOnlySpan<byte> data, int maxData = 56)
+    {
+        var list = new List<byte[]>();
+        static byte[] One(byte cmd, byte opt, byte seq, int offset, ReadOnlySpan<byte> part)
+        {
+            Span<byte> lenV = stackalloc byte[4], offV = stackalloc byte[4];
+            int ln = WriteVarint(lenV, part.Length), on = WriteVarint(offV, offset);
+            var b = new byte[3 + ln + on + part.Length];
+            b[0] = cmd; b[1] = opt; b[2] = seq;
+            lenV[..ln].CopyTo(b.AsSpan(3)); offV[..on].CopyTo(b.AsSpan(3 + ln)); part.CopyTo(b.AsSpan(3 + ln + on));
+            return b;
+        }
+        for (int at = 0; at < data.Length; at += maxData)
+        {
+            var part = data.Slice(at, Math.Min(maxData, data.Length - at));
+            byte opt = (byte)(OptInternal | OptChunk | (at == 0 ? OptChunkStart | OptAckRequested : 0));
+            list.Add(One(command, opt, sequence, at == 0 ? data.Length : at, part));
+        }
+        list.Add(One(command, (byte)(OptInternal | OptChunk | OptAckRequested), sequence, data.Length, ReadOnlySpan<byte>.Empty));
+        return list;
+    }
+
     /// <summary>ACK for one chunk: like <see cref="Ack"/>, with the bytes received so far and the bytes still missing.</summary>
     public static byte[] ChunkAck(in GipMessage m, int received, int remaining) =>
         Encode(CmdAck, OptInternal, m.Sequence, new byte[]
