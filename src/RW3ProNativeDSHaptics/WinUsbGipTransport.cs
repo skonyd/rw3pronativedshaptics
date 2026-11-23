@@ -444,8 +444,35 @@ public sealed class WinUsbGipTransport : IDisposable
             Thread.Sleep(150);   // the firmware handles one lighting command per pass (WolverineLightingAndBattery)
             bool ok = SendRazer(GipCodec.RazerStatic(_razerTx++, 0xFF, 0xFF, 0xFF));
             Log("Direct mode: connected light (dim white) " + (ok ? "sent" : "not sent"));
+            if (ok) SaveLightToProfilesOnce();
         });
     }
+
+    /// <summary>The same dim white in the pad's four stored profiles, once (marker file): the pad then lights up whenever
+    /// it is on, connected or not, RW3 running or not (user, 2026-11-23: "kalıcı yaz"; before, a restarted pad went
+    /// back to its stored lighting, which was off). Razer's lighting commands with a profile slot, as Synapse saves
+    /// them; not firmware. Changeable again from RW3's or Synapse's lighting settings.</summary>
+    private void SaveLightToProfilesOnce()
+    {
+        if (IsLoginBridge) return;
+        string marker = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(IdentifyFile)!, "light-profiles-saved.txt");
+        if (System.IO.File.Exists(marker) || Interlocked.Exchange(ref _profilesSaving, 1) == 1) return;
+        long errorsBefore = RazerErrors;
+        bool all = true;
+        for (byte profile = 1; profile <= 4; profile++)
+        {
+            Thread.Sleep(150);
+            all &= SendRazer(GipCodec.RazerBrightness(_razerTx++, ConnectedBrightness, profile));
+            Thread.Sleep(150);
+            all &= SendRazer(GipCodec.RazerStatic(_razerTx++, 0xFF, 0xFF, 0xFF, profile));
+        }
+        Thread.Sleep(300);   // Razer's replies come back on the reader thread
+        bool refused = RazerErrors > errorsBefore;
+        Log($"Direct mode: dim white written to stored profiles 1-4: {(all && !refused ? "ok" : all ? "sent, but Razer refused a command" : "not all sent")}.");
+        if (all && !refused) try { System.IO.File.WriteAllText(marker, DateTime.Now.ToString("o")); } catch { }
+        else Interlocked.Exchange(ref _profilesSaving, 0);   // try again on the next connection
+    }
+    private int _profilesSaving;
 
     /// <summary>The direct-mode pad's buttons for RW3's own menus, left stick as D-pad; 0 while the pipe is closed.
     /// RW3's menus read XInput and skip RW3's own virtual pad, so in direct mode they saw no pad at all (2026-11-23).</summary>

@@ -151,11 +151,12 @@ public static class GipCodec
     }
 
     /// <summary>Razer lighting (class 0x0F, RAM, profile 0, all zones 0x05): brightness 0..255 (command 0x04).</summary>
-    public static byte[] RazerBrightness(byte transaction, byte brightness) => RazerPacket(transaction, 0x0F, 0x04, new byte[] { 0x00, 0x05, brightness });
+    public static byte[] RazerBrightness(byte transaction, byte brightness, byte profile = 0) => RazerPacket(transaction, 0x0F, 0x04, new byte[] { profile, 0x05, brightness });
 
     /// <summary>Razer lighting: one static colour (command 0x02, effect 0x0D, custom colour slot).</summary>
-    public static byte[] RazerStatic(byte transaction, byte r, byte g, byte b) =>
-        RazerPacket(transaction, 0x0F, 0x02, new byte[] { 0x00, 0x05, 0x0D, 0x08, 0x01, 0x01, r, g, b });
+    /// <param name="profile">0 = what the pad shows now (RAM); 1..4 = the pad's stored profiles (kept when it is off).</param>
+    public static byte[] RazerStatic(byte transaction, byte r, byte g, byte b, byte profile = 0) =>
+        RazerPacket(transaction, 0x0F, 0x02, new byte[] { profile, 0x05, 0x0D, 0x08, 0x01, 0x01, r, g, b });
 
     /// <summary>Input report 0x20 → XInput-style state. Payload offsets (xpad xpadone_process_packet minus its 4-byte
     /// header): [0] Menu 0x04, View 0x08, A 0x10, B 0x20, X 0x40, Y 0x80; [1] up, down, left, right, LB, RB, LS, RS;
