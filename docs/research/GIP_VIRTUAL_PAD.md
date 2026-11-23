@@ -82,3 +82,10 @@ included, so the genuine pad answers for itself, the way a USB hub passes them t
 (0x09) on the way, to apply the user's choices (and keeps adding the palms). Needs: the pad in direct mode, both
 directions forwarded with their sequence numbers and ACKs, and the pad's input forwarded to Windows instead of RW3's
 HIDMaestro Xbox pad.
+
+## Status (2026-11-23)
+
+Paused. The proxy run of 21:01 got identify and several authentication rounds through (E-20261123-76), and also left
+Windows' device manager stuck: no USB device enumerated until a restart (E-20261123-77). Before the next run: find which
+PnP operation hangs (removing the clone, resetting the pad, the adapter re-arriving while the clone exists) and bound it
+with a timeout, and stop the run when the device log stops moving.
