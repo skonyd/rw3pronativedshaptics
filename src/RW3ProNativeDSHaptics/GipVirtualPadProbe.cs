@@ -22,28 +22,30 @@ public static class GipVirtualPadProbe
     public const string ProfileId = "rw3-gip-probe";
     public static string FlagFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3ProNativeDSHaptics", "gip-probe.flag");
 
-    /// <summary>Wired Xbox Series controller identity (045E:0B12). Interface 0 is the GIP interface, class FF/47/D0 with
-    /// interrupt OUT 0x02 / IN 0x82 (64 bytes, 4 ms), like a Series pad's. HIDMaestro refuses a configuration without a
-    /// HID interface (first run, 2026-11-23: "configurationDescriptor: has no HID interface"), so interface 1 is a
-    /// placeholder HID (vendor page, IN 0x81) and the device is composite (class 00): Windows then binds a driver per
-    /// interface, and the question is whether its Xbox driver takes interface 0.</summary>
-    /// <summary>The same device as the real pad (run 6): Razer 1532:0A3F, bcdDevice 0x0101 (E-20261122-58). With
-    /// 045E:0B12 in the announce and Razer identify data, Windows took the whole identify reply (ACK 260 / 0) and asked
-    /// again (run 5, 12:18): the mismatch is the first suspect.</summary>
-    public static string BuildProfileJson() => BuildProfileJsonFor045E().Replace("\"vid\": \"0x045E\"", "\"vid\": \"0x1532\"")
-        .Replace("\"pid\": \"0x0B12\"", "\"pid\": \"0x0A3F\"").Replace("405e04120b0805", "40321 53f0a0101".Replace(" ", ""))
-        .Replace("\"manufacturerString\": \"Microsoft\"", "\"manufacturerString\": \"Razer\"")
-        .Replace("\"productString\": \"Controller\"", "\"productString\": \"Razer Wolverine V3 Pro for Xbox\"");
-
-    public static string BuildProfileJsonFor045E() => """
+    /// <summary>
+    /// The probe device, built like the real pad (E-20261122-58) so that Windows treats it the same way:
+    /// <list type="bullet">
+    /// <item>Razer 1532:0A3F, bcdDevice 0x0101, device class FF/47/D0 (not composite), GIP interface 0 with interrupt
+    /// OUT 0x01 / IN 0x81, 64 bytes, 4 ms.</item>
+    /// <item>A Microsoft OS 1.0 descriptor with compatible ID "XGIP10" and vendor code 0x90: Windows' Xbox driver
+    /// (dc1-controller.inf) takes third-party pads by <c>USB\MS_COMP_XGIP10</c>, and Windows has cached "MS OS
+    /// descriptor, vendor code 0x90" for 1532:0A3F 0101 (usbflags osvc = 01 90). Run 6 had no such descriptor:
+    /// Windows split the device as composite and bound nothing to the GIP interface.</item>
+    /// <item>Interface 1 is a placeholder HID (vendor page, IN 0x82): HIDMaestro refuses a configuration without one
+    /// (run 1). Windows' Xbox driver owns the whole device and ignores it, as it ignores the real pad's audio interface.</item>
+    /// </list>
+    /// History: run 2 (045E:0B12, matched by hardware id) bound dc1-controller; run 5 answered identify with the Razer
+    /// data under that Microsoft identity and Windows asked again.
+    /// </summary>
+    public static string BuildProfileJson() => """
         {
           "id": "rw3-gip-probe",
-          "name": "RW3 GIP probe (wired Xbox pad)",
+          "name": "RW3 GIP probe (Wolverine clone)",
           "vendor": "RW3",
-          "vid": "0x045E",
-          "pid": "0x0B12",
-          "productString": "Controller",
-          "manufacturerString": "Microsoft",
+          "vid": "0x1532",
+          "pid": "0x0A3F",
+          "productString": "Razer Wolverine V3 Pro for Xbox",
+          "manufacturerString": "Razer",
           "serialString": "RW3GIPPROBE0001",
           "type": "gamepad",
           "connection": "usb",
@@ -55,31 +57,35 @@ public static class GipVirtualPadProbe
             "attributes": 160,
             "maxPowerMilliamps": 500,
             "busSpeed": "full",
-            "deviceDescriptor": "12010002000000405e04120b080501020301",
-            "configurationDescriptor": "09023900020100a0fa0904000002ff47d0000705020340000407058203400004090401000103000000092111010001221b0007058103400004",
+            "deviceDescriptor": "12010002ff47d04032153f0a010101020301",
+            "configurationDescriptor": "09023900020100a0fa0904000002ff47d0000705010340000407058103400004090401000103000000092111010001221b0007058203400004",
+            "microsoftOs": {
+              "string": "12034d005300460054003100300030009000",
+              "extendedCompatId": "28000000000104000100000000000000000158474950313000000000000000000000000000000000"
+            },
             "interfaces": [
               { "interfaceNumber": 0, "function": "vendor",
                 "altSettings": [ { "altSetting": 0, "interfaceClass": 255, "interfaceSubClass": 71, "interfaceProtocol": 208,
-                  "endpoints": [ { "address": 2, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 },
-                                 { "address": 130, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] },
+                  "endpoints": [ { "address": 1, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 },
+                                 { "address": 129, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] },
               { "interfaceNumber": 1, "function": "hid",
                 "altSettings": [ { "altSetting": 0, "interfaceClass": 3, "interfaceSubClass": 0, "interfaceProtocol": 0,
-                  "endpoints": [ { "address": 129, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] }
+                  "endpoints": [ { "address": 130, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] }
             ]
           },
           "protocol": {
-            "input": { "endpoint": "0x82" },
-            "commands": { "endpoint": "0x02", "rules": [] }
+            "input": { "endpoint": "0x81" },
+            "commands": { "endpoint": "0x01", "rules": [] }
           }
         }
         """;
 
-    /// <summary>A GIP announce as the Wolverine sends it (E-20261122-61), with 045E:0B12 and a locally administered
-    /// address: [address 6][2][vid][pid][firmware 4×u16][hardware 4×u16].</summary>
+    /// <summary>The Wolverine's own announce (E-20261122-61: address, 1532:0A3F, firmware 1.1.0x0402.0, hardware
+    /// 0x0101.1…; the last 4 bytes were not logged and are 0). Used when direct mode has not saved the real one.</summary>
     public static byte[] Announce(byte sequence) => GipCodec.Encode(GipCodec.CmdAnnounce, GipCodec.OptInternal, sequence, new byte[]
     {
-        0x02, 0x52, 0x57, 0x33, 0x00, 0x01, 0x00, 0x00, 0x5E, 0x04, 0x12, 0x0B,
-        0x05, 0x00, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
+        0xC5, 0x97, 0xA5, 0x95, 0x45, 0xE4, 0x00, 0x00, 0x32, 0x15, 0x3F, 0x0A,
+        0x01, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
     });
 
     /// <summary>The pad's own chunk size (data bytes of its first identify chunk), or the default.</summary>
@@ -194,8 +200,8 @@ public static class GipVirtualPadProbe
             string all = p.StandardOutput.ReadToEnd();
             p.WaitForExit(15000);
             var blocks = all.Split(new[] { "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(b => b.Contains("VID_045E&PID_0B12", StringComparison.OrdinalIgnoreCase)).ToList();
-            return blocks.Count == 0 ? "no 045E:0B12 device" : string.Join(" || ", blocks.Select(b => string.Join(" ; ", b.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Take(12))));
+                .Where(b => b.Contains("RW3GIPPROBE", StringComparison.OrdinalIgnoreCase)).ToList();
+            return blocks.Count == 0 ? "no RW3GIPPROBE device" : string.Join(" || ", blocks.Select(b => string.Join(" ; ", b.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Take(12))));
         }
         catch (Exception ex) { return "pnputil failed: " + ex.Message; }
     }
