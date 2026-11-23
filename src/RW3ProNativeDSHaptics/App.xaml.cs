@@ -65,6 +65,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         // Elevated RW3: bring the login bridge's Program Files copy up to this build (no-op when it is not installed).
         if (Environment.IsPrivilegedProcess) _ = Task.Run(LoginBridgeTask.RefreshIfStale);
+        GipVirtualPadProbe.RunIfRequested();   // one-shot research probe, only when its flag file exists
         // CI / packaged-app smoke check: no device, window or vendor DLL needed.
         if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {

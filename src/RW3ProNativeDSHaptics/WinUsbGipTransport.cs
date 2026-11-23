@@ -138,6 +138,7 @@ public sealed class WinUsbGipTransport : IDisposable
             Send(GipCodec.PowerOn(NextSeq()));
             Send(GipCodec.LedOn(NextSeq()));
             ScheduleConnectedLight();
+            ScheduleIdentify();
             State = "açık";
             Log("Direct mode: WinUSB GIP pipe open (" + path + (paths.Count > 1 ? $", 1 of {paths.Count}" : "") + "), power-on sent.");
             return true;
@@ -206,6 +207,7 @@ public sealed class WinUsbGipTransport : IDisposable
                     logged++;
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
+                if (m.Command == GipCodec.CmdIdentify) { HandleIdentify(m); continue; }   // chunked: acks itself
                 if (m.WantsAck) Send(GipCodec.Ack(m));
                 // Razer replies: status 0x02 = accepted; anything else is counted and the first one logged
                 if (m.Command == 0x10 && m.Payload.Length >= 8 && m.Payload[0] != 0x02 && m.Payload[0] != 0x00 && Interlocked.Increment(ref _razerErrors) == 1)
@@ -288,6 +290,70 @@ public sealed class WinUsbGipTransport : IDisposable
     }
 
     public void Dispose() => Close();
+
+    // ---- identify data (docs/research/GIP_VIRTUAL_PAD.md, question 2): read once, saved for the GIP virtual pad ----
+    private byte[]? _identBuf;
+    private int _identTotal, _identGot;
+    private int _identAsked;
+    /// <summary>The pad's identify data once read (null before).</summary>
+    public byte[]? IdentifyData { get; private set; }
+    public static string IdentifyFile => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RW3ProNativeDSHaptics", "gip-identify.bin");
+
+    /// <summary>Asks the pad for its identify data once per RW3 run, 1.5 s after opening (the pad is powered on then).
+    /// Read-only for the pad: it only answers.</summary>
+    private void ScheduleIdentify()
+    {
+        if (IsLoginBridge || Interlocked.Exchange(ref _identAsked, 1) == 1) return;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Thread.Sleep(1500);
+            if (!IsOpen) { Interlocked.Exchange(ref _identAsked, 0); return; }
+            bool ok = Send(GipCodec.IdentifyRequest(NextSeq()));
+            Log("Direct mode: identify request " + (ok ? "sent" : "not sent") + ".");
+        });
+    }
+
+    private void HandleIdentify(in GipMessage m)
+    {
+        var p = m.Payload;
+        if (!m.Chunked)
+        {
+            if (m.WantsAck) Send(GipCodec.Ack(m));
+            CompleteIdentify(p);
+            return;
+        }
+        var (offset, start) = GipCodec.ChunkHeader(p);
+        int len = p.Length - start;
+        if ((m.Options & GipCodec.OptChunkStart) != 0)
+        {
+            if (offset <= 0 || offset > 65536) { Log($"Direct mode: identify start with odd length {offset}."); return; }
+            _identTotal = offset; _identBuf = new byte[offset]; _identGot = 0;
+            offset = 0;   // the first chunk's field is the total length; its data starts at 0
+        }
+        if (_identBuf == null) return;
+        if (len > 0 && offset + len <= _identBuf.Length)
+        {
+            Array.Copy(p, start, _identBuf, offset, len);
+            _identGot = Math.Max(_identGot, offset + len);
+        }
+        if (m.WantsAck) Send(GipCodec.ChunkAck(m, _identGot, Math.Max(0, _identTotal - _identGot)));
+        if (len == 0 || _identGot >= _identTotal) CompleteIdentify(_identBuf);
+    }
+
+    private void CompleteIdentify(byte[] data)
+    {
+        if (IdentifyData != null) return;
+        IdentifyData = data;
+        Log($"Direct mode: identify data {data.Length} bytes: {Convert.ToHexString(data.AsSpan(0, Math.Min(64, data.Length)))}…");
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(IdentifyFile)!);
+            System.IO.File.WriteAllBytes(IdentifyFile, data);
+            Log("Direct mode: identify data saved to " + IdentifyFile + ".");
+        }
+        catch (Exception ex) { Log("Direct mode: identify data not saved: " + ex.Message); }
+    }
 
     /// <summary>Dim white on the pad's RGB while RW3 drives it in direct mode, off when RW3 lets go: the user sees that
     /// it works (2026-11-23: in direct mode nothing lit the pad). Razer lighting in RAM only, profile 0.</summary>

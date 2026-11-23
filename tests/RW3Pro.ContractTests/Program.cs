@@ -1843,6 +1843,21 @@ SpectralContracts.Run(Check);
         "Input delay meter: per new report, repeats ignored, avg/max, reset after reading");
 }
 
+// GIP chunks: the length counts only the data after the offset varint; first chunk's offset = total length; chunk ACK.
+{
+    // identify, chunk start (0x40) + chunked (0x80) + ack (0x10) + system (0x20); total 256 = varint 80 02; 3 data bytes;
+    // then a 0x20 input message in the same transfer
+    var transfer = new byte[] { 0x04, 0xF0, 0x05, 0x03, 0x80, 0x02, 0xAA, 0xBB, 0xCC, 0x20, 0x00, 0x06, 0x02, 0x10, 0x00 };
+    var msgs = GipCodec.Decode(transfer);
+    var (off, start) = msgs.Count > 0 ? GipCodec.ChunkHeader(msgs[0].Payload) : (0, 0);
+    var ack = GipCodec.ChunkAck(msgs[0], 3, 253);
+    Check(msgs.Count == 2 && msgs[0].Chunked && msgs[0].Payload.Length == 5 && off == 256 && start == 2 && msgs[0].Payload[2] == 0xAA
+        && msgs[1].Command == 0x20 && msgs[1].Payload.Length == 2
+        && GipCodec.IdentifyRequest(7).SequenceEqual(new byte[] { 0x04, 0x20, 7, 0x00 })
+        && ack[0] == 0x01 && ack[3 + 0] == 0x09 && ack[4] == 0x00 && ack[5] == 0x04 && ack[7] == 3 && ack[11] == 253,
+        "GIP chunks: length excludes the offset varint, first offset = total, chunk ACK carries received/remaining, identify request");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)

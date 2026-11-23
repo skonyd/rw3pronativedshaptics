@@ -63,10 +63,14 @@ public static class GipCodec
                 shift += 7;
                 if ((b & 0x80) == 0 || shift > 21) break;
             }
-            // a chunked message carries an extra offset varint in front of its data; the payload keeps it
-            if (j + len > transfer.Length) break;
-            list.Add(new GipMessage(cmd, opt, seq, transfer.Slice(j, len).ToArray()));
-            i = j + len;
+            // a chunked message carries an offset varint after the length; the length counts only the data after it
+            // (xone gip_parse_header). The payload keeps the offset varint in front of the data.
+            int dataStart = j;
+            if ((opt & OptChunk) != 0)
+                while (dataStart < transfer.Length && (transfer[dataStart++] & 0x80) != 0) { }
+            if (dataStart + len > transfer.Length) break;
+            list.Add(new GipMessage(cmd, opt, seq, transfer.Slice(j, dataStart - j + len).ToArray()));
+            i = dataStart + len;
             if (cmd == 0 && opt == 0 && len == 0) break;
         }
         return list;
@@ -148,6 +152,35 @@ public static class GipCodec
             BitConverter.ToInt16(payload[10..12]), BitConverter.ToInt16(payload[12..14]));
         return true;
     }
+
+    public const byte OptChunkStart = 0x40;
+
+    /// <summary>Identify request (system message 0x04, no payload): the pad answers with its identify data (firmware,
+    /// supported messages, interface GUIDs…), in chunks when longer than one transfer.</summary>
+    public static byte[] IdentifyRequest(byte sequence) => Encode(CmdIdentify, OptInternal, sequence, ReadOnlySpan<byte>.Empty);
+
+    /// <summary>Splits a chunked payload into its offset varint and data. For the first chunk (option 0x40) the
+    /// "offset" is the total length of the whole message.</summary>
+    public static (int Offset, int DataStart) ChunkHeader(ReadOnlySpan<byte> payload)
+    {
+        int value = 0, shift = 0, k = 0;
+        while (k < payload.Length)
+        {
+            byte b = payload[k++];
+            value |= (b & 0x7F) << shift;
+            shift += 7;
+            if ((b & 0x80) == 0 || shift > 21) break;
+        }
+        return (value, k);
+    }
+
+    /// <summary>ACK for one chunk: like <see cref="Ack"/>, with the bytes received so far and the bytes still missing.</summary>
+    public static byte[] ChunkAck(in GipMessage m, int received, int remaining) =>
+        Encode(CmdAck, OptInternal, m.Sequence, new byte[]
+        {
+            0x00, m.Command, (byte)(OptInternal | (m.Options & 0x0F)),
+            (byte)received, (byte)(received >> 8), 0x00, 0x00, (byte)remaining, (byte)(remaining >> 8)
+        });
 
     /// <summary>Guide (Xbox) button message 0x07: payload[0] bit 0 = pressed.</summary>
     public static bool GuidePressed(ReadOnlySpan<byte> payload) => payload.Length > 0 && (payload[0] & 0x01) != 0;
