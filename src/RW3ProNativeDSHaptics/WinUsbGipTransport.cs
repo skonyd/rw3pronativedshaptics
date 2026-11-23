@@ -58,7 +58,10 @@ public sealed class WinUsbGipTransport : IDisposable
     /// virtual clone. While set, this transport stops acting as the host (no power on, LED, identify, ACKs, reset) and
     /// hands every message from the pad, except Razer's replies to RW3 (0x10), to the sink, byte for byte.</summary>
     public static volatile Action<byte[]>? ProxySink;
-    public static bool ProxyMode => ProxySink != null;
+    /// <summary>Set as soon as RW3 starts with the GIP proxy on, before the clone exists: the transport never acts as
+    /// the host in that run (an identify request RW3 sent before the proxy took over reached Windows, 2026-11-23 20:39).</summary>
+    public static volatile bool ProxyPending;
+    public static bool ProxyMode => ProxySink != null || ProxyPending;
     /// <summary>GIP proxy: one message from Windows, as it came.</summary>
     public bool SendRawMessage(byte[] message) => IsOpen && Send(message);
     /// <summary>GIP proxy: make the pad leave and announce again, so Windows meets it from the start.</summary>
@@ -226,7 +229,8 @@ public sealed class WinUsbGipTransport : IDisposable
                     logged++;
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
-                if (sink == null)
+                if (sink == null && ProxyPending && m.Command is not (GipCodec.CmdInput or GipCodec.CmdGuide)) continue;   // proxy not ready yet: drop
+                if (!ProxyMode)
                 {
                     if (m.Command == GipCodec.CmdIdentify) { HandleIdentify(m); continue; }   // chunked: acks itself
                     if (m.WantsAck) Send(GipCodec.Ack(m));
@@ -236,7 +240,7 @@ public sealed class WinUsbGipTransport : IDisposable
                     Log($"Direct mode: Razer reply status 0x{m.Payload[0]:X2} class 0x{m.Payload[6]:X2} cmd 0x{m.Payload[7]:X2}");
                 switch (m.Command)
                 {
-                    case GipCodec.CmdAnnounce:
+                    case GipCodec.CmdAnnounce when !ProxyMode:
                         SaveOnce(AnnounceFile, m.Payload, ref _announceSaved);   // for the GIP virtual pad (a faithful clone)
                         // like Windows (E-20261123-74): identify first, power on after it. Asked after power-on, the pad
                         // never answered (2026-11-23 12:00); without a request pending, power on at once as before.

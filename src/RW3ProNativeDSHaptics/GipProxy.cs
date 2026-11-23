@@ -43,10 +43,17 @@ public static class GipProxy
     {
         try { if (!Environment.IsPrivilegedProcess || !File.Exists(FlagFile)) return; }
         catch { return; }
+        WinUsbGipTransport.ProxyPending = true;   // from the start: RW3 never powers, acks or asks the pad in this run
         new Thread(Run) { IsBackground = true, Name = "RW3 GIP proxy" }.Start();
     }
 
     private static void Log(string m) => DiagnosticsService.Info("GIP proxy: " + m);
+    private static int s_traced;
+    /// <summary>The first 60 messages both ways, raw (the first run showed 0x7A / 0x00 messages going to Windows).</summary>
+    private static void Trace(string direction, byte[] msg)
+    {
+        if (Interlocked.Increment(ref s_traced) <= 60) Log($"{direction} {msg.Length,2}: {Convert.ToHexString(msg.AsSpan(0, Math.Min(40, msg.Length)))}");
+    }
 
     private static readonly ConcurrentDictionary<string, int> Counts = new();
     private static void Count(string direction, byte command) => Counts.AddOrUpdate($"{direction}{command:X2}", 1, (_, c) => c + 1);
@@ -83,6 +90,7 @@ public static class GipProxy
             {
                 if (msg.Length == 0) return;
                 Count("pad→win ", msg[0]);
+                Trace("pad→win", msg);
                 var report = new byte[64];
                 msg.AsSpan(0, Math.Min(64, msg.Length)).CopyTo(report);
                 lock (gate) try { c.SubmitRawReport(report); } catch { }
@@ -95,6 +103,7 @@ public static class GipProxy
                 msg[0] = pkt.ReportId;
                 pkt.Data.Span.CopyTo(msg.AsSpan(1));
                 Count("win→pad ", msg[0]);
+                Trace("win→pad", msg);
                 // the game's rumble on the way: [09][opt][seq][len][00 0F LT RT L R …], 0..100
                 if (msg[0] == GipCodec.CmdRumble && msg.Length >= 10)
                 {
