@@ -22,9 +22,11 @@ public static class GipVirtualPadProbe
     public const string ProfileId = "rw3-gip-probe";
     public static string FlagFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RW3ProNativeDSHaptics", "gip-probe.flag");
 
-    /// <summary>Wired Xbox Series controller identity (045E:0B12), device and interface class FF/47/D0, one interface with
-    /// interrupt OUT 0x02 / IN 0x82 (64 bytes, 4 ms), like a Series pad's GIP interface. The HID report descriptor only
-    /// satisfies HIDMaestro's loader (vendor page, 64 bytes each way); the USB interface itself is not HID.</summary>
+    /// <summary>Wired Xbox Series controller identity (045E:0B12). Interface 0 is the GIP interface, class FF/47/D0 with
+    /// interrupt OUT 0x02 / IN 0x82 (64 bytes, 4 ms), like a Series pad's. HIDMaestro refuses a configuration without a
+    /// HID interface (first run, 2026-11-23: "configurationDescriptor: has no HID interface"), so interface 1 is a
+    /// placeholder HID (vendor page, IN 0x81) and the device is composite (class 00): Windows then binds a driver per
+    /// interface, and the question is whether its Xbox driver takes interface 0.</summary>
     public static string BuildProfileJson() => """
         {
           "id": "rw3-gip-probe",
@@ -45,13 +47,16 @@ public static class GipVirtualPadProbe
             "attributes": 160,
             "maxPowerMilliamps": 500,
             "busSpeed": "full",
-            "deviceDescriptor": "12010002ff47d0405e04120b080501020301",
-            "configurationDescriptor": "09022000010100a0fa0904000002ff47d0000705020340000407058203400004",
+            "deviceDescriptor": "12010002000000405e04120b080501020301",
+            "configurationDescriptor": "09023900020100a0fa0904000002ff47d0000705020340000407058203400004090401000103000000092111010001221b0007058103400004",
             "interfaces": [
               { "interfaceNumber": 0, "function": "vendor",
                 "altSettings": [ { "altSetting": 0, "interfaceClass": 255, "interfaceSubClass": 71, "interfaceProtocol": 208,
                   "endpoints": [ { "address": 2, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 },
-                                 { "address": 130, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] }
+                                 { "address": 130, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] },
+              { "interfaceNumber": 1, "function": "hid",
+                "altSettings": [ { "altSetting": 0, "interfaceClass": 3, "interfaceSubClass": 0, "interfaceProtocol": 0,
+                  "endpoints": [ { "address": 129, "transferType": "interrupt", "maxPacketSize": 64, "interval": 4 } ] } ] }
             ]
           },
           "protocol": {
