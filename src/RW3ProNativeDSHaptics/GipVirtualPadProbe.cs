@@ -86,7 +86,8 @@ public static class GipVirtualPadProbe
     /// 0x0101.1…; the last 4 bytes were not logged and are 0). Used when direct mode has not saved the real one.</summary>
     public static byte[] Announce(byte sequence) => GipCodec.Encode(GipCodec.CmdAnnounce, GipCodec.OptInternal, sequence, new byte[]
     {
-        0xC5, 0x97, 0xA5, 0x95, 0x45, 0xE4, 0x00, 0x00, 0x32, 0x15, 0x3F, 0x0A,
+        0x02, 0x52, 0x57, 0x33, 0x00, 0x01, 0x00, 0x00, 0x32, 0x15, 0x3F, 0x0A,   // own (locally administered) address: run 8 used the
+                                                                                 // real pad's while it was also plugged in, and got no host write
         0x01, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
     });
 
@@ -178,7 +179,7 @@ public static class GipVirtualPadProbe
             {
                 if (Volatile.Read(ref outputs) == 0 || sw.Elapsed.TotalSeconds < 3)
                 {
-                    SendRaw(padAnnounce != null ? GipCodec.Encode(GipCodec.CmdAnnounce, GipCodec.OptInternal, seq++, padAnnounce) : Announce(seq++));
+                    SendRaw(Announce(seq++));   // never the pad's own announce: same address as the real pad (run 8)
                 }
                 if (!driverLogged && sw.Elapsed.TotalSeconds > 6) { driverLogged = true; Log("PnP: " + DeviceState()); }
                 Thread.Sleep(500);
