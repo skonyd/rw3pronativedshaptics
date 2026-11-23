@@ -69,8 +69,16 @@ public static class GipProxy
 #if HAS_HIDMAESTRO
         Thread.Sleep(3000);
         var transport = WinUsbGipTransport.Shared;
-        for (int i = 0; i < 30 && !transport.IsOpen; i++) { transport.TryOpen(); Thread.Sleep(1000); }
-        if (!transport.IsOpen) { Log("the pad is not open over WinUSB (direct mode, adapter or cable plugged in?); not started."); return; }
+        // wait for the pad as long as RW3 runs: the adapter is on USB only while the pad is on and linked, and Windows
+        // switches the pad off when authentication fails (run 6, 20:55: the proxy gave up after 30 s)
+        bool waitingLogged = false;
+        while (!transport.IsOpen)
+        {
+            transport.TryOpen();
+            if (transport.IsOpen) break;
+            if (!waitingLogged) { waitingLogged = true; Log("waiting for the pad on WinUSB (switch it on; adapter or cable plugged in)."); }
+            Thread.Sleep(2000);
+        }
         string dir = Path.Combine(Path.GetTempPath(), "rw3-gip-proxy");
         HMController? ctrl = null;
         try
