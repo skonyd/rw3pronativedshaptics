@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -66,6 +67,15 @@ public partial class App : System.Windows.Application
         // Elevated RW3: bring the login bridge's Program Files copy up to this build (no-op when it is not installed).
         if (Environment.IsPrivilegedProcess) _ = Task.Run(LoginBridgeTask.RefreshIfStale);
         GipVirtualPadProbe.RunIfRequested();   // one-shot research probe, only when its flag file exists
+        // The GIP proxy needs the pad's WinUSB pipe, which only an elevated RW3 opens; with the 'Kolun kendisi' output RW3
+        // does not elevate by itself (2026-11-23 20:45: the proxy never started). Hand over to the elevated task.
+        if (!Environment.IsPrivilegedProcess && File.Exists(GipProxy.FlagFile) && !e.Args.Contains(StartVirtualDualSenseArg, StringComparer.OrdinalIgnoreCase)
+            && ElevatedLaunchTask.TryRun())
+        {
+            DiagnosticsService.Info("GIP proxy: flag set, restarting RW3 elevated through the task.");
+            Shutdown();
+            return;
+        }
         GipProxy.RunIfRequested();   // experimental GIP proxy, only while its flag file exists
         // CI / packaged-app smoke check: no device, window or vendor DLL needed.
         if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
