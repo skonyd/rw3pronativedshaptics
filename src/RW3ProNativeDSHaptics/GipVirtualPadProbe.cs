@@ -34,6 +34,7 @@ public static class GipVirtualPadProbe
     /// <item>Interface 1 is a placeholder HID (vendor page, IN 0x82): HIDMaestro refuses a configuration without one
     /// (run 1). Windows' Xbox driver owns the whole device and ignores it, as it ignores the real pad's audio interface.</item>
     /// </list>
+    /// HIDMaestro requires an extended properties descriptor for the usbip backend (run 7): an empty one (no property).
     /// History: run 2 (045E:0B12, matched by hardware id) bound dc1-controller; run 5 answered identify with the Razer
     /// data under that Microsoft identity and Windows asked again.
     /// </summary>
@@ -61,7 +62,8 @@ public static class GipVirtualPadProbe
             "configurationDescriptor": "09023900020100a0fa0904000002ff47d0000705010340000407058103400004090401000103000000092111010001221b0007058203400004",
             "microsoftOs": {
               "string": "12034d005300460054003100300030009000",
-              "extendedCompatId": "28000000000104000100000000000000000158474950313000000000000000000000000000000000"
+              "extendedCompatId": "28000000000104000100000000000000000158474950313000000000000000000000000000000000",
+              "extendedProperties": "0a000000000105000000"
             },
             "interfaces": [
               { "interfaceNumber": 0, "function": "vendor",
