@@ -77,20 +77,31 @@ public static class GipCodec
     }
 
     /// <summary>Like <see cref="Decode"/>, with where each message sits in the transfer (the GIP proxy forwards the
-    /// exact bytes).</summary>
+    /// exact bytes). The spans come from the headers as written: the pad writes its chunk lengths as two-byte varints
+    /// (<c>BA 00</c> = 58), so recomputing them came out one byte short (2026-11-23 20:41: the last data byte of every
+    /// chunk turned into a 0x7A / 0x00 "message" for Windows).</summary>
     public static List<(GipMessage Message, int Start, int Length)> DecodeSpans(ReadOnlySpan<byte> transfer)
     {
         var list = new List<(GipMessage, int, int)>();
-        int at = 0;
-        foreach (var m in Decode(transfer))
+        int i = 0;
+        while (i + 4 <= transfer.Length)
         {
-            int lenBytes = 0, v = m.Payload.Length;
-            // header length varint = data length (chunked: without the offset varint, which the payload keeps)
-            int dataLen = m.Chunked ? m.Payload.Length - ChunkHeader(m.Payload).DataStart : m.Payload.Length;
-            v = dataLen; do { lenBytes++; v >>= 7; } while (v != 0);
-            int length = 3 + lenBytes + m.Payload.Length;
-            list.Add((m, at, length));
-            at += length;
+            byte cmd = transfer[i], opt = transfer[i + 1], seq = transfer[i + 2];
+            int len = 0, shift = 0, j = i + 3;
+            while (j < transfer.Length)
+            {
+                byte b = transfer[j++];
+                len |= (b & 0x7F) << shift;
+                shift += 7;
+                if ((b & 0x80) == 0 || shift > 21) break;
+            }
+            int dataStart = j;
+            if ((opt & OptChunk) != 0)
+                while (dataStart < transfer.Length && (transfer[dataStart++] & 0x80) != 0) { }
+            if (dataStart + len > transfer.Length) break;
+            list.Add((new GipMessage(cmd, opt, seq, transfer.Slice(j, dataStart - j + len).ToArray()), i, dataStart + len - i));
+            i = dataStart + len;
+            if (cmd == 0 && opt == 0 && len == 0) break;
         }
         return list;
     }

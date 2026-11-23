@@ -214,6 +214,9 @@ public sealed class WinUsbGipTransport : IDisposable
             }
             errors = 0;
             var sink = ProxySink;
+            // proxy diagnostics: the first 30 raw transfers in full (a 64-byte packet continues the transfer, so one read
+            // can hold several chunks; 2026-11-23 20:41 the identify reply's first chunk never reached Windows)
+            if (ProxyMode && Interlocked.Increment(ref _rawTraced) <= 30) Log($"Direct mode: raw read {n}: {Convert.ToHexString(buf.AsSpan(0, Math.Min(320, (int)n)))}");
             foreach (var (m, mStart, mLength) in GipCodec.DecodeSpans(buf.AsSpan(0, (int)n)))
             {
                 Interlocked.Increment(ref _messages);
@@ -296,6 +299,7 @@ public sealed class WinUsbGipTransport : IDisposable
         return Send(GipCodec.Rumble(NextSeq(), bodyLeft, bodyRight, triggerLeft, triggerRight));
     }
     private long _razerErrors;
+    private int _rawTraced;
     public long RazerErrors => Interlocked.Read(ref _razerErrors);
 
     /// <summary>Razer's 60-byte 0x0F packet (Sensa frame, RGB, battery…), the same bytes WGI's SendMessage carried.</summary>

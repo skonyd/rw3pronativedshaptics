@@ -1885,6 +1885,17 @@ SpectralContracts.Run(Check);
         "GIP proxy: DecodeSpans returns each message's exact bytes, chunked ones included, trailing zeros ignored");
 }
 
+// GIP proxy: a chunk whose length is a two-byte varint (BA 00 = 58, as the Wolverine writes it) keeps all its bytes.
+{
+    var chunk = new byte[64];
+    chunk[0] = 0x04; chunk[1] = 0xA0; chunk[2] = 0x01; chunk[3] = 0xBA; chunk[4] = 0x00; chunk[5] = 0x3A;
+    for (int k = 6; k < 64; k++) chunk[k] = (byte)k;
+    var transfer = chunk.Concat(new byte[] { 0x20, 0x00, 0x07, 0x02, 0x10, 0x00 }).ToArray();
+    var spans = GipCodec.DecodeSpans(transfer);
+    Check(spans.Count == 2 && spans[0].Length == 64 && spans[0].Message.Payload.Length == 59 && spans[1].Start == 64 && spans[1].Message.Command == 0x20,
+        "GIP proxy: a two-byte length varint (BA 00) keeps the whole 64-byte chunk, the next message starts right after it");
+}
+
 // Melody output (MelodyAnalyzer): bass at its pitch, melody's fundamental folded into 150–400 Hz, a pitch per point.
 {
     static (MelodyPoint[] L, MelodyPoint[] R) Run(Func<double, (double L, double R)> signal, double seconds)
