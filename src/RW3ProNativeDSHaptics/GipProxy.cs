@@ -114,8 +114,7 @@ public static class GipProxy
                     }
                 }
             }
-            byte[]? lastToPad = null;
-            long lastToPadAt = 0;
+            var recent = new System.Collections.Generic.List<(byte[] Msg, long At)>();
             double rumL = 0, rumR = 0;
             long rumTick = 0;
             ctrl.OutputReceived += (_, pkt) =>
@@ -127,10 +126,14 @@ public static class GipProxy
                 // one; a real Windows-to-pad exchange sends each once, and the copies broke the pad's authentication.
                 // Forward a message once; Windows' own retries carry a new GIP sequence number or come later.
                 long now = Environment.TickCount64;
+                // Not only the last one: an older output came back after a newer one too (run 8, 21:01: a chunk end #58
+                // again as #67 after an ACK #66), and the pad dropped its reply midway. Compare with the last 16 within 1 s.
                 lock (gate)
                 {
-                    if (lastToPad != null && msg.AsSpan().SequenceEqual(lastToPad) && now - lastToPadAt < 150) { Interlocked.Increment(ref s_dupes); return; }
-                    lastToPad = msg; lastToPadAt = now;
+                    recent.RemoveAll(r => now - r.At > 1000);
+                    if (recent.Exists(r => r.Msg.AsSpan().SequenceEqual(msg))) { Interlocked.Increment(ref s_dupes); return; }
+                    recent.Add((msg, now));
+                    if (recent.Count > 16) recent.RemoveAt(0);
                 }
                 Count("win→pad ", msg[0]);
                 Trace($"win→pad #{pkt.SeqNo}", msg);
