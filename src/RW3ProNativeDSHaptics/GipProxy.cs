@@ -91,9 +91,20 @@ public static class GipProxy
                 if (msg.Length == 0) return;
                 Count("pad→win ", msg[0]);
                 Trace("pad→win", msg);
-                var report = new byte[64];
-                msg.AsSpan(0, Math.Min(64, msg.Length)).CopyTo(report);
-                lock (gate) try { c.SubmitRawReport(report); } catch { }
+                // exact length, as the pad sends it (a short packet). Run 5 (20:51) padded every message to 64 bytes with
+                // zeros; Windows then repeated its ACKs by the thousand during authentication. Padded only if HIDMaestro
+                // refuses a short report.
+                lock (gate)
+                {
+                    try { c.SubmitRawReport(msg); if (Interlocked.Exchange(ref s_exactNoted, 1) == 0) Log("messages go to Windows at their exact length."); }
+                    catch (Exception ex)
+                    {
+                        if (Interlocked.Exchange(ref s_paddedNoted, 1) == 0) Log("exact-length report refused (" + ex.Message + "); padding to 64 bytes.");
+                        var report = new byte[64];
+                        msg.AsSpan(0, Math.Min(64, msg.Length)).CopyTo(report);
+                        try { c.SubmitRawReport(report); } catch { }
+                    }
+                }
             }
             double rumL = 0, rumR = 0;
             long rumTick = 0;
@@ -143,5 +154,6 @@ public static class GipProxy
     }
 
     private static long nextLog;
+    private static int s_exactNoted, s_paddedNoted;
     private static string lastRumble = "-";
 }
