@@ -331,8 +331,7 @@ public sealed class WinUsbGipTransport : IDisposable
             if (_usb != IntPtr.Zero)
             {
                 try { Send(GipCodec.Rumble(NextSeq(), 0, 0, 0, 0)); } catch { }
-                // lights out: RW3 no longer drives the pad, and in direct mode nothing else does
-                if (ConnectedLight) try { Send(GipCodec.Razer(NextSeq(), GipCodec.RazerBrightness(_razerTx++, 0), RazerOptions)); } catch { }
+                // the light stays on: the user tells by it whether the pad is on (2026-11-23), RW3 running or not
             }
             FreeHandles();
             State = "kapalı";
@@ -421,12 +420,16 @@ public sealed class WinUsbGipTransport : IDisposable
         catch (Exception ex) { Log("Direct mode: identify data not saved: " + ex.Message); }
     }
 
-    /// <summary>Dim white on the pad's RGB while RW3 drives it in direct mode, off when RW3 lets go: the user sees that
-    /// it works (2026-11-23: in direct mode nothing lit the pad). Razer lighting in RAM only, profile 0.</summary>
+    /// <summary>Dim white on the pad's RGB whenever the pad is on, so the user can tell (2026-11-23: "hep açıkken sönük
+    /// beyaz"). Set on open, on every announce (the pad forgets it when it restarts) and, with the GIP proxy, when Windows
+    /// powers the pad on; not switched off when RW3 lets go. Razer lighting in RAM only, profile 0.</summary>
     public static volatile bool ConnectedLight = true;
     public static byte ConnectedBrightness = 0x26;   // ~15 %
     private byte _razerTx = 0x40;
     private long _lightAt;
+
+    /// <summary>GIP proxy: Windows has just powered the pad on.</summary>
+    public void RefreshConnectedLight() => ScheduleConnectedLight();
 
     private void ScheduleConnectedLight()
     {

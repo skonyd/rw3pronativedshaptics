@@ -105,8 +105,9 @@ streams Sensa frames, so RW3 also plays it in the palms (left 55 Hz, right 120 H
 
 ## While RW3 drives the pad
 
-* The pad's RGB is dim white (Razer lighting in RAM, about 15 %) while RW3 has it open, and goes dark when RW3 lets go,
-  so a lit pad means it works. The Xbox button LED is switched on with the standard GIP LED command (Windows' driver
+* The pad's RGB is dim white (Razer lighting in RAM, about 15 %) whenever the pad is on: set when RW3 opens it, on
+  every announce and (GIP proxy) when Windows powers it on, and left on when RW3 exits, so the user can tell whether
+  the pad is on. The Xbox button LED is switched on with the standard GIP LED command (Windows' driver
   sends it; in direct mode nobody else does).
 * RW3's own menus follow the pad (they read XInput and skip RW3's virtual pad, so in direct mode they read the GIP pipe).
 * DualSense output: View is the touchpad click (the Wolverine has no touchpad; Create is not sent). The virtual

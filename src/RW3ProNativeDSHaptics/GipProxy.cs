@@ -131,6 +131,8 @@ public static class GipProxy
                     lastRumble = Convert.ToHexString(msg);
                 }
                 transport.SendRawMessage(msg);
+                // Windows powered the pad on ([05][opt][seq][01][00]): the pad's light, which a restart cleared
+                if (msg[0] == GipCodec.CmdPower && msg.Length >= 5 && msg[3] == 1 && msg[4] == 0x00) transport.RefreshConnectedLight();
             };
             WinUsbGipTransport.ProxySink = ToWindows;
             Running = true;
