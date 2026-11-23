@@ -131,7 +131,9 @@ public static class GipVirtualPadProbe
             ctrl.OutputReceived += (_, pkt) =>
             {
                 int n = Interlocked.Increment(ref outputs);
-                bool identifyRequest = pkt.ReportId == GipCodec.CmdIdentify && pkt.Data.Length >= 2 && pkt.Data.Span[1] == 0;
+                // Data = the message after its command byte: [options][sequence][length…]; an identify request has length 0
+                // (run 4 checked the sequence byte instead and never answered)
+                bool identifyRequest = pkt.ReportId == GipCodec.CmdIdentify && pkt.Data.Length >= 3 && pkt.Data.Span[2] == 0;
                 // the identify requests repeat every 500 ms until answered: log the first few, and everything else
                 if (n <= 12 || !identifyRequest && n <= 200) Log($"host write #{n}: source {pkt.Source} report 0x{pkt.ReportId:X2} len {pkt.Data.Length}: {Convert.ToHexString(pkt.Data.Span[..Math.Min(48, pkt.Data.Length)])}");
                 if (identifyRequest && ident != null && Interlocked.Increment(ref identReplies) <= 6)
