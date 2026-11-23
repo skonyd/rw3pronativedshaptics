@@ -48,3 +48,25 @@ The 2.2.0 and 2.3.0 release notes mention no change to the audio path.
 Steady completions on HIDMaestro's side, yet `usbaudio` (legacy UAC1 class driver) takes the client's data every
 other period. Is something on the usbip-win2 side (current frame number, completion delivery, URB scheduling)
 known to make `usbaudio` refill in pairs, and is a real DualSense's 10 ms cadence reachable over USB/IP?
+
+## Could RW3 route around it? (2026-11-23, source at v2.1.0)
+
+Idea: present the virtual DualSense's audio function as USB Audio 2.0, so Windows binds `usbaudio2.sys` (a different
+timing model) instead of the legacy `usbaudio.sys`. Findings:
+
+* **HIDMaestro speaks UAC1 only.** Class requests to an audio interface go to `UsbAudioEngine.HandleUacGet/Set`
+  (`UsbipEmulatedDevice`, "UAC1 feature-unit request"): GET_CUR/MIN/MAX/RES on feature units, SET_CUR. UAC2's
+  CUR/RANGE requests and its clock source entity (sampling frequency, clock valid) would stall, and `usbaudio2.sys`
+  would not start the function. A profile cannot answer them: no profile-level control-request replies exist for audio
+  interfaces.
+* **So it needs a HIDMaestro change and our own build of `HIDMaestro.Core.dll`.** The project's build compiles the
+  UMDF2 driver and signs payloads (Windows SDK + WDK + Visual Studio C++; this PC has the SDK's signtool only, no WDK,
+  no Visual Studio) and downloads usbip-win2's installer. A managed-only build that embeds the payloads taken from the
+  shipped 2.1.0 DLL looks possible but needs project surgery.
+* **The outcome is not known in advance.** Nothing shows yet that `usbaudio2.sys` drains a USB/IP endpoint any more
+  steadily; the bursts may come from the virtual host controller itself.
+* Changing usbip-win2's host controller is out: a kernel driver needs Microsoft's signature (or test signing, a
+  security setting RW3 does not touch).
+
+Cheapest next step: the report above to HIDMaestro's maintainer (active; 2.3.0 on 2026-11-20), who knows the
+usbip-win2 side. The UAC2 route stays a multi-session project with an uncertain result.
