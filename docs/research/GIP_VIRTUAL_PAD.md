@@ -61,3 +61,24 @@ where there is no focus gate; palms (Sensa) keep coming from RW3 itself.
 * No driver is installed: Windows binds its inbox Xbox driver; the usbip transport is already installed for the
   virtual DualSense. Nothing touches the Wolverine's firmware.
 * Outcome is uncertain until question 3 is answered.
+
+## Results so far (E-20261123-74, -75)
+
+* **Binding:** solved. Windows' Xbox driver takes Microsoft pads by hardware id and third-party pads by the Microsoft OS
+  1.0 compatible id `XGIP10` (`USB\MS_COMP_XGIP10`); the clone (1532:0A3F, class FF/47/D0, GIP OUT 0x01 / IN 0x81,
+  MS OS vendor code 0x90 as Windows cached for the real pad, a placeholder HID interface HIDMaestro insists on) is bound
+  as "Xbox Oyun Cihazı". Host writes reach `OutputReceived` (GIP command as report id), `SubmitRawReport` reaches the
+  GIP IN endpoint.
+* **Identify:** the pad's identify data was read over the direct-mode pipe (260 bytes, asked before power-on, as Windows
+  does). For 1532:0A3F Windows did not ask again (cached).
+* **Authentication: required.** After power on and LED, Windows sends GIP 0x06 challenges (`00 41 00 01 00 2C 01 01 00 28`
+  + 40 random bytes), retries, then resets the device. A stand-alone virtual pad stops here: RW3 cannot and will not
+  forge that answer.
+
+## Next: a transparent GIP proxy
+
+RW3 relays Windows' GIP messages to the real Wolverine (direct-mode pipe) and the pad's messages back, authentication
+included, so the genuine pad answers for itself, the way a USB hub passes them through. RW3 only reads the rumble
+(0x09) on the way, to apply the user's choices (and keeps adding the palms). Needs: the pad in direct mode, both
+directions forwarded with their sequence numbers and ACKs, and the pad's input forwarded to Windows instead of RW3's
+HIDMaestro Xbox pad.
