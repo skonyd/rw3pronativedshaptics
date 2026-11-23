@@ -104,6 +104,7 @@ public static class GipVirtualPadProbe
         {
             if (!Environment.IsPrivilegedProcess || !File.Exists(FlagFile)) return;
             File.Delete(FlagFile);   // once
+            WinUsbGipTransport.RequestIdentify = !File.Exists(WinUsbGipTransport.IdentifyFile);   // only when not saved yet
         }
         catch { return; }
         new Thread(Run) { IsBackground = true, Name = "RW3 GIP probe" }.Start();

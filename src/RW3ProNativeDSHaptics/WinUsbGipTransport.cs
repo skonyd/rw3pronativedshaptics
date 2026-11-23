@@ -251,7 +251,7 @@ public sealed class WinUsbGipTransport : IDisposable
                         SaveOnce(AnnounceFile, m.Payload, ref _announceSaved);   // for the GIP virtual pad (a faithful clone)
                         // like Windows (E-20261123-74): identify first, power on after it. Asked after power-on, the pad
                         // never answered (2026-11-23 12:00); without a request pending, power on at once as before.
-                        if (!IsLoginBridge && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2)
+                        if (!IsLoginBridge && RequestIdentify && IdentifyData == null && Interlocked.Exchange(ref _identAsked, 2) != 2)
                         {
                             Send(GipCodec.IdentifyRequest(NextSeq()));
                             Log("Direct mode: identify request sent after the announce.");
@@ -349,11 +349,16 @@ public sealed class WinUsbGipTransport : IDisposable
     public static string IdentifyFile => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RW3ProNativeDSHaptics", "gip-identify.bin");
 
-    /// <summary>Asks the pad for its identify data once per RW3 run, 1.5 s after opening (the pad is powered on then).
+    /// <summary>Only the GIP virtual pad probe asks for identify. A pad asked for identify before power-on waits for
+    /// Windows' authentication and never sends input to RW3: no buttons, no haptics in direct mode from 2026-11-23 12:02
+    /// (when RW3 began asking on every announce) until this was gated (E-20261123-78).</summary>
+    public static volatile bool RequestIdentify;
+
+    /// <summary>Asks the pad for its identify data once per RW3 run, 3 s after opening, when the probe wants it.
     /// Read-only for the pad: it only answers.</summary>
     private void ScheduleIdentify()
     {
-        if (IsLoginBridge || Interlocked.Exchange(ref _identAsked, 1) == 1) return;
+        if (IsLoginBridge || !RequestIdentify || Interlocked.Exchange(ref _identAsked, 1) == 1) return;
         ThreadPool.QueueUserWorkItem(_ =>
         {
             Thread.Sleep(3000);   // fallback when no announce came (a pad that was already on)
