@@ -170,7 +170,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
             _ctx = new HMContext();
             _ctx.LoadDefaultProfiles();
             if (!_ctx.IsDriverInstalled || !HMContext.IsUsbipBackendAvailable) { Status = "HIDMaestro kurulu değil (Ayarlar → Sanal DualSense → Kur)."; Stop(); return false; }
-            var profile = _ctx.GetProfile(VirtualControllerSetup.DualSenseCompositeProfile)
+            var profile = DualSenseAudioProfileExperiment.TryLoad(_ctx)   // null unless the user armed the experiment
+                          ?? _ctx.GetProfile(VirtualControllerSetup.DualSenseCompositeProfile)
                           ?? throw new InvalidOperationException("dualsense-composite profili yok");
             DiagnosticsService.Info("Virtual DualSense: full input report " + ArmFullInputReport(profile));
             var before = VirtualPadReadback.DualSensePaths();
