@@ -176,6 +176,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
             var before = VirtualPadReadback.DualSensePaths();
             _ctrl = _ctx.CreateController(profile, "rw3pro-bridge");
             var audio = _ctrl.UsbAudio;
+            var traced = _ctrl;
+            IsoSubmitTrace.Watch(audio, () => !_stop && ReferenceEquals(_ctrl, traced));   // diagnostics, flag-gated
             if (audio?.Output != null) audio.Output.FramesReceived += OnFrames;
             _ctrl.OutputReceived += OnOutput;
             _mode = WolverineModeControl.Detect();
