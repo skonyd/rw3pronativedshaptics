@@ -179,7 +179,6 @@ public sealed class VirtualDualSenseBridge : IDisposable
             var traced = _ctrl;
             // diagnostics, flag-gated; alive while this controller is (_stop is still set at this point of Start)
             IsoSubmitTrace.Watch(audio, () => ReferenceEquals(_ctrl, traced));
-            _slack = IsoStartSlack.Armed ? new IsoStartSlack(audio) : null;   // experiment, flag-gated
             if (audio?.Output != null) audio.Output.FramesReceived += OnFrames;
             _ctrl.OutputReceived += OnOutput;
             _mode = WolverineModeControl.Detect();
@@ -310,7 +309,6 @@ public sealed class VirtualDualSenseBridge : IDisposable
         try {
         _speaker.Push(pcm.Span);   // the controller-speaker channels 1/2 → the PC's speakers (the Wolverine has none)
         _capture.Note(pcm.Span);   // diagnostics, only while the user asked for it (PcmCapture)
-        _slack?.OnBlock();
         if (!_inputHealthy) return;
         var span = pcm.Span;
         float pl = 0, pr = 0;
@@ -633,7 +631,6 @@ public sealed class VirtualDualSenseBridge : IDisposable
     private readonly SpeakerForwarder _speaker = new();
     private readonly AudioBlockStats _audioStats = new();
     private readonly PcmCapture _capture = new();
-    private IsoStartSlack? _slack;
     private readonly double[] _dRum = new double[4];
     private long _dRumTick;
     private void WriteMotors(BridgeMotorFrame f)

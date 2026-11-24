@@ -70,3 +70,24 @@ timing model) instead of the legacy `usbaudio.sys`. Findings:
 
 Cheapest next step: the report above to HIDMaestro's maintainer (active; 2.3.0 on 2026-11-20), who knows the
 usbip-win2 side. The UAC2 route stays a multi-session project with an uncertain result.
+
+## Where the pairing comes from (2026-11-24)
+
+* **HIDMaestro's side is steady** (E-20261124-86, its pending-URB list sampled every 0.5 ms): 10-packet OUT URBs,
+  each completed at its due time (median 0.36 ms late), every 10 ms. But Windows submits two at once every 20 ms,
+  only after both earlier ones completed; 6-20 ms queued.
+* **Windows' own USB trace** (E-20261124-87, `Microsoft-Windows-USB-UCX`, both pads at the same moment, same
+  driver, same 10-packet ASAP URBs of 3840 bytes):
+  * real DualSense: two URBs submitted at the start, the first completes 13.3 ms later, then every completion is
+    followed by one submit; always two in flight;
+  * HIDMaestro DualSense: one URB at the start, completed 10.4 ms later, then two submits; the next completion
+    brings none, the one after two again; one or two in flight.
+* **Start-up slack does not change it** (E-20261124-88): moving HIDMaestro's OUT cursor 3.5 ms later at the stream
+  start left the pattern as it was.
+* No `URB_FUNCTION_GET_CURRENT_FRAME_NUMBER` appears in the trace, so `usbaudio.sys` reads bus time through the bus
+  interface, which the virtual host controller (usbip-win2's UDE driver) answers. That `usbaudio` keeps only one URB
+  ahead every other period points at that answer; this part is kernel code and cannot be changed from RW3 or
+  HIDMaestro's managed code.
+
+For the report: the trace comparison above is the strongest evidence; it may concern usbip-win2
+(https://github.com/vadimgrn/usbip-win2) as much as HIDMaestro.
