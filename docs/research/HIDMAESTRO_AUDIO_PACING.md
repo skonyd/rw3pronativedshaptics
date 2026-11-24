@@ -91,3 +91,11 @@ usbip-win2 side. The UAC2 route stays a multi-session project with an uncertain 
 
 For the report: the trace comparison above is the strongest evidence; it may concern usbip-win2
 (https://github.com/vadimgrn/usbip-win2) as much as HIDMaestro.
+
+## A kernel-mode virtual DualSense drains steadily (2026-11-24)
+
+DSX's virtual DualSense (Nefarius Virtual Gamepad Emulation Bus G2, a Microsoft-attested UDE host controller, with
+Nefarius' `nssvdsflt` audio filter below the same `usbaudio.sys`), same probe: padding 576 in 1991 of 2000 periods
+(480 frames every 10 ms; 5 + 4 periods of 1056 / 96 in 20 s), clock jitter -1.2 / +9.7 ms (a few hiccups). So
+Windows' audio driver drains a virtual DualSense every 10 ms when the virtual host controller is a kernel driver of
+its own; over usbip-win2's host controller it drains in 20 ms bursts.
