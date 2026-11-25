@@ -386,6 +386,17 @@ public sealed class NativeBridgeService : IDisposable
         _sensa.Features.ClearForSilence();
     }
 
+    /// <summary>Stops only the sound → palms path (capture and Sensa engine); a virtual pad next to it keeps running.</summary>
+    public void StopAudioToSensa()
+    {
+        _sensitivityActive = false;
+        ApplyGain();
+        _audio?.Dispose();
+        _audio = null;
+        _source.Stop();
+        _sensa.Stop();
+    }
+
     public void Stop()
     {
         StopNativeAudio();

@@ -307,6 +307,28 @@ public sealed class HapticOrchestrator
     }
 
     /// <summary>Applies the Xbox feedback options to a running virtual-Xbox audio bridge. False = not running.</summary>
+    /// <summary>Palms (sound → palm vibration) on or off while a virtual pad runs: starts or stops only the palm audio.
+    /// Until 2026-11-25 the toggle restarted the whole pipeline, virtual pad included, and a game that was running
+    /// (Banishers) kept its input but sent its rumble nowhere afterwards (E-20261125-90). False = no virtual pad runs;
+    /// the caller restarts as before.</summary>
+    public async Task<bool> SetVirtualPalmsAsync(bool on)
+    {
+        if (CombinedXbox is not { IsRunning: true } || !UseXboxGameBridge || Run != RunState.Audio) return false;
+        bool palms = on && (AudioRoute == WolverineMode.Pc || XboxSensa.Enabled);
+        _virtualPalms = palms;
+        if (palms && !_bridge.IsAudioToSensaRunning)
+        {
+            _restartingPalms = true;   // the Tick guard leaves the start to us
+            try { await _bridge.StartAudioToSensaAsync(profile: EffectiveProfile); }
+            catch (Exception ex) { DiagnosticsService.Info("Virtual pad: palm audio start failed: " + ex.Message); }
+            finally { _restartingPalms = false; }
+        }
+        else if (!palms) _bridge.StopAudioToSensa();
+        DiagnosticsService.Info("Virtual pad: palms " + (palms ? "on" : "off") + " without restarting the pad.");
+        Changed();
+        return true;
+    }
+
     public bool UpdateCombinedOptions()
     {
         if (CombinedXbox == null || !UseXboxGameBridge) return false;

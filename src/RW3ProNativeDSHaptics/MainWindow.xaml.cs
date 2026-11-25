@@ -1149,6 +1149,15 @@ public partial class MainWindow : Window
 
         var radio = plan.Mode switch { HapticMode.Audio => ModeAudio, HapticMode.Native => ModeNative, _ => ModeNormal };
         if (initial || radio.IsChecked != true) radio.IsChecked = true;   // Mode_Checked stops, saves and starts
+        else if (before != null && plan.VirtualProfile != null && before.Palms != plan.Palms &&
+                 before with { Palms = plan.Palms, Rumble = plan.Rumble, Triggers = plan.Triggers, SynthTriggers = plan.SynthTriggers } == plan &&
+                 _orch.CombinedXbox is { IsRunning: true })
+        {
+            // Palms on/off on a running virtual pad: only the palm audio starts or stops. Restarting the pad here left a
+            // running game (Banishers) without rumble (E-20261125-90).
+            _orch.UpdateCombinedOptions();
+            _ = SetPalmsOrRestartAsync(plan.Palms);
+        }
         else if (before != null && (before.VirtualProfile != plan.VirtualProfile || before.Palms != plan.Palms ||
                  (plan.Mode == HapticMode.Native && _run == RunState.Native && !_bridge.IsVirtualDualSenseRunning && before != plan)))
         {
@@ -1303,6 +1312,14 @@ public partial class MainWindow : Window
 
     /// <summary>Starts the selected mode if it is not running (no-op for Normal or during tests).</summary>
     private Task EnsureModeRunningAsync() => _orch.EnsureRunningAsync();
+
+    private async Task SetPalmsOrRestartAsync(bool on)
+    {
+        if (await _orch.SetVirtualPalmsAsync(on)) return;
+        StopAll();
+        _orch.ResetRetry();
+        await EnsureModeRunningAsync();
+    }
 
     private void StopAll()
     {
