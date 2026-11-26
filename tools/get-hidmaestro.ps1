@@ -1,9 +1,9 @@
-# Downloads the HIDMaestro SDK (MIT, https://github.com/hifihedgehog/HIDMaestro) release v2.1.0,
+# Downloads the HIDMaestro SDK (MIT, https://github.com/hifihedgehog/HIDMaestro) release v2.4.0,
 # verifies its SHA-256 and extracts what RW3 Pro needs into third_party/HIDMaestro (git-ignored).
 $ErrorActionPreference = 'Stop'
-$version = 'v2.1.0'
-$asset   = 'HIDMaestro-v2.1.0.zip'
-$sha256  = '7fe349f163864b8dfc36117af260d51bac94a2263b6cdfa719cb364a808397b4'
+$version = 'v2.4.0'
+$asset   = 'HIDMaestro-v2.4.0.zip'
+$sha256  = 'e17cd59e939144f01a87230228c4fba1d1bc50f3286d27d2d1c867370bff10d2'
 $root    = Split-Path -Parent $PSScriptRoot
 $dest    = Join-Path $root 'third_party\HIDMaestro'
 $tmp     = Join-Path ([IO.Path]::GetTempPath()) ("hidmaestro-" + [Guid]::NewGuid())
