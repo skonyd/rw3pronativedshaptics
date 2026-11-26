@@ -64,13 +64,74 @@ public static class GipProxy
         return s.Length == 0 ? "-" : s;
     }
 
+#if HAS_HIDMAESTRO
+    // ── Guards (E-20261123-77: a run left Windows' device manager stuck until a restart) ──
+    // One clone per RW3 run, never re-created; the pad is reset before the clone exists, so it does not leave USB under
+    // it; the run ends when the pad leaves anyway, when the time limit is up, or when Windows' device manager stops
+    // answering (then the flag file is deleted, so the next RW3 start does not run the proxy again).
+
+    /// <summary>Default run time; the flag file may hold another number of seconds (10..3600).</summary>
+    public const int DefaultMaxSeconds = 300;
+    private static volatile bool s_abort;
+    private static volatile string? s_abortReason;
+
+    private static void Abort(string reason, bool deleteFlag)
+    {
+        if (s_abort) return;
+        s_abortReason = reason; s_abort = true;
+        Log("STOPPING: " + reason);
+        WinUsbGipTransport.ProxySink = null;   // nothing more goes either way
+        if (deleteFlag) { try { File.Delete(FlagFile); Log("flag file deleted: the next RW3 start runs without the proxy."); } catch { } }
+    }
+
+    /// <summary>A Configuration Manager query (the one direct mode uses to find the pad) that must return within
+    /// <paramref name="timeoutMs"/>. When the device manager is stuck it blocks; the stuck worker is left behind.</summary>
+    private static bool PnpAnswers(int timeoutMs)
+    {
+        var t = System.Threading.Tasks.Task.Run(WinUsbGipTransport.DevicePresent);
+        return t.Wait(timeoutMs);
+    }
+
+    private static void StartPnpWatchdog()
+    {
+        new Thread(() =>
+        {
+            while (Running && !s_abort)
+            {
+                Thread.Sleep(3000);
+                if (!Running || s_abort) break;
+                if (!PnpAnswers(5000))
+                    Abort("Windows' device manager did not answer within 5 s (a stuck device operation). Restart Windows; the proxy is off until the flag file is set again.", deleteFlag: true);
+            }
+        }) { IsBackground = true, Name = "RW3 GIP proxy PnP watchdog" }.Start();
+    }
+
+    /// <summary>Runs <paramref name="work"/> with a time limit; false (and the work left running) when it takes longer.</summary>
+    private static bool Within(int timeoutMs, Action work, string what)
+    {
+        var t = System.Threading.Tasks.Task.Run(work);
+        try { if (t.Wait(timeoutMs)) return true; }
+        catch (AggregateException ex) { throw ex.InnerException ?? ex; }
+        Log($"{what} took over {timeoutMs / 1000} s: given up.");
+        return false;
+    }
+
+    private static int MaxSeconds()
+    {
+        try { if (int.TryParse(File.ReadAllText(FlagFile).Trim(), out int s)) return Math.Clamp(s, 10, 3600); } catch { }
+        return DefaultMaxSeconds;
+    }
+
+#endif
+
     private static void Run()
     {
 #if HAS_HIDMAESTRO
         Thread.Sleep(3000);
         var transport = WinUsbGipTransport.Shared;
-        // wait for the pad as long as RW3 runs: the adapter is on USB only while the pad is on and linked, and Windows
-        // switches the pad off when authentication fails (run 6, 20:55: the proxy gave up after 30 s)
+        int maxSeconds = MaxSeconds();
+        if (!PnpAnswers(5000)) { Abort("Windows' device manager is not answering before the proxy even started; restart Windows.", deleteFlag: true); return; }
+        // wait for the pad as long as RW3 runs: the adapter is on USB only while the pad is on and linked
         bool waitingLogged = false;
         while (!transport.IsOpen)
         {
@@ -79,21 +140,42 @@ public static class GipProxy
             if (!waitingLogged) { waitingLogged = true; Log("waiting for the pad on WinUSB (switch it on; adapter or cable plugged in)."); }
             Thread.Sleep(2000);
         }
+        // Reset the pad first, while no clone exists: it leaves USB (the adapter re-enumerates) and comes back with an
+        // announce, which the transport keeps. The clone then gets that announce, so the pad need not leave again.
+        // Until 2026-11-26 the reset came after the clone, and the pad left and returned under it (E-20261123-77).
+        WinUsbGipTransport.ProxyHeldAnnounce = null;
+        Log($"resetting the pad before the clone exists; run limit {maxSeconds} s.");
+        transport.RequestPowerReset();
+        long announceBy = Environment.TickCount64 + 20_000;
+        while (WinUsbGipTransport.ProxyHeldAnnounce == null && Environment.TickCount64 < announceBy)
+        {
+            if (!transport.IsOpen && !WinUsbGipTransport.Suspended) transport.TryOpen();
+            Thread.Sleep(100);
+        }
+        var announce = WinUsbGipTransport.ProxyHeldAnnounce;
+        if (announce == null) { Log("the pad did not announce within 20 s after its reset; proxy not started (flag kept)."); return; }
+        if (!PnpAnswers(5000)) { Abort("Windows' device manager stopped answering after the pad's reset; clone not created. Restart Windows.", deleteFlag: true); return; }
         string dir = Path.Combine(Path.GetTempPath(), "rw3-gip-proxy");
         HMController? ctrl = null;
+        HMContext? ctx = null;
         try
         {
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, ProfileId + ".json"), BuildProfileJson(), new UTF8Encoding(false));
-            using var ctx = new HMContext();
+            ctx = new HMContext();
             ctx.LoadDefaultProfiles();
             ctx.LoadProfilesFromDirectory(dir);
             var issues = string.Join(" | ", ctx.ProfileLoadIssues.Where(i => i.ProfileId == ProfileId || (i.File ?? "").Contains("rw3-gip-proxy")).Select(i => $"{i.JsonPath}: {i.Reason}"));
             var profile = ctx.GetProfile(ProfileId);
             if (profile == null) { Log("profile refused: " + issues); return; }
-            ctrl = ctx.CreateController(profile, "rw3-gip-proxy");
+            var c0 = ctx;
+            if (!Within(45_000, () => ctrl = c0.CreateController(profile, "rw3-gip-proxy"), "creating the clone"))
+            {
+                Abort("creating the clone did not finish; restart Windows if devices stop appearing.", deleteFlag: true);
+                return;
+            }
             var gate = new object();
-            var c = ctrl;
+            var c = ctrl!;
             void ToWindows(byte[] msg)
             {
                 if (msg.Length == 0) return;
@@ -117,7 +199,7 @@ public static class GipProxy
             var recent = new System.Collections.Generic.List<(byte[] Msg, long At)>();
             double rumL = 0, rumR = 0;
             long rumTick = 0;
-            ctrl.OutputReceived += (_, pkt) =>
+            c.OutputReceived += (_, pkt) =>
             {
                 var msg = new byte[1 + pkt.Data.Length];
                 msg[0] = pkt.ReportId;
@@ -150,9 +232,11 @@ public static class GipProxy
             };
             WinUsbGipTransport.ProxySink = ToWindows;
             Running = true;
-            Log("clone created; resetting the pad so that Windows meets it from its announce.");
-            transport.RequestPowerReset();
-            while (true)
+            StartPnpWatchdog();
+            Log("clone created; giving Windows the pad's announce.");
+            ToWindows(announce);
+            long endAt = Environment.TickCount64 + maxSeconds * 1000L;
+            while (!s_abort)
             {
                 // the palms play the body rumble while it lasts (Windows sends rumble on change only)
                 if (rumL > 0.01 || rumR > 0.01) XboxSensa.SetRumble(rumL, rumR);
@@ -161,7 +245,11 @@ public static class GipProxy
                     Interlocked.Exchange(ref nextLog, Environment.TickCount64 + 10_000);
                     Log($"10 s: {TakeCounts()}; duplicate outputs dropped {Interlocked.Exchange(ref s_dupes, 0)}; last rumble {lastRumble}; pad {transport.Summary}");
                 }
-                if (!transport.IsOpen && !WinUsbGipTransport.Suspended) transport.TryOpen();
+                // The pad left (Windows switched it off after a failed authentication, or the adapter went): end the run
+                // instead of waiting for it under the clone. Run 8 (2026-11-23 21:01) waited and reopened, and the
+                // device manager stuck.
+                if (!transport.IsOpen) { Abort("the pad left USB while the clone was up; run ended (flag kept, restart RW3 to try again).", deleteFlag: false); break; }
+                if (Environment.TickCount64 >= endAt) { Abort($"run limit of {maxSeconds} s reached (flag kept).", deleteFlag: false); break; }
                 Thread.Sleep(50);
             }
         }
@@ -170,7 +258,12 @@ public static class GipProxy
         {
             WinUsbGipTransport.ProxySink = null;
             Running = false;
-            try { ctrl?.Dispose(); } catch { }
+            var dispose = ctrl;
+            var dctx = ctx;
+            if (dispose != null && !Within(15_000, () => { try { dispose.Dispose(); } catch { } }, "removing the clone"))
+                Abort("removing the clone did not finish; restart Windows if devices stop appearing.", deleteFlag: true);
+            else try { dctx?.Dispose(); } catch { }
+            Log("ended" + (s_abortReason != null ? ": " + s_abortReason : "") + ".");
         }
 #else
         Log("built without HIDMaestro.");

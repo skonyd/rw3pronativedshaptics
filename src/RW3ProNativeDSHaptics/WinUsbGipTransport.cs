@@ -61,6 +61,8 @@ public sealed class WinUsbGipTransport : IDisposable
     /// <summary>Set as soon as RW3 starts with the GIP proxy on, before the clone exists: the transport never acts as
     /// the host in that run (an identify request RW3 sent before the proxy took over reached Windows, 2026-11-23 20:39).</summary>
     public static volatile bool ProxyPending;
+    /// <summary>GIP proxy: the pad's last announce (whole GIP message) seen while the proxy was not yet connected.</summary>
+    public static volatile byte[]? ProxyHeldAnnounce;
     public static bool ProxyMode => ProxySink != null || ProxyPending;
     /// <summary>GIP proxy: one message from Windows, as it came.</summary>
     public bool SendRawMessage(byte[] message) => IsOpen && Send(message);
@@ -238,7 +240,13 @@ public sealed class WinUsbGipTransport : IDisposable
                     logged++;
                     Log($"Direct mode: GIP in cmd 0x{m.Command:X2} opt 0x{m.Options:X2} seq {m.Sequence} len {m.Payload.Length}: {Convert.ToHexString(m.Payload.AsSpan(0, Math.Min(24, m.Payload.Length)))}");
                 }
-                if (sink == null && ProxyPending && m.Command is not (GipCodec.CmdInput or GipCodec.CmdGuide)) continue;   // proxy not ready yet: drop
+                if (sink == null && ProxyPending && m.Command is not (GipCodec.CmdInput or GipCodec.CmdGuide))
+                {
+                    // proxy not ready yet: drop, but keep the pad's announce for the clone (GipProxy resets the pad before it
+                    // creates the clone, so the pad never leaves USB while the clone exists)
+                    if (m.Command == GipCodec.CmdAnnounce && mStart + mLength <= n) ProxyHeldAnnounce = buf.AsSpan(mStart, mLength).ToArray();
+                    continue;
+                }
                 if (!ProxyMode)
                 {
                     if (m.Command == GipCodec.CmdIdentify) { HandleIdentify(m); continue; }   // chunked: acks itself

@@ -89,3 +89,20 @@ Paused. The proxy run of 21:01 got identify and several authentication rounds th
 Windows' device manager stuck: no USB device enumerated until a restart (E-20261123-77). Before the next run: find which
 PnP operation hangs (removing the clone, resetting the pad, the adapter re-arriving while the clone exists) and bound it
 with a timeout, and stop the run when the device log stops moving.
+
+### Guards (2026-11-26, before the next run)
+
+The 21:01 run's sequence was: clone created, pad reset under it (the adapter left and returned at 21:01:16 / 21:01:22),
+Windows authenticated and then powered the pad off, the adapter left again at 21:01:40 and the proxy kept waiting for
+it under the live clone; from then on nothing enumerated. Which PnP operation stuck is still unknown, so the proxy now
+avoids the overlap and bounds everything (`GipProxy.cs`):
+
+* The pad is reset **before** the clone exists; the transport keeps its announce (`ProxyHeldAnnounce`) and the clone
+  hands that announce to Windows, so the pad does not leave USB under the clone.
+* One clone per RW3 run. When the pad leaves while the clone is up, the run ends (no waiting, no re-creating).
+* Run limit: 300 s by default, or the number of seconds written in `gip-proxy.flag` (10-3600).
+* A watchdog asks Windows' device manager every 3 s (the Configuration Manager query direct mode uses); no answer within
+  5 s stops the proxy and deletes the flag, so the next RW3 start runs without it. The same check runs before the
+  reset and before the clone is created.
+* Creating the clone (45 s) and removing it (15 s) are time-limited; over the limit the run stops and the flag is deleted.
+* HIDMaestro is 2.4.0 now (the clone profile loads with its profile checker; 2.2-2.4 changed USB/IP attach and removal).
