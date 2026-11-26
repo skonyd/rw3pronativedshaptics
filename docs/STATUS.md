@@ -3,6 +3,23 @@
 Updated 2026-11-23. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
+## Desktop app additions (2026-11-22)
+
+- **Chroma RGB lighting (`RGB` tab) & Battery indicator (`BatteryBadge`):**
+  - Firmware-verified Razer Class `0x0F` (lighting) and Class `0x07` (battery/charging) commands in `WolverineLightingAndBattery.cs`.
+  - Battery readout uses exact 0–100 % + charging flag via Razer HID `07/80` & `07/84` in PC mode, falls back to XInput (`XInputGetBatteryInformation`), `IGameInputDevice::GetBatteryState` (`GameInputRumble.TryReadBattery`), and `Windows.Gaming.Input` (`TryGetBatteryReport`) in Xbox mode, and never shows a false `⚡` charging bolt when running wirelessly in Xbox mode.
+  - Disassembly of `Dev2FW.bin` `0x2EA8E` (`0x2E8E8` renderer) and `0x2B4F4` (validator) confirmed the hardware-implemented LED effects on Zone `0x05`: Off (`0x00`), Breathing (`0x02` — 1 color, 2 colors, or random), Spectrum (`0x03`), Wave (`0x04` — direction byte at `p1` = `1` or `2`, `p2` = `0`), and Static (`0x08` / `0x0D`). Unimplemented effect IDs (`0x05` Reactive, `0x07` Starlight, which `0x2EA96` jumps over as no-ops) were removed from the UI.
+  - RGB slider changes are debounced (140 ms) and serialized with a 55 ms inter-command delay between Brightness (`0F/04`) and Effect (`0F/02`), and `GipSensaTransport` serializes GIP `0x0F` sends so lighting packets and 33 ms Sensa frames never collide.
+- **Shortcuts (`Kısayollar` tab, `ShortcutManager.cs`):**
+  - Lists built-in hardware (`○ + ☰ + Ⓐ` for 2 s → Xbox to PC mode) and foreground controller navigation shortcuts (`LB/RB`, `D-Pad`, `Ⓐ`, `Ⓑ`, `☰`).
+  - Supports user-created background/in-game shortcuts via two methods:
+    1. **Controller Button Combos (`ControllerCombo`):** Requires ≥ 2 buttons (or ≥ 500 ms hold) to avoid game input collisions; includes live button-combo capture ("Tuşları Dinle") and hold-duration selection (`Anında`, `0.4 sn`, `0.8 sn`).
+    2. **Global Keyboard Hotkeys (`KeyboardHotkey`):** Win32 `RegisterHotKey` integration with live key capture.
+  - Target actions include cycling or directly selecting any of the 5 game controller outputs (`Kolun kendisi`, `Xbox 360`, `Xbox Series`, `PS4`, `DualSense`), toggling palm audio haptics, toggling Melody mode, cycling global haptic strength, toggling RGB on/off, cycling RGB effects, and showing/hiding the window.
+- **Virtual XInput pad loop & output fixes:**
+  - `XInputHaptics.ReadButtonsAnyPad` now excludes virtual HIDMaestro XInput slots (`045E:028E` and `045E:0B13`), preventing double-edge navigation or self-triggering when a virtual Xbox controller is active.
+  - `XboxAudioGameBridge.OnOutput` now processes XUSB rumble reports (`00 08 00 L R`) in both normal and strict modes before logging unknown packets, and silently ignores XUSB LED indicator packets (`00 0D ...`).
+
 ## Firmware lab
 
 An original Cortex-M4 audio-to-haptics DSP module now runs in an offline replay
@@ -342,6 +359,9 @@ remain open. [Firmware replay and next steps](firmware/AUDIO_HAPTICS_REPLAY.md).
 
 ## What the app does
 
+- **RGB (Chroma Lighting) tab & top-right Battery badge (2026-11-21):**
+  - **RGB tab (`WolverineLightingAndBattery.cs`, `ChromaEffect`):** Razer Synapse / Controller Setup for Xbox style Chroma RGB lighting tab decoded from `Dev2FW` Class `0x0F` handler (`0x2F700`) and validator (`0x2B4F4`). Supports quick Off/On toggle (`0x00`), brightness slider (`0F/04 [profile, 0x05, 0..255]`), and hardware effects (`0F/02`): **Kapalı (`0x00`)**, **Sabit / Static (`0x08`)**, **Spektrum Döngüsü (`0x03`)**, **Dalga / Wave (`0x04`, left↔right direction)**, **Nefes Alma / Breathing (`0x02`, 1-color / 2-color / random)**, **Tepkisel / Reactive (`0x05`, fast/medium/slow)**, and **Yıldız Işığı / Starlight (`0x07`, 1-color / 2-color / random + speed)**, plus preset Chroma swatches, RGB sliders and optional EEPROM profile persistence (`profile 1`). Works in both PC mode (HID Feature Report 4) and Xbox mode (GIP `0x0F`).
+  - **Battery badge (top-right header):** queries Razer Class `0x07` (`0x17370`) `07/80` (battery `raw * 255 / 100` → `0..100%`) and `07/84` (charging state `0/1`) via HID feature report 4 in PC mode, with `XInputGetBatteryInformation` fallback in Xbox/XInput mode, refreshed every 5 s.
 - **Main page since 2026-11-15: "Oyuna görünen kol" selector + feature matrix** (replaces the three mode cards; `GameOutput.cs`, `OutputMatrix`, contract-tested). Outputs: **Kolun kendisi** (no virtual pad), **Xbox 360** (HIDMaestro `xbox-360-wired`, XUSB), **Xbox Series** (`xbox-series-xs-bt`), **PS4** (`dualshock-4-v2`), **DualSense** (the virtual DualSense bridge). Rows: Sesten avuç titreşimi (every output), Oyunun HD haptiği (DualSense only; excludes the sound row), Oyunun rumble titreşimi, Oyunun tetik titreşimi (Series, DualSense; "oyun" on Kolun kendisi = the game drives the pad itself). A row the output lacks switches to the closest output that has it (triggers: Series from the Xbox side, DualSense from PS4; HD haptics: DualSense). `OutputMatrix.Plan` maps the choice onto the internal pipelines below: Kolun kendisi = Normal (no rows) or audio; Xbox 360 / Series / PS4 = audio mode with the strict virtual pad (`XboxAudioGameBridge`: pad read through XInput, game rumble → body over XInput, Series triggers → Sensa frame, sound → palms through the Sensa engine, GameInputSvc never allowed; PC mode too); DualSense = native. Old settings migrate once (`FromLegacy`). Tray and the ☰ combo cycle outputs. Elevation goes through the UAC-free task. Not yet tested in a game: Xbox 360 / PS4 outputs (input, rumble decoding: the Xbox 360 profile's rumble format is only logged and guessed).
 - Internal pipelines (the former modes):
 

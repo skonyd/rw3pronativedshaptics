@@ -104,6 +104,27 @@ public sealed class SensaHidTransport : IDisposable
         return false;
     }
 
+    /// <summary>Sends a 91-byte Razer command feature report and reads back the 91-byte response via HidD_GetFeature.</summary>
+    public bool QueryCommand(byte[] request, out byte[] response)
+    {
+        response = new byte[FeatureLength];
+        if (!SendRaw(request)) return false;
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(8);
+            Array.Clear(response, 0, response.Length);
+            response[0] = ReportId;
+            if (!Hid.HidD_GetFeature(_handle!, response, response.Length))
+            {
+                LastError = Marshal.GetLastWin32Error();
+                return false;
+            }
+            // Status 0x01 = busy; 0x02 = OK
+            if (response[1] != 0x01 && response[1] != 0x00) return true;
+        }
+        return response[1] == 0x02;
+    }
+
     public void Close() { _handle?.Dispose(); _handle = null; DevicePath = null; }
     public void Dispose() => Close();
 
@@ -114,6 +135,7 @@ public sealed class SensaHidTransport : IDisposable
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr sa, uint creation, uint flags, IntPtr template);
         [DllImport("hid.dll", SetLastError = true)] public static extern bool HidD_SetFeature(SafeFileHandle h, byte[] buffer, int length);
+        [DllImport("hid.dll", SetLastError = true)] public static extern bool HidD_GetFeature(SafeFileHandle h, byte[] buffer, int length);
         [DllImport("hid.dll")] private static extern void HidD_GetHidGuid(out Guid guid);
         [DllImport("hid.dll")] private static extern bool HidD_GetPreparsedData(SafeFileHandle h, out IntPtr data);
         [DllImport("hid.dll")] private static extern bool HidD_FreePreparsedData(IntPtr data);

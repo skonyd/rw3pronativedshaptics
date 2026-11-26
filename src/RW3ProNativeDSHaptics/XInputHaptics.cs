@@ -92,23 +92,49 @@ public sealed class XInputHaptics : IDisposable
         ButtonMenu = 0x0010, ButtonView = 0x0020;
     private const short StickThreshold = 20000;
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CapsEx
+    {
+        public byte Type, SubType;
+        public ushort Flags, Buttons;
+        public byte LT, RT;
+        public short LX, LY, RX, RY;
+        public ushort WL, WR, Vid, Pid, Version, Unk1;
+        public uint Unk2;
+    }
+
+    [DllImport("xinput1_4.dll", EntryPoint = "#108")]
+    private static extern uint XInputGetCapabilitiesEx(uint one, uint user, uint flags, out CapsEx caps);
+
+    /// <summary>Returns true if the XInput slot belongs to a virtual HIDMaestro Xbox 360 (045E:028E) or Series (045E:0B13) controller.</summary>
+    public static bool IsVirtualXInputPad(uint index)
+    {
+        try { return XInputGetCapabilitiesEx(1, index, 0, out var c) == 0 && c.Vid == 0x045E && c.Pid is 0x028E or 0x0B13; }
+        catch { return false; }
+    }
+
     /// <summary>
-    /// Buttons held on any connected XInput pad (OR-ed); 0 when none.
-    /// A deflected left stick is reported as the matching D-pad direction.
+    /// Buttons held on any connected physical XInput pad (OR-ed); 0 when none.
+    /// Virtual HIDMaestro pads (045E:028E / 045E:0B13) are excluded so RW3 never reads its own virtual output.
+    /// When <paramref name="includeStickAsDpad"/> is true, a deflected left stick is reported as the matching D-pad direction.
     /// </summary>
-    public static ushort ReadButtonsAnyPad()
+    public static ushort ReadButtonsAnyPad(bool includeStickAsDpad = true)
     {
         ushort buttons = 0;
         try
         {
             for (uint index = 0; index < 4; index++)
             {
+                if (IsVirtualXInputPad(index)) continue;
                 if (XInputGetState(index, out var state) != 0) continue;
                 buttons |= state.Buttons;
-                if (state.ThumbLX < -StickThreshold) buttons |= ButtonDpadLeft;
-                if (state.ThumbLX > StickThreshold) buttons |= ButtonDpadRight;
-                if (state.ThumbLY > StickThreshold) buttons |= ButtonDpadUp;
-                if (state.ThumbLY < -StickThreshold) buttons |= ButtonDpadDown;
+                if (includeStickAsDpad)
+                {
+                    if (state.ThumbLX < -StickThreshold) buttons |= ButtonDpadLeft;
+                    if (state.ThumbLX > StickThreshold) buttons |= ButtonDpadRight;
+                    if (state.ThumbLY > StickThreshold) buttons |= ButtonDpadUp;
+                    if (state.ThumbLY < -StickThreshold) buttons |= ButtonDpadDown;
+                }
             }
         }
         catch (DllNotFoundException) { }

@@ -2253,3 +2253,91 @@ SpectralContracts.Run(Check);
     Check(tones && order && faster && filling && silent && noAlloc,
         $"Multi-resolution spectrum: multitones incl. 35+110/65+150 near the crossover, onset 190 Hz in 42.7 ms ({fast.A.Amplitude:F2} vs single-window {(slow.Count > 0 ? slow.A.Amplitude : 0):F2}), bass after 85.3 ms, no allocation");
 }
+
+// Wolverine Chroma RGB (Class 0x0F) and Battery (Class 0x07) protocol encoding contracts (verified against Dev2FW 0x2F700 / 0x2B4F4 / 0x2EA8E / 0x17370).
+{
+    var offArgs = WolverineLightingAndBattery.BuildEffectArgs(ChromaEffect.Off, (0, 255, 0));
+    var staticArgs = WolverineLightingAndBattery.BuildEffectArgs(ChromaEffect.Static, (0x12, 0x34, 0x56), profile: 2);
+    var specArgs = WolverineLightingAndBattery.BuildEffectArgs(ChromaEffect.Spectrum, (0, 0, 0), profile: 3);
+    var waveArgs = WolverineLightingAndBattery.BuildEffectArgs(ChromaEffect.Wave, (0, 0, 0), waveDirection: 2);
+    var breath2Args = WolverineLightingAndBattery.BuildEffectArgs(ChromaEffect.Breathing, (10, 20, 30), (40, 50, 60), breathingMode: 2);
+    var brightArgs = WolverineLightingAndBattery.BuildBrightnessArgs(0xFF, profile: 1);
+    var gipPkt = WolverineLightingAndBattery.BuildGipPacket(0x42, 0x0F, 0x04, brightArgs);
+    byte xor = 0; for (int i = 2; i < 58; i++) xor ^= gipPkt[i];
+
+    bool shapes = offArgs.AsSpan().SequenceEqual(new byte[] { 0x00, 0x05, 0x00, 0x00, 0x00, 0x00 })
+        && staticArgs.AsSpan().SequenceEqual(new byte[] { 0x02, 0x05, 0x0D, 0x08, 0x01, 0x01, 0x12, 0x34, 0x56 })
+        && specArgs.AsSpan().SequenceEqual(new byte[] { 0x03, 0x05, 0x03, 0x00, 0x00, 0x00 })
+        && waveArgs.AsSpan().SequenceEqual(new byte[] { 0x00, 0x05, 0x04, 0x02, 0x00, 0x00 })
+        && breath2Args.AsSpan().SequenceEqual(new byte[] { 0x00, 0x05, 0x02, 0x02, 0x00, 0x02, 10, 20, 30, 40, 50, 60 })
+        && brightArgs.AsSpan().SequenceEqual(new byte[] { 0x01, 0x05, 0xFF });
+    bool gipValid = gipPkt.Length == 60 && gipPkt[1] == 0x42 && gipPkt[5] == 3 && gipPkt[6] == 0x0F && gipPkt[7] == 0x04
+        && gipPkt[8] == 0x01 && gipPkt[9] == 0x05 && gipPkt[10] == 0xFF && gipPkt[58] == xor;
+    bool batteryMath = WolverineLightingAndBattery.DecodeRazerBatteryByte(0) == 0
+        && WolverineLightingAndBattery.DecodeRazerBatteryByte(255) == 100
+        && WolverineLightingAndBattery.DecodeRazerBatteryByte(128) == 50;
+
+    Check(shapes && gipValid && batteryMath,
+        "Chroma RGB (Class 0x0F) and Battery (Class 0x07) packets match Dev2FW 0x2F700 / 0x2EA8E / 0x17370 and GIP 0x0F XOR framing");
+
+    // M1–M6 Button Remapping (Class 0x02 Cmd 0x0C) and Onboard Profile Switch (Class 0x05 Cmd 0x04) contracts.
+    var profArgs = WolverineRemapAndProfiles.BuildSetProfileArgs(3);
+    var remapA = WolverineRemapAndProfiles.BuildSetRemapArgs(2, MButtonId.M3, RemapTarget.A);
+    var remapLt = WolverineRemapAndProfiles.BuildSetRemapArgs(0, MButtonId.M1, RemapTarget.LT);
+    var remapClutch = WolverineRemapAndProfiles.BuildSetRemapArgs(1, MButtonId.M6, RemapTarget.SensitivityClutch);
+    var remapOff = WolverineRemapAndProfiles.BuildSetRemapArgs(4, MButtonId.M2, RemapTarget.Disabled);
+    bool remapOk = profArgs.AsSpan().SequenceEqual(new byte[] { 0x03 })
+        && remapA.AsSpan().SequenceEqual(new byte[] { 0x02, 0x12, 0x00, 0x10, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00 })
+        && remapLt.AsSpan().SequenceEqual(new byte[] { 0x00, 0x10, 0x00, 0x10, 0x01, 0x26, 0x00, 0x00, 0x00, 0x00 })
+        && remapClutch.AsSpan().SequenceEqual(new byte[] { 0x01, 0x15, 0x00, 0x10, 0x05, 0x37, 0x00, 0x00, 0x00, 0x00 })
+        && remapOff.AsSpan().SequenceEqual(new byte[] { 0x04, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 })
+        && WolverineRemapAndProfiles.CreateDefaultProfiles().Count == 4;
+    Check(remapOk,
+        "M1–M6 Remap (Class 0x02 Cmd 0x0C) and Profile Switch (Class 0x05 Cmd 0x04) packets match Dev2FW 0x17740 / 0x1B894 / 0x0EA98");
+}
+
+// ShortcutManager & ControllerShortcutTracker contracts (validation, formatting, hold timing, once-per-hold firing).
+{
+    var defaults = ShortcutManager.CreateDefaultShortcuts();
+    bool defaultsValid = defaults.Count >= 4 && defaults.All(s => ShortcutManager.Validate(s).Ok);
+    var singleBtnInstant = new UserShortcut { Kind = ShortcutTriggerKind.ControllerCombo, ControllerButtons = 0x1000 /* A */, HoldMs = 0 };
+    var singleBtnHeld = new UserShortcut { Kind = ShortcutTriggerKind.ControllerCombo, ControllerButtons = 0x1000 /* A */, HoldMs = 600 };
+    var twoBtnInstant = new UserShortcut { Id = "two", Kind = ShortcutTriggerKind.ControllerCombo, ControllerButtons = 0x0020 | 0x0001 /* View + DpadUp */, HoldMs = 0 };
+    var holdCombo = new UserShortcut { Id = "hold", Kind = ShortcutTriggerKind.ControllerCombo, ControllerButtons = 0x0020 | 0x0010 /* View + Menu */, HoldMs = 400 };
+    var bareKey = new UserShortcut { Kind = ShortcutTriggerKind.KeyboardHotkey, KeyModifiers = 0, VirtualKey = 0x4D /* M */ };
+    var modKey = new UserShortcut { Kind = ShortcutTriggerKind.KeyboardHotkey, KeyModifiers = ShortcutManager.ModControl | ShortcutManager.ModAlt, VirtualKey = 0x4D };
+
+    bool validationRules = !ShortcutManager.Validate(singleBtnInstant).Ok
+        && ShortcutManager.Validate(singleBtnHeld).Ok
+        && ShortcutManager.Validate(twoBtnInstant).Ok
+        && !ShortcutManager.Validate(bareKey).Ok
+        && ShortcutManager.Validate(modKey).Ok;
+
+    var tracker = new ControllerShortcutTracker();
+    var list = new List<UserShortcut> { twoBtnInstant, holdCombo };
+    // Every combo waits ControllerShortcutTracker.MinHoldMs (1 s), even one saved with HoldMs 0: a quick
+    // View + D-Pad press in a game must not fire (E-20261125-90).
+    var q1 = tracker.Evaluate(list, 0x0020 | 0x0001, 500);  // quick press...
+    var q2 = tracker.Evaluate(list, 0x0020 | 0x0001, 700);  // ...held 200 ms -> nothing
+    var q3 = tracker.Evaluate(list, 0x0000, 750);           // released before 1 s -> never fired
+    var f1 = tracker.Evaluate(list, 0x0020 | 0x0001, 1000); // held from 1000...
+    var f1b = tracker.Evaluate(list, 0x0020 | 0x0001, 2000); // ...1 s later -> fires once
+    var f2 = tracker.Evaluate(list, 0x0020 | 0x0001, 2050); // still held -> does not re-fire
+    var f3 = tracker.Evaluate(list, 0x0000, 2100);          // released -> resets
+    var f4 = tracker.Evaluate(list, 0x0020 | 0x0001, 2150); // pressed again -> waits again
+    var f5 = tracker.Evaluate(list, 0x0020 | 0x0001, 3150); // 1 s -> fires again
+    tracker.Evaluate(list, 0x0000, 3200);
+
+    var h1 = tracker.Evaluate(list, 0x0020 | 0x0010, 4000); // start holding the 400 ms combo
+    var h2 = tracker.Evaluate(list, 0x0020 | 0x0010, 4420); // 420 ms: its own 400 ms is below the 1 s minimum -> not yet
+    var h3 = tracker.Evaluate(list, 0x0020 | 0x0010, 5000); // 1 s -> fires
+    var h4 = tracker.Evaluate(list, 0x0020 | 0x0010, 5200); // still held -> does not re-fire
+
+    bool trackerOk = q1.Count == 0 && q2.Count == 0 && q3.Count == 0
+        && f1.Count == 0 && f1b.Count == 1 && f1b[0].Id == "two" && f2.Count == 0 && f3.Count == 0 && f4.Count == 0 && f5.Count == 1
+        && h1.Count == 0 && h2.Count == 0 && h3.Count == 1 && h3[0].Id == "hold" && h4.Count == 0
+        && ShortcutManager.FormatControllerCombo(0x0020 | 0x0001, 0).Contains("1 sn basılı");
+
+    Check(defaultsValid && validationRules && trackerOk,
+        "ShortcutManager & ControllerShortcutTracker: multi-button/hold validation, formatting, and single-fire hold tracking");
+}

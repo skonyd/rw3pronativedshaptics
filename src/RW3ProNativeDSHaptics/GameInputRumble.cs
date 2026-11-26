@@ -41,12 +41,18 @@ public sealed class GameInputRumble : IDisposable
         }
     }
     [StructLayout(LayoutKind.Sequential)] private struct Rumble { public float Low, High, LeftTrigger, RightTrigger; }
+    [StructLayout(LayoutKind.Sequential)] private struct BatteryState
+    {
+        public float ChargeRate, MaxChargeRate, RemainingCapacity, FullChargeCapacity;
+        public int Status; // -1 Unknown, 0 NotPresent, 1 Discharging, 2 Idle, 3 Charging
+    }
     [StructLayout(LayoutKind.Sequential)] private struct PadState
     { public uint Buttons; public float LeftTrigger, RightTrigger, LX, LY, RX, RY; }
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint RefFn(IntPtr self);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ReadingFn(IntPtr self, uint kind, IntPtr device, out IntPtr reading);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate IntPtr InfoFn(IntPtr self);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint StatusFn(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void BatteryFn(IntPtr self, out BatteryState state);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate void RumbleFn(IntPtr self, ref Rumble value);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool StateFn(IntPtr self, out PadState state);
@@ -146,6 +152,29 @@ public sealed class GameInputRumble : IDisposable
             catch (Exception ex) { LastError = ex.GetType().Name + ": " + ex.Message; return false; }
         }
     }
+    public BatteryStatus? TryReadBattery()
+    {
+        lock (_gate)
+        {
+            if (_disposed || !TryAcquire()) return null;
+            try
+            {
+                Slot<BatteryFn>(_device, 5)(_device, out var b);
+                bool charging = b.Status == 3; // GameInputBatteryCharging
+                if (b.FullChargeCapacity > 0 && b.RemainingCapacity >= 0 && float.IsFinite(b.FullChargeCapacity) && float.IsFinite(b.RemainingCapacity))
+                {
+                    int pct = Math.Clamp((int)Math.Round(b.RemainingCapacity * 100.0 / b.FullChargeCapacity), 0, 100);
+                    string label = charging ? $"⚡ %{pct} (Şarj)" : $"🔋 %{pct}";
+                    return new BatteryStatus(true, pct, charging, "GameInput", label);
+                }
+                if (charging)
+                    return new BatteryStatus(true, 100, true, "GameInput", "⚡ Şarj oluyor");
+            }
+            catch { }
+            return null;
+        }
+    }
+
     public bool TryReadPad(out XInputPad pad)
     {
         lock (_gate)

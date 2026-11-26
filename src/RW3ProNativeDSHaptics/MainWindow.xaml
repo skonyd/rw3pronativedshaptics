@@ -30,16 +30,27 @@
       <Border Grid.Column="1" HorizontalAlignment="Center" Background="#101A2E" CornerRadius="12" Padding="5">
         <StackPanel Orientation="Horizontal">
           <RadioButton x:Name="TabGeneral" Content="Genel kullanım" GroupName="Tabs" Style="{StaticResource TabButton}" IsChecked="True" Checked="Tab_Checked"/>
+          <RadioButton x:Name="TabRgb" Content="RGB" GroupName="Tabs" Style="{StaticResource TabButton}" Checked="Tab_Checked"/>
+          <RadioButton x:Name="TabShortcuts" Content="Tuşlar &amp; Kısayollar" GroupName="Tabs" Style="{StaticResource TabButton}" Checked="Tab_Checked"/>
           <RadioButton x:Name="TabTest" Content="Test" GroupName="Tabs" Style="{StaticResource TabButton}" Checked="Tab_Checked"/>
           <RadioButton x:Name="TabSettings" Content="Ayarlar" GroupName="Tabs" Style="{StaticResource TabButton}" Checked="Tab_Checked"/>
         </StackPanel>
       </Border>
-      <Border Grid.Column="2" x:Name="RunBadge" Background="#1A2740" CornerRadius="20" Padding="14,7" VerticalAlignment="Center">
-        <StackPanel Orientation="Horizontal">
-          <Ellipse x:Name="RunBadgeDot" Width="9" Height="9" Fill="{StaticResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-          <TextBlock x:Name="RunBadgeText" Text="Kapalı" FontWeight="SemiBold"/>
-        </StackPanel>
-      </Border>
+      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+        <Border x:Name="BatteryBadge" Background="#1A2740" CornerRadius="20" Padding="13,7" Margin="0,0,10,0" VerticalAlignment="Center"
+                ToolTip="Kolun pil ve şarj durumu (Razer HID 07/80 &amp; 07/84 veya XInput)">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="BatteryBadgeDot" Width="8" Height="8" Fill="{StaticResource Muted}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+            <TextBlock x:Name="BatteryBadgeText" Text="🔋 —" FontWeight="SemiBold" FontSize="12.5"/>
+          </StackPanel>
+        </Border>
+        <Border x:Name="RunBadge" Background="#1A2740" CornerRadius="20" Padding="14,7" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="RunBadgeDot" Width="9" Height="9" Fill="{StaticResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock x:Name="RunBadgeText" Text="Kapalı" FontWeight="SemiBold"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
     </Grid>
 
     <!-- ===================== GENEL KULLANIM ===================== -->
@@ -303,6 +314,513 @@
               <Button x:Name="RouteVirtualButton" Style="{StaticResource SmallBtn}" HorizontalAlignment="Left" Click="VcBridge_Click"/>
             </StackPanel>
             </StackPanel>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <!-- ===================== RGB (CHROMA LIGHTING) ===================== -->
+    <Grid x:Name="RgbPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/><ColumnDefinition Width="1.15*"/></Grid.ColumnDefinitions>
+
+      <!-- Left: Effect Selector & Brightness (Synapse / Razer Controller Setup style) -->
+      <Border Grid.Column="0" Style="{StaticResource CardBorder}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="Chroma RGB Aydınlatma" Style="{StaticResource CardTitle}"/>
+          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,12"
+                     Text="Wolverine V3 Pro'nun donanımsal RGB efektleri (Class 0x0F). Hem PC modunda (Doğrudan USB) hem Xbox modunda (GIP 0x0F) Synapse gerekmeden çalışır."/>
+
+          <!-- Quick Off / On toggle & Brightness -->
+          <Border DockPanel.Dock="Top" Background="#0B1222" CornerRadius="12" Padding="14,12" Margin="0,0,0,14" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <StackPanel>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="Aydınlatma Durumu" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="RgbPowerHint" Text="Logo ve şerit LED'leri kontrol eder" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+                <Button x:Name="RgbQuickOffBtn" Grid.Column="1" Content="⏻  Işıkları Kapat" Style="{StaticResource SmallBtn}" Background="#4D1D24" Click="RgbQuickOff_Click"/>
+              </Grid>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="52"/></Grid.ColumnDefinitions>
+                <TextBlock Text="Parlaklık" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Slider x:Name="RgbBrightnessSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" SmallChange="5" LargeChange="20" TickFrequency="5"
+                        IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="RgbBrightness_Changed" AutomationProperties.Name="RGB Parlaklık"/>
+                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbBrightnessSlider, StringFormat='%{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <TextBlock DockPanel.Dock="Top" Text="Efekt Seçimi" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <UniformGrid Columns="2" Margin="0,0,4,0">
+              <RadioButton x:Name="RgbEffOff" GroupName="RgbEffect" Tag="Off" Style="{StaticResource ChoiceCard}" Margin="0,0,8,8" Checked="RgbEffect_Checked">
+                <StackPanel>
+                  <TextBlock Text="⏻  Kapalı (Off)" FontWeight="SemiBold"/>
+                  <TextBlock Text="Tüm LED'leri tamamen kapatır" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+              </RadioButton>
+              <RadioButton x:Name="RgbEffStatic" GroupName="RgbEffect" Tag="Static" Style="{StaticResource ChoiceCard}" Margin="0,0,0,8" Checked="RgbEffect_Checked">
+                <StackPanel>
+                  <TextBlock Text="●  Sabit (Static)" FontWeight="SemiBold"/>
+                  <TextBlock Text="Seçilen tek renkte sabit yanar" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+              </RadioButton>
+              <RadioButton x:Name="RgbEffSpectrum" GroupName="RgbEffect" Tag="Spectrum" Style="{StaticResource ChoiceCard}" Margin="0,0,8,8" Checked="RgbEffect_Checked">
+                <StackPanel>
+                  <TextBlock Text="🌈  Spektrum Döngüsü" FontWeight="SemiBold"/>
+                  <TextBlock Text="Tüm renkler arasında yumuşak geçiş" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+              </RadioButton>
+              <RadioButton x:Name="RgbEffWave" GroupName="RgbEffect" Tag="Wave" Style="{StaticResource ChoiceCard}" Margin="0,0,0,8" Checked="RgbEffect_Checked">
+                <StackPanel>
+                  <TextBlock Text="〰  Dalga (Wave)" FontWeight="SemiBold"/>
+                  <TextBlock Text="Akan gökkuşağı RGB dalgası" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+              </RadioButton>
+              <RadioButton x:Name="RgbEffBreathing" GroupName="RgbEffect" Tag="Breathing" Style="{StaticResource ChoiceCard}" Margin="0,0,8,0" Checked="RgbEffect_Checked">
+                <StackPanel>
+                  <TextBlock Text="💨  Nefes Alma (Breathing)" FontWeight="SemiBold"/>
+                  <TextBlock Text="1 renk, 2 renk veya rastgele nefes" Style="{StaticResource Hint}" FontSize="11.5"/>
+                </StackPanel>
+              </RadioButton>
+            </UniformGrid>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+
+      <!-- Right: Controller LED Visualizer, Color Palette & Effect Parameters -->
+      <Border Grid.Column="2" Style="{StaticResource CardBorder}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="Önizleme ve Özelleştirme" Style="{StaticResource CardTitle}"/>
+          <TextBlock DockPanel.Dock="Top" x:Name="RgbStatusText" Style="{StaticResource Hint}" Margin="0,0,0,12"
+                     Text="Bir efekt veya renk seçtiğinde kola anında uygulanır."/>
+
+          <!-- Controller RGB Zone Preview Banner -->
+          <Border DockPanel.Dock="Top" Background="#0B1222" CornerRadius="14" Padding="18,16" Margin="0,0,0,14" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="16"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <Border x:Name="RgbPreviewGlow" Width="56" Height="56" CornerRadius="28" Background="#00FF00" BorderBrush="#FFFFFF" BorderThickness="2">
+                <TextBlock Text="🎮" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock x:Name="RgbPreviewTitle" Text="Spektrum Döngüsü • %100" FontSize="15" FontWeight="SemiBold"/>
+                <TextBlock x:Name="RgbPreviewSub" Text="Bölge 0x05 (Razer Logo &amp; Şerit LED • Donanım Onaylı)" Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+              </StackPanel>
+              <Button Grid.Column="3" x:Name="RgbApplyBtn" Content="✓ Şimdi Uygula" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" VerticalAlignment="Center" Click="RgbApply_Click"/>
+            </Grid>
+          </Border>
+
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+              <!-- Sub-options for Breathing color count -->
+              <StackPanel x:Name="RgbColorModePanel" Margin="0,0,0,12" Visibility="Collapsed">
+                <TextBlock Text="Nefes Alma Renk Modu" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <WrapPanel>
+                  <RadioButton x:Name="RgbMode1Color" Content="Tek Renk" Tag="1" GroupName="RgbColorMode" Style="{StaticResource PresetCard}" Width="110" IsChecked="True" Checked="RgbOption_Changed"/>
+                  <RadioButton x:Name="RgbMode2Color" Content="İki Renk" Tag="2" GroupName="RgbColorMode" Style="{StaticResource PresetCard}" Width="110" Checked="RgbOption_Changed"/>
+                  <RadioButton x:Name="RgbModeRandom" Content="Rastgele" Tag="0" GroupName="RgbColorMode" Style="{StaticResource PresetCard}" Width="110" Checked="RgbOption_Changed"/>
+                </WrapPanel>
+              </StackPanel>
+
+              <!-- Wave Direction -->
+              <StackPanel x:Name="RgbDirectionPanel" Margin="0,0,0,12" Visibility="Collapsed">
+                <TextBlock Text="Dalga Yönü" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <WrapPanel>
+                  <RadioButton x:Name="RgbDirLeftRight" Content="◀ Sol → Sağ ▶" Tag="1" GroupName="RgbWaveDir" Style="{StaticResource PresetCard}" Width="140" IsChecked="True" Checked="RgbOption_Changed"/>
+                  <RadioButton x:Name="RgbDirRightLeft" Content="◀ Sağ → Sol ▶" Tag="2" GroupName="RgbWaveDir" Style="{StaticResource PresetCard}" Width="140" Checked="RgbOption_Changed"/>
+                </WrapPanel>
+              </StackPanel>
+
+              <!-- Color Pickers & Razer Preset Swatches -->
+              <StackPanel x:Name="RgbColorsPanel">
+                <TextBlock Text="Hazır Razer Chroma Renkleri" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <WrapPanel Margin="0,0,0,12">
+                  <Button Content="Razer Yeşili" Tag="#00FF00" Style="{StaticResource SmallBtn}" Background="#156615" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Siber Mavi" Tag="#00A2FF" Style="{StaticResource SmallBtn}" Background="#104E78" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="PlayStation Mavisi" Tag="#00439C" Style="{StaticResource SmallBtn}" Background="#00357A" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Kızıl Kırmızı" Tag="#FF1E1E" Style="{StaticResource SmallBtn}" Background="#7A1515" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Altın Sarı" Tag="#FFB800" Style="{StaticResource SmallBtn}" Background="#755500" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Neon Mor" Tag="#A800FF" Style="{StaticResource SmallBtn}" Background="#52007A" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Turkuaz" Tag="#00FFD5" Style="{StaticResource SmallBtn}" Background="#006B5A" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                  <Button Content="Saf Beyaz" Tag="#FFFFFF" Style="{StaticResource SmallBtn}" Background="#4A5568" Margin="0,0,6,6" Click="RgbSwatch1_Click"/>
+                </WrapPanel>
+
+                <!-- Primary Color R/G/B Sliders -->
+                <Border Background="#0F1829" CornerRadius="10" Padding="12,10" Margin="0,0,0,10" BorderBrush="{StaticResource Line}" BorderThickness="1">
+                  <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                      <Border x:Name="RgbColor1Swatch" DockPanel.Dock="Right" Width="26" Height="20" CornerRadius="5" Background="#00FF00" BorderBrush="#FFFFFF" BorderThickness="1"/>
+                      <TextBlock x:Name="RgbColor1Label" Text="1. Renk (R / G / B)" FontWeight="SemiBold"/>
+                    </DockPanel>
+                    <Grid Margin="0,2,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="R" Foreground="#FF6B6B" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbR1Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="0" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbR1Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid Margin="0,4,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="G" Foreground="#3DD68C" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbG1Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="255" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbG1Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid Margin="0,4,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="B" Foreground="#5A8CFF" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbB1Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="0" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbB1Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- Secondary Color R/G/B Sliders (for 2-color Breathing / Starlight) -->
+                <Border x:Name="RgbColor2Box" Background="#0F1829" CornerRadius="10" Padding="12,10" Margin="0,0,0,10" BorderBrush="{StaticResource Line}" BorderThickness="1" Visibility="Collapsed">
+                  <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                      <Border x:Name="RgbColor2Swatch" DockPanel.Dock="Right" Width="26" Height="20" CornerRadius="5" Background="#00A2FF" BorderBrush="#FFFFFF" BorderThickness="1"/>
+                      <TextBlock Text="2. Renk (R / G / B)" FontWeight="SemiBold"/>
+                    </DockPanel>
+                    <Grid Margin="0,2,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="R" Foreground="#FF6B6B" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbR2Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="0" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbR2Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid Margin="0,4,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="G" Foreground="#3DD68C" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbG2Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="162" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbG2Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid Margin="0,4,0,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="B" Foreground="#5A8CFF" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <Slider x:Name="RgbB2Slider" Grid.Column="1" Minimum="0" Maximum="255" Value="255" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="RgbSlider_Changed"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=RgbB2Slider, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <CheckBox x:Name="RgbSaveToProfileCheck" Content="Kolun dahili hafızasına da kaydet (Profil 1–4)" Foreground="#EEF3FF" Margin="0,4,0,0"/>
+              <TextBlock Text="İşaretliyken yaptığın aydınlatma ayarı kolun kendi EEPROM profiline de yazılır; kolu başka cihaza veya konsola taktığında aynı kalır." Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <!-- ===================== TUŞLAR, PROFİLLER & KISAYOLLAR ===================== -->
+    <Grid x:Name="ShortcutsPage" Grid.Row="1" Visibility="Collapsed">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="1.22*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="0.96*"/></Grid.ColumnDefinitions>
+
+      <!-- Left: Onboard Profiles (1-4), Interactive Front+Back Controller Visual, M1-M6 Remap -->
+      <Border Grid.Column="0" Style="{StaticResource CardBorder}" Padding="16,14">
+        <DockPanel>
+          <!-- Top: Profile Selector Bar -->
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <DockPanel Margin="0,0,0,8">
+              <TextBlock DockPanel.Dock="Right" x:Name="RemapStatusText" Text="Hazır" FontSize="11.5" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+              <TextBlock Text="Profiller ve Arka Tuşlar (M1–M6)" Style="{StaticResource CardTitle}" Margin="0"/>
+            </DockPanel>
+
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="ProfileBtn1" Content="P1" Tag="1" GroupName="PadProfiles" Style="{StaticResource DeviceChip}" IsChecked="True" Checked="ProfileSlot_Checked"/>
+                <RadioButton x:Name="ProfileBtn2" Content="P2" Tag="2" GroupName="PadProfiles" Style="{StaticResource DeviceChip}" Checked="ProfileSlot_Checked"/>
+                <RadioButton x:Name="ProfileBtn3" Content="P3" Tag="3" GroupName="PadProfiles" Style="{StaticResource DeviceChip}" Checked="ProfileSlot_Checked"/>
+                <RadioButton x:Name="ProfileBtn4" Content="P4" Tag="4" GroupName="PadProfiles" Style="{StaticResource DeviceChip}" Checked="ProfileSlot_Checked"/>
+              </StackPanel>
+              <TextBox Grid.Column="2" x:Name="ProfileNameBox" Height="30" Padding="8,4" Background="#0B1222" Foreground="#EEF3FF"
+                       BorderBrush="{StaticResource Line}" BorderThickness="1" VerticalContentAlignment="Center" FontSize="12.5"
+                       ToolTip="Profil adını düzenle" LostFocus="ProfileName_LostFocus"/>
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
+                <Button Content="✓ Kola Yaz" Style="{StaticResource SmallBtn}" Background="#1D4D38" Click="ProfileApplyAll_Click"
+                        ToolTip="Seçili profili ve tüm M1–M6 atamalarını kola uygula"/>
+                <Button Content="↺" Style="{StaticResource SmallBtn}" Margin="6,0,0,0" Click="ProfileReset_Click"
+                        ToolTip="Bu profili fabrika varsayılanına döndür"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+
+          <!-- Bottom: Selected M-Button Quick Remap Controls -->
+          <Border DockPanel.Dock="Bottom" Background="#0B1222" CornerRadius="10" Padding="12,10" Margin="0,10,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Right" x:Name="ControllerLiveActionText" Text="Canlı: Hazır" FontSize="11.5" Foreground="#38BDF8" VerticalAlignment="Center"/>
+                <TextBlock x:Name="SelectedMButtonTitle" Text="Seçili: M3 (Sol Üst Arka Pedal) → Ⓐ" FontWeight="SemiBold" FontSize="12.5" Foreground="#4ADE80"/>
+              </DockPanel>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <RadioButton x:Name="SelM1" Content="M1" Tag="M1" GroupName="SelMButton" Style="{StaticResource DeviceChip}" Checked="MButtonSelect_Checked"/>
+                  <RadioButton x:Name="SelM2" Content="M2" Tag="M2" GroupName="SelMButton" Style="{StaticResource DeviceChip}" Checked="MButtonSelect_Checked"/>
+                  <RadioButton x:Name="SelM3" Content="M3" Tag="M3" GroupName="SelMButton" Style="{StaticResource DeviceChip}" IsChecked="True" Checked="MButtonSelect_Checked"/>
+                  <RadioButton x:Name="SelM4" Content="M4" Tag="M4" GroupName="SelMButton" Style="{StaticResource DeviceChip}" Checked="MButtonSelect_Checked"/>
+                  <RadioButton x:Name="SelM5" Content="M5" Tag="M5" GroupName="SelMButton" Style="{StaticResource DeviceChip}" Checked="MButtonSelect_Checked"/>
+                  <RadioButton x:Name="SelM6" Content="M6" Tag="M6" GroupName="SelMButton" Style="{StaticResource DeviceChip}" Checked="MButtonSelect_Checked"/>
+                </StackPanel>
+                <ComboBox x:Name="RemapTargetCombo" Grid.Column="2" MinHeight="30" DisplayMemberPath="Label" SelectedValuePath="Target"
+                          SelectionChanged="RemapTargetCombo_SelectionChanged"/>
+                <Button Grid.Column="3" Content="⚡ Ata" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" Margin="8,0,0,0"
+                        Click="RemapAssignBtn_Click" ToolTip="Seçili M tuşuna bu hedefi kola hemen yaz"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Center: Interactive Front + Back Wolverine V3 Pro Visual Diagram -->
+          <Border Background="#090F1D" CornerRadius="12" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <Viewbox Stretch="Uniform">
+              <Canvas Width="560" Height="232">
+                <!-- Titles -->
+                <TextBlock Canvas.Left="88" Canvas.Top="4" Text="ÖN YÜZ (Hedef / Canlı Tuş)" FontSize="11" FontWeight="SemiBold" Foreground="#7E93BC"/>
+                <TextBlock Canvas.Left="362" Canvas.Top="4" Text="ARKA YÜZ (M1–M6 Atama)" FontSize="11" FontWeight="SemiBold" Foreground="#7E93BC"/>
+
+                <!-- ===== FRONT CONTROLLER SILHOUETTE ===== -->
+                <Path Data="M 54,48 C 72,38 208,38 226,48 C 246,60 258,118 250,174 C 246,204 224,218 206,208 C 190,198 182,168 164,164 L 116,164 C 98,168 90,198 74,208 C 56,218 34,204 30,174 C 22,118 34,60 54,48 Z"
+                      Fill="#111C33" Stroke="#2A3E66" StrokeThickness="2"/>
+
+                <!-- Triggers LT / RT -->
+                <Border x:Name="VisLT" Canvas.Left="54" Canvas.Top="24" Width="38" Height="18" CornerRadius="5" Background="#172440" BorderBrush="#334B7A" BorderThickness="1.2" Cursor="Hand" Tag="LT" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="LT" FontSize="10" FontWeight="Bold" Foreground="#CBD8F0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisRT" Canvas.Left="188" Canvas.Top="24" Width="38" Height="18" CornerRadius="5" Background="#172440" BorderBrush="#334B7A" BorderThickness="1.2" Cursor="Hand" Tag="RT" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="RT" FontSize="10" FontWeight="Bold" Foreground="#CBD8F0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Bumpers LB / RB -->
+                <Border x:Name="VisLB" Canvas.Left="46" Canvas.Top="44" Width="48" Height="18" CornerRadius="6" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1.2" Cursor="Hand" Tag="LB" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="LB" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisRB" Canvas.Left="186" Canvas.Top="44" Width="48" Height="18" CornerRadius="6" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1.2" Cursor="Hand" Tag="RB" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="RB" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Razer Center Guide LED -->
+                <Border x:Name="VisLogoLed" Canvas.Left="127" Canvas.Top="54" Width="26" Height="26" CornerRadius="13" Background="#0D261B" BorderBrush="#22C55E" BorderThickness="1.5">
+                  <TextBlock Text="R" FontSize="11" FontWeight="Bold" Foreground="#4ADE80" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- View / Menu / Fn -->
+                <Border x:Name="VisView" Canvas.Left="104" Canvas.Top="86" Width="24" Height="18" CornerRadius="5" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="View" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="⧉" FontSize="10" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisMenu" Canvas.Left="152" Canvas.Top="86" Width="24" Height="18" CornerRadius="5" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="Menu" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="☰" FontSize="10" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisFn" Canvas.Left="129" Canvas.Top="140" Width="22" Height="16" CornerRadius="4" Background="#1A2947" BorderBrush="#475569" BorderThickness="1">
+                  <TextBlock Text="Fn" FontSize="8.5" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Left Stick (L3) -->
+                <Border x:Name="VisL3" Canvas.Left="54" Canvas.Top="78" Width="36" Height="36" CornerRadius="18" Background="#16233E" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="L3" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="L3" FontSize="10.5" FontWeight="Bold" Foreground="#CBD8F0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Right Stick (R3) -->
+                <Border x:Name="VisR3" Canvas.Left="154" Canvas.Top="120" Width="36" Height="36" CornerRadius="18" Background="#16233E" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="R3" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="R3" FontSize="10.5" FontWeight="Bold" Foreground="#CBD8F0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- D-Pad -->
+                <Border x:Name="VisDpadUp" Canvas.Left="94" Canvas.Top="118" Width="18" Height="18" CornerRadius="4" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="DpadUp" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="↑" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisDpadDown" Canvas.Left="94" Canvas.Top="150" Width="18" Height="18" CornerRadius="4" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="DpadDown" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="↓" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisDpadLeft" Canvas.Left="76" Canvas.Top="134" Width="18" Height="18" CornerRadius="4" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="DpadLeft" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="←" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisDpadRight" Canvas.Left="112" Canvas.Top="134" Width="18" Height="18" CornerRadius="4" Background="#1A2947" BorderBrush="#3B558A" BorderThickness="1" Cursor="Hand" Tag="DpadRight" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="→" FontSize="10" FontWeight="Bold" Foreground="#E2ECFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Face Buttons A / B / X / Y -->
+                <Border x:Name="VisY" Canvas.Left="199" Canvas.Top="68" Width="22" Height="22" CornerRadius="11" Background="#2B2412" BorderBrush="#CA8A04" BorderThickness="1.4" Cursor="Hand" Tag="Y" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="Y" FontSize="10" FontWeight="Bold" Foreground="#FACC15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisX" Canvas.Left="178" Canvas.Top="88" Width="22" Height="22" CornerRadius="11" Background="#132544" BorderBrush="#2563EB" BorderThickness="1.4" Cursor="Hand" Tag="X" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="X" FontSize="10" FontWeight="Bold" Foreground="#60A5FA" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisB" Canvas.Left="220" Canvas.Top="88" Width="22" Height="22" CornerRadius="11" Background="#3B151B" BorderBrush="#DC2626" BorderThickness="1.4" Cursor="Hand" Tag="B" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="B" FontSize="10" FontWeight="Bold" Foreground="#F87171" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="VisA" Canvas.Left="199" Canvas.Top="108" Width="22" Height="22" CornerRadius="11" Background="#102C1E" BorderBrush="#16A34A" BorderThickness="1.4" Cursor="Hand" Tag="A" MouseLeftButtonDown="VisualFrontButton_Click">
+                  <TextBlock Text="A" FontSize="10" FontWeight="Bold" Foreground="#4ADE80" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- ===== BACK CONTROLLER SILHOUETTE (M1–M6) ===== -->
+                <Path Data="M 334,48 C 352,38 488,38 506,48 C 526,60 538,118 530,174 C 526,204 504,218 486,208 C 470,198 462,168 444,164 L 396,164 C 378,168 370,198 354,208 C 336,218 314,204 310,174 C 302,118 314,60 334,48 Z"
+                      Fill="#111C33" Stroke="#2A3E66" StrokeThickness="2"/>
+
+                <!-- Top Claw Bumpers: M1 (left side of pad = right on back view? Keep intuitive left=M1, right=M2) -->
+                <Border x:Name="VisM1" Canvas.Left="344" Canvas.Top="34" Width="62" Height="26" CornerRadius="7" Background="#162642" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="M1" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M1 " FontSize="10" FontWeight="Bold" Foreground="#94A3B8"/>
+                    <TextBlock x:Name="VisM1Val" Text="Ⓧ" FontSize="10.5" FontWeight="Bold" Foreground="#EEF3FF"/>
+                  </StackPanel>
+                </Border>
+                <Border x:Name="VisM2" Canvas.Left="434" Canvas.Top="34" Width="62" Height="26" CornerRadius="7" Background="#162642" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="M2" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M2 " FontSize="10" FontWeight="Bold" Foreground="#94A3B8"/>
+                    <TextBlock x:Name="VisM2Val" Text="Ⓨ" FontSize="10.5" FontWeight="Bold" Foreground="#EEF3FF"/>
+                  </StackPanel>
+                </Border>
+
+                <!-- Rear Upper Paddles: M3 / M4 -->
+                <Border x:Name="VisM3" Canvas.Left="342" Canvas.Top="92" Width="68" Height="30" CornerRadius="8" Background="#162642" BorderBrush="#22C55E" BorderThickness="2" Cursor="Hand" Tag="M3" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M3" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="VisM3Val" Text="Ⓐ" FontSize="11" FontWeight="Bold" Foreground="#4ADE80" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+                <Border x:Name="VisM4" Canvas.Left="430" Canvas.Top="92" Width="68" Height="30" CornerRadius="8" Background="#162642" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="M4" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M4" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="VisM4Val" Text="Ⓑ" FontSize="11" FontWeight="Bold" Foreground="#EEF3FF" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+
+                <!-- Rear Lower Paddles: M5 / M6 -->
+                <Border x:Name="VisM5" Canvas.Left="336" Canvas.Top="130" Width="74" Height="30" CornerRadius="8" Background="#162642" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="M5" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M5" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="VisM5Val" Text="Clutch" FontSize="10.5" FontWeight="Bold" Foreground="#EEF3FF" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+                <Border x:Name="VisM6" Canvas.Left="430" Canvas.Top="130" Width="74" Height="30" CornerRadius="8" Background="#162642" BorderBrush="#3B558A" BorderThickness="1.5" Cursor="Hand" Tag="M6" MouseLeftButtonDown="VisualMButton_Click">
+                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="M6" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="VisM6Val" Text="Clutch" FontSize="10.5" FontWeight="Bold" Foreground="#EEF3FF" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+
+                <!-- Legend strip at bottom of canvas -->
+                <StackPanel Canvas.Left="18" Canvas.Top="214" Orientation="Horizontal">
+                  <Ellipse Width="8" Height="8" Fill="#22C55E" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                  <TextBlock Text="Seçili M tuşu / hedefi" FontSize="10" Foreground="#94A3B8" Margin="0,0,16,0"/>
+                  <Ellipse Width="8" Height="8" Fill="#38BDF8" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                  <TextBlock Text="Canlı basılan tuş" FontSize="10" Foreground="#94A3B8" Margin="0,0,16,0"/>
+                  <TextBlock Text="💡 İpucu: Arka yüzden M1–M6 seçip ön yüzdeki hedef tuşa tıklayabilirsin." FontSize="10" Foreground="#6CA6FF"/>
+                </StackPanel>
+              </Canvas>
+            </Viewbox>
+          </Border>
+        </DockPanel>
+      </Border>
+
+      <!-- Right: Create Custom Shortcut + Saved Shortcuts / Onboard Hardware Reference -->
+      <Grid Grid.Column="2">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="14"/><RowDefinition/></Grid.RowDefinitions>
+
+        <!-- Top Card: Create New Custom Shortcut -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="16,13">
+          <StackPanel>
+            <DockPanel Margin="0,0,0,6">
+              <TextBlock DockPanel.Dock="Right" x:Name="ShortcutStatusText" Text="Hazır" FontSize="11.5" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+              <TextBlock Text="Yeni Kısayol Ekle" Style="{StaticResource CardTitle}" Margin="0"/>
+            </DockPanel>
+
+            <Grid Margin="0,2,0,8">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="ShortcutKindPad" Content="🎮 Kol" GroupName="ShortcutKind" Style="{StaticResource DeviceChip}" IsChecked="True" Checked="ShortcutKind_Changed"/>
+                <RadioButton x:Name="ShortcutKindKey" Content="⌨ Tuş" GroupName="ShortcutKind" Style="{StaticResource DeviceChip}" Checked="ShortcutKind_Changed"/>
+              </StackPanel>
+              <Border Grid.Column="2" Background="#0B1222" CornerRadius="8" Padding="10,5" BorderBrush="{StaticResource Line}" BorderThickness="1" VerticalAlignment="Center">
+                <TextBlock x:Name="ShortcutCapturedText" Text="⧉ View + D-Pad ↑" FontWeight="SemiBold" FontSize="12.5" Foreground="#6CA6FF" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              </Border>
+              <Button Grid.Column="3" x:Name="ShortcutCaptureBtn" Content="🎯 Dinle" Style="{StaticResource SmallBtn}" Background="{StaticResource Accent}" Margin="6,0,0,0"
+                      Click="ShortcutCapture_Click"/>
+            </Grid>
+
+            <Grid x:Name="ShortcutHoldRow" Margin="0,0,0,8">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="ShortcutHold0" Content="Anında" Tag="0" GroupName="ShortcutHold" Style="{StaticResource DeviceChip}" IsChecked="True" Checked="ShortcutHold_Changed"/>
+                <RadioButton x:Name="ShortcutHold400" Content="0.4 sn" Tag="400" GroupName="ShortcutHold" Style="{StaticResource DeviceChip}" Checked="ShortcutHold_Changed"/>
+                <RadioButton x:Name="ShortcutHold800" Content="0.8 sn" Tag="800" GroupName="ShortcutHold" Style="{StaticResource DeviceChip}" Checked="ShortcutHold_Changed"/>
+              </StackPanel>
+              <CheckBox Grid.Column="1" x:Name="ShortcutsBackgroundCheck" Content="Her yerde çalışsın" Foreground="#CBD8F0" FontSize="11.5"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" IsChecked="True" Checked="ShortcutsBackground_Changed" Unchecked="ShortcutsBackground_Changed"/>
+            </Grid>
+
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <ComboBox x:Name="ShortcutActionCombo" MinHeight="30" DisplayMemberPath="Label" SelectedValuePath="Action"/>
+              <Button Grid.Column="1" x:Name="ShortcutAddBtn" Content="＋ Ekle" Style="{StaticResource SmallBtn}" Background="#1D4D38" Margin="8,0,0,0"
+                      Click="ShortcutAdd_Click"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Bottom Card: Toggle between My Custom Shortcuts and Onboard Hardware Shortcuts -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,13">
+          <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+              <Button DockPanel.Dock="Right" Content="↺ Varsayılanlar" Style="{StaticResource SmallBtn}" Click="ShortcutsRestoreDefaults_Click"
+                      ToolTip="Varsayılan özel kısayolları geri yükle"/>
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="SubTabUserShortcuts" Content="Özel Kısayollarım" GroupName="ShortcutSubTab" Style="{StaticResource DeviceChip}" IsChecked="True" Checked="ShortcutSubTab_Checked"/>
+                <RadioButton x:Name="SubTabHardwareShortcuts" Content="Kolun Hazır Kısayolları" GroupName="ShortcutSubTab" Style="{StaticResource DeviceChip}" Checked="ShortcutSubTab_Checked"/>
+              </StackPanel>
+            </DockPanel>
+
+            <!-- Custom Shortcuts List -->
+            <ScrollViewer x:Name="UserShortcutsPanel" VerticalScrollBarVisibility="Auto" Focusable="False">
+              <ItemsControl x:Name="UserShortcutsList">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Background="#0F1829" CornerRadius="9" Padding="10,8" Margin="0,0,4,7" BorderBrush="{StaticResource Line}" BorderThickness="1">
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <CheckBox IsChecked="{Binding Enabled}" Tag="{Binding Id}" VerticalAlignment="Center" Margin="0,0,8,0"
+                                  Checked="UserShortcutEnabled_Changed" Unchecked="UserShortcutEnabled_Changed"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <WrapPanel VerticalAlignment="Center">
+                            <Border Background="#16233D" CornerRadius="5" Padding="5,1" Margin="0,0,5,0">
+                              <TextBlock Text="{Binding KindBadge}" FontSize="10.5" Foreground="#9FB3D9"/>
+                            </Border>
+                            <Border Background="#1E3563" CornerRadius="5" Padding="7,1">
+                              <TextBlock Text="{Binding TriggerDisplay}" FontWeight="Bold" FontSize="11.5" Foreground="#FFFFFF"/>
+                            </Border>
+                          </WrapPanel>
+                          <TextBlock Text="{Binding ActionDisplay}" FontWeight="SemiBold" FontSize="12" Foreground="#EEF3FF" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Content="▶" Tag="{Binding Id}" Style="{StaticResource SmallBtn}" Margin="6,0,4,0" VerticalAlignment="Center"
+                                ToolTip="Şimdi dene" Click="UserShortcutTest_Click"/>
+                        <Button Grid.Column="3" Content="✕" Tag="{Binding Id}" Style="{StaticResource SmallBtn}" Background="#4D1D24" VerticalAlignment="Center"
+                                ToolTip="Sil" Click="UserShortcutDelete_Click"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Onboard Hardware Shortcuts Reference -->
+            <ScrollViewer x:Name="HardwareShortcutsPanel" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+              <ItemsControl x:Name="BuiltInShortcutsList">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Background="#0F1829" CornerRadius="9" Padding="10,8" Margin="0,0,4,7" BorderBrush="{StaticResource Line}" BorderThickness="1">
+                      <StackPanel>
+                        <DockPanel>
+                          <Border DockPanel.Dock="Right" Background="#17284A" CornerRadius="5" Padding="7,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Combo}" FontWeight="Bold" FontSize="11" Foreground="#6CA6FF"/>
+                          </Border>
+                          <TextBlock Text="{Binding Category}" FontSize="10.5" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Text="{Binding Description}" FontSize="11.5" Foreground="#EEF3FF" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </ScrollViewer>
           </DockPanel>
         </Border>

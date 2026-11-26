@@ -86,6 +86,26 @@ public sealed class UserSettings
     public bool DirectTransientRecords { get; set; } = true;
     /// <summary>Audio to haptics sync delay: -1 automatic (Bluetooth output 300 ms, wired 0), else ms.</summary>
     public int AudioSyncDelayMs { get; set; } = -1;
+
+    // ── Chroma RGB lighting settings (Class 0x0F) ──
+    public ChromaEffect RgbEffect { get; set; } = ChromaEffect.Spectrum;
+    public int RgbBrightnessPercent { get; set; } = 100;
+    public string RgbColor1Hex { get; set; } = "#00FF00";
+    public string RgbColor2Hex { get; set; } = "#00A2FF";
+    /// <summary>Breathing / Starlight color mode: 1 = single color, 2 = two colors, 0 = random colors.</summary>
+    public int RgbBreathingMode { get; set; } = 1;
+    /// <summary>Wave direction: 1 = left-to-right, 2 = right-to-left.</summary>
+    public int RgbWaveDirection { get; set; } = 1;
+    /// <summary>Reactive / Starlight speed: 1 = fast, 2 = medium, 3 = slow.</summary>
+    public int RgbSpeed { get; set; } = 2;
+
+    // ── Custom shortcuts (Controller button combos + Global keyboard hotkeys) ──
+    public bool BackgroundShortcutsEnabled { get; set; } = true;
+    public System.Collections.Generic.List<UserShortcut>? Shortcuts { get; set; }
+
+    // ── Controller Profiles & M1–M6 Rear/Claw Button Remapping (Class 0x05 & 0x02) ──
+    public int ActiveProfileSlot { get; set; } = 1;
+    public System.Collections.Generic.List<ControllerProfile>? ControllerProfiles { get; set; }
 }
 
 public sealed class SettingsStore
@@ -101,7 +121,9 @@ public sealed class SettingsStore
         try
         {
             if (!File.Exists(FilePath)) return new UserSettings();
-            return JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new UserSettings();
+            var loaded = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new UserSettings();
+            if ((byte)loaded.RgbEffect == 0x08) loaded.RgbEffect = ChromaEffect.Static; // Migrate legacy Static enum byte
+            return loaded;
         }
         catch { return new UserSettings(); }
     }

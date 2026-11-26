@@ -193,7 +193,9 @@ public partial class MainWindow : Window
         _ = Task.Run(LoginBridgeTask.IsInstalled).ContinueWith(t => Dispatcher.Invoke(() => LoginBridgeCheckbox.IsChecked = t.Result),
             TaskContinuationOptions.OnlyOnRanToCompletion);
         VersionText.Text = "v" + UpdateService.InstalledVersion;
+        GipSensaTransport.Shared.TryOpen();
         InitializeRgbUi();
+        InitializeShortcutsUi();
         InitializeTray();
 
         var startupArgs = Environment.GetCommandLineArgs();
@@ -266,6 +268,7 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        RegisterWindowHotkeys();
         await RefreshChecksAsync();
         await RefreshBatteryAsync();
         try
@@ -333,6 +336,7 @@ public partial class MainWindow : Window
         if (GeneralPage == null) return;
         GeneralPage.Visibility = TabGeneral.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         RgbPage.Visibility = TabRgb.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutsPage.Visibility = TabShortcuts.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TestPage.Visibility = TabTest.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = TabSettings.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (TabGeneral.IsChecked == true && _initialized) await RefreshChecksAsync();
@@ -341,6 +345,7 @@ public partial class MainWindow : Window
             GipSensaTransport.Shared.TryOpen();
             UpdateRgbPreviewUi();
         }
+        if (TabShortcuts.IsChecked == true && _initialized) RefreshUserShortcutsList();
         if (TabSettings.IsChecked == true && _initialized) { RefreshDirectModeStatus(); await RefreshVirtualControllerAsync(); }
     }
 
@@ -2048,18 +2053,28 @@ public partial class MainWindow : Window
 
     private void PadTimer_Tick(object? sender, EventArgs e)
     {
-        ushort buttons = XInputHaptics.ReadButtonsAnyPad();
+        ushort buttons = XInputHaptics.ReadButtonsAnyPad(includeStickAsDpad: !_capturingPadShortcut);
         buttons |= WinUsbGipTransport.Shared.ButtonsForUi();   // direct mode: the pad is not on XInput
         ushort pressed = (ushort)(buttons & ~_prevPadButtons);
         _prevPadButtons = buttons;
-        if (pressed == 0 || !IsVisible) return;
-        try { HandlePadPress(pressed); }
+
+        if (_capturingPadShortcut)
+        {
+            HandleShortcutPadCaptureTick(buttons);
+            return;
+        }
+
+        // Evaluate background/custom controller combo shortcuts (require 2+ buttons or hold duration).
+        bool customFired = EvaluateCustomControllerShortcuts(buttons);
+        if (customFired || pressed == 0 || !IsVisible) return;
+
+        try { HandlePadPress(pressed, buttons); }
         catch (Exception ex) { NoteError("Controller input", ex); }
     }
 
     private static bool Has(ushort pressed, ushort mask) => (pressed & mask) != 0;
 
-    private void HandlePadPress(ushort p)
+    private void HandlePadPress(ushort p, ushort heldButtons)
     {
         IntPtr fg = GetForegroundWindow();
         GetWindowThreadProcessId(fg, out uint pid);
@@ -2070,6 +2085,9 @@ public partial class MainWindow : Window
             ForwardPadToForeignWindow(p);                    // MessageBox or a secondary window
             return;
         }
+
+        // If the user is holding a multi-button combo (e.g. View + D-Pad Up), do not also trigger single-button UI navigation.
+        if (ShortcutManager.CountBits(heldButtons) >= 2) return;
 
         // 0) General calibration owns the controller while its panel is up.
         if (CalibPanel.Visibility == Visibility.Visible)
@@ -2125,11 +2143,11 @@ public partial class MainWindow : Window
     }
 
     private FrameworkElement CurrentPage =>
-        TabRgb.IsChecked == true ? RgbPage : TabTest.IsChecked == true ? TestPage : TabSettings.IsChecked == true ? SettingsPage : GeneralPage;
+        TabRgb.IsChecked == true ? RgbPage : TabShortcuts.IsChecked == true ? ShortcutsPage : TabTest.IsChecked == true ? TestPage : TabSettings.IsChecked == true ? SettingsPage : GeneralPage;
 
     private void SwitchTab(int delta)
     {
-        var tabs = new[] { TabGeneral, TabRgb, TabTest, TabSettings };
+        var tabs = new[] { TabGeneral, TabRgb, TabShortcuts, TabTest, TabSettings };
         int current = Array.FindIndex(tabs, t => t.IsChecked == true);
         int next = (current + delta + tabs.Length) % tabs.Length;
         tabs[next].IsChecked = true;
@@ -2161,7 +2179,7 @@ public partial class MainWindow : Window
     }
 
     private bool IsTabButton(object element) =>
-        ReferenceEquals(element, TabGeneral) || ReferenceEquals(element, TabRgb) || ReferenceEquals(element, TabTest) || ReferenceEquals(element, TabSettings);
+        ReferenceEquals(element, TabGeneral) || ReferenceEquals(element, TabRgb) || ReferenceEquals(element, TabShortcuts) || ReferenceEquals(element, TabTest) || ReferenceEquals(element, TabSettings);
 
     private static void ActivateFocused()
     {
@@ -2843,6 +2861,7 @@ public partial class MainWindow : Window
 
     private bool _rgbUpdating;
     private bool _batteryQuerying;
+    private DispatcherTimer? _rgbDebounceTimer;
 
     private async Task RefreshBatteryAsync()
     {
@@ -2853,11 +2872,13 @@ public partial class MainWindow : Window
             int slot = _settings.PreferredXInputSlot;
             var status = await Task.Run(() => WolverineLightingAndBattery.QueryBattery(slot));
             BatteryBadgeText.Text = status.Label;
-            BatteryBadge.ToolTip = status.Available
-                ? $"Kaynak: {status.Source} • Seviye: %{status.Percent}" + (status.IsCharging ? " (Şarj oluyor / Kablolu)" : "")
-                : "Kol bağlı değil";
+            BatteryBadge.ToolTip = !status.Available
+                ? "Kol bağlı değil"
+                : status.Percent < 0
+                    ? $"Kaynak: {status.Source} • Xbox modunda Windows GIP sürücüsü pil yanıt paketini (0x10) uygulamaya iletmez; tam %1–100 pil yüzdesi PC modunda (Razer HID 07/80) okunur."
+                    : $"Kaynak: {status.Source} • Seviye: %{status.Percent}" + (status.IsCharging ? " (Şarj oluyor / Kablolu)" : " (Kablosuz / Pil)");
             BatteryBadgeDot.Fill = !status.Available ? MutedBrush
-                : status.IsCharging || status.Percent >= 40 ? GoodBrush
+                : status.IsCharging || status.Percent >= 40 || status.Percent < 0 ? GoodBrush
                 : status.Percent >= 20 ? WarnBrush : BadBrush;
         }
         catch { }
@@ -2881,6 +2902,7 @@ public partial class MainWindow : Window
         _rgbUpdating = true;
         try
         {
+            if (!Enum.IsDefined(_settings.RgbEffect)) _settings.RgbEffect = ChromaEffect.Spectrum;
             RgbBrightnessSlider.Value = Math.Clamp(_settings.RgbBrightnessPercent, 0, 100);
             var (r1, g1, b1) = ParseHexColor(_settings.RgbColor1Hex, (0, 255, 0));
             var (r2, g2, b2) = ParseHexColor(_settings.RgbColor2Hex, (0, 162, 255));
@@ -2888,15 +2910,12 @@ public partial class MainWindow : Window
             RgbR2Slider.Value = r2; RgbG2Slider.Value = g2; RgbB2Slider.Value = b2;
             (_settings.RgbBreathingMode switch { 0 => RgbModeRandom, 2 => RgbMode2Color, _ => RgbMode1Color }).IsChecked = true;
             (_settings.RgbWaveDirection == 2 ? RgbDirRightLeft : RgbDirLeftRight).IsChecked = true;
-            (_settings.RgbSpeed switch { 1 => RgbSpeedFast, 3 => RgbSpeedSlow, _ => RgbSpeedMedium }).IsChecked = true;
             (_settings.RgbEffect switch
             {
                 ChromaEffect.Off => RgbEffOff,
                 ChromaEffect.Static => RgbEffStatic,
                 ChromaEffect.Wave => RgbEffWave,
                 ChromaEffect.Breathing => RgbEffBreathing,
-                ChromaEffect.Reactive => RgbEffReactive,
-                ChromaEffect.Starlight => RgbEffStarlight,
                 _ => RgbEffSpectrum
             }).IsChecked = true;
             UpdateRgbPreviewUi();
@@ -2914,12 +2933,11 @@ public partial class MainWindow : Window
         RgbColor1Swatch.Background = new SolidColorBrush(Color.FromRgb(r1, g1, b1));
         RgbColor2Swatch.Background = new SolidColorBrush(Color.FromRgb(r2, g2, b2));
 
-        bool hasColorMode = eff is ChromaEffect.Breathing or ChromaEffect.Starlight;
+        bool hasColorMode = eff == ChromaEffect.Breathing;
         RgbColorModePanel.Visibility = hasColorMode ? Visibility.Visible : Visibility.Collapsed;
         RgbDirectionPanel.Visibility = eff == ChromaEffect.Wave ? Visibility.Visible : Visibility.Collapsed;
-        RgbSpeedPanel.Visibility = eff is ChromaEffect.Reactive or ChromaEffect.Starlight ? Visibility.Visible : Visibility.Collapsed;
 
-        bool needsColor1 = eff is ChromaEffect.Static or ChromaEffect.Reactive ||
+        bool needsColor1 = eff == ChromaEffect.Static ||
                            (hasColorMode && _settings.RgbBreathingMode is 1 or 2);
         bool needsColor2 = hasColorMode && _settings.RgbBreathingMode == 2;
         RgbColorsPanel.Visibility = needsColor1 ? Visibility.Visible : Visibility.Collapsed;
@@ -2942,8 +2960,6 @@ public partial class MainWindow : Window
             ChromaEffect.Spectrum => "Spektrum Döngüsü",
             ChromaEffect.Wave => _settings.RgbWaveDirection == 2 ? "Dalga (Sağ → Sol)" : "Dalga (Sol → Sağ)",
             ChromaEffect.Breathing => _settings.RgbBreathingMode switch { 0 => "Nefes Alma (Rastgele)", 2 => "Nefes Alma (İki Renk)", _ => "Nefes Alma (Tek Renk)" },
-            ChromaEffect.Reactive => "Tepkisel (Reactive)",
-            ChromaEffect.Starlight => "Yıldız Işığı (Starlight)",
             _ => eff.ToString()
         };
         RgbPreviewTitle.Text = $"{effName} • Parlaklık %{br}";
@@ -2953,7 +2969,9 @@ public partial class MainWindow : Window
 
     private ChromaEffect _lastNonOffRgbEffect = ChromaEffect.Spectrum;
 
-    private void RgbQuickOff_Click(object sender, RoutedEventArgs e)
+    private void RgbQuickOff_Click(object sender, RoutedEventArgs e) => ToggleRgbPower();
+
+    private void ToggleRgbPower()
     {
         if (_settings.RgbEffect != ChromaEffect.Off)
         {
@@ -2968,11 +2986,24 @@ public partial class MainWindow : Window
                 ChromaEffect.Static => RgbEffStatic,
                 ChromaEffect.Wave => RgbEffWave,
                 ChromaEffect.Breathing => RgbEffBreathing,
-                ChromaEffect.Reactive => RgbEffReactive,
-                ChromaEffect.Starlight => RgbEffStarlight,
                 _ => RgbEffSpectrum
             }).IsChecked = true;
         }
+    }
+
+    private void CycleRgbEffect()
+    {
+        ChromaEffect[] order = [ChromaEffect.Spectrum, ChromaEffect.Wave, ChromaEffect.Breathing, ChromaEffect.Static, ChromaEffect.Off];
+        int idx = Array.IndexOf(order, _settings.RgbEffect);
+        var next = order[(idx + 1) % order.Length];
+        (next switch
+        {
+            ChromaEffect.Off => RgbEffOff,
+            ChromaEffect.Static => RgbEffStatic,
+            ChromaEffect.Wave => RgbEffWave,
+            ChromaEffect.Breathing => RgbEffBreathing,
+            _ => RgbEffSpectrum
+        }).IsChecked = true;
     }
 
     private void RgbEffect_Checked(object sender, RoutedEventArgs e)
@@ -2980,14 +3011,14 @@ public partial class MainWindow : Window
         if (!_initialized || _rgbUpdating || sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out ChromaEffect eff)) return;
         if (eff != ChromaEffect.Off) _lastNonOffRgbEffect = eff;
         _settings.RgbEffect = eff;
-        SaveAndApplyRgb();
+        ScheduleSaveAndApplyRgb(immediate: true);
     }
 
     private void RgbBrightness_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_initialized || _rgbUpdating) return;
         _settings.RgbBrightnessPercent = (int)e.NewValue;
-        SaveAndApplyRgb();
+        ScheduleSaveAndApplyRgb(immediate: false);
     }
 
     private void RgbOption_Changed(object sender, RoutedEventArgs e)
@@ -2995,8 +3026,7 @@ public partial class MainWindow : Window
         if (!_initialized || _rgbUpdating) return;
         _settings.RgbBreathingMode = RgbModeRandom.IsChecked == true ? 0 : RgbMode2Color.IsChecked == true ? 2 : 1;
         _settings.RgbWaveDirection = RgbDirRightLeft.IsChecked == true ? 2 : 1;
-        _settings.RgbSpeed = RgbSpeedFast.IsChecked == true ? 1 : RgbSpeedSlow.IsChecked == true ? 3 : 2;
-        SaveAndApplyRgb();
+        ScheduleSaveAndApplyRgb(immediate: true);
     }
 
     private void RgbSwatch1_Click(object sender, RoutedEventArgs e)
@@ -3012,24 +3042,49 @@ public partial class MainWindow : Window
             try { RgbEffStatic.IsChecked = true; _settings.RgbEffect = ChromaEffect.Static; }
             finally { _rgbUpdating = false; }
         }
-        SaveAndApplyRgb();
+        ScheduleSaveAndApplyRgb(immediate: true);
     }
 
     private void RgbSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_initialized || _rgbUpdating) return;
-        SaveAndApplyRgb();
+        ScheduleSaveAndApplyRgb(immediate: false);
     }
 
-    private void RgbApply_Click(object sender, RoutedEventArgs e) => SaveAndApplyRgb();
+    private void RgbApply_Click(object sender, RoutedEventArgs e) => ScheduleSaveAndApplyRgb(immediate: true);
 
-    private void SaveAndApplyRgb()
+    private void ScheduleSaveAndApplyRgb(bool immediate)
     {
         var c1 = ((byte)RgbR1Slider.Value, (byte)RgbG1Slider.Value, (byte)RgbB1Slider.Value);
         var c2 = ((byte)RgbR2Slider.Value, (byte)RgbG2Slider.Value, (byte)RgbB2Slider.Value);
         _settings.RgbColor1Hex = $"#{c1.Item1:X2}{c1.Item2:X2}{c1.Item3:X2}";
         _settings.RgbColor2Hex = $"#{c2.Item1:X2}{c2.Item2:X2}{c2.Item3:X2}";
         UpdateRgbPreviewUi();
+
+        if (immediate)
+        {
+            _rgbDebounceTimer?.Stop();
+            SaveAndApplyRgbNow();
+            return;
+        }
+
+        if (_rgbDebounceTimer == null)
+        {
+            _rgbDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(140) };
+            _rgbDebounceTimer.Tick += (_, _) =>
+            {
+                _rgbDebounceTimer.Stop();
+                SaveAndApplyRgbNow();
+            };
+        }
+        _rgbDebounceTimer.Stop();
+        _rgbDebounceTimer.Start();
+    }
+
+    private void SaveAndApplyRgbNow()
+    {
+        var c1 = ((byte)RgbR1Slider.Value, (byte)RgbG1Slider.Value, (byte)RgbB1Slider.Value);
+        var c2 = ((byte)RgbR2Slider.Value, (byte)RgbG2Slider.Value, (byte)RgbB2Slider.Value);
         try { _store.Save(_settings); } catch (Exception ex) { NoteError("RGB ayar kaydı", ex); }
 
         byte profileSlot = RgbSaveToProfileCheck?.IsChecked == true ? (byte)1 : (byte)0;
@@ -3049,5 +3104,718 @@ public partial class MainWindow : Window
                 }
             });
         });
+    }
+
+    // ───────────────────────── Kısayollar (Shortcuts) ─────────────────────────
+
+    private readonly ControllerShortcutTracker _shortcutTracker = new();
+    private bool _capturingPadShortcut;
+    private bool _capturingKeyShortcut;
+    private ushort _capturedPadPeakMask;
+    private ushort _draftPadButtons = (ushort)(XInputHaptics.ButtonView | XInputHaptics.ButtonDpadUp);
+    private int _draftHoldMs;
+    private int _draftKeyModifiers = ShortcutManager.ModControl | ShortcutManager.ModAlt;
+    private int _draftVirtualKey = 0x4D; // 'M'
+    private HwndSource? _hwndSource;
+    private readonly List<int> _registeredHotkeyIds = new();
+    private const int WmHotkey = 0x0312;
+    private const int HotkeyBaseId = 0x5257;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private sealed record ShortcutActionOption(ShortcutAction Action, string Label);
+    private sealed record RemapTargetOption(RemapTarget Target, string Label);
+
+    private MButtonId _selectedMButton = MButtonId.M3;
+    private bool _profileUiUpdating;
+    private ushort _lastVisualPressedButtons = ushort.MaxValue;
+
+    private void InitializeShortcutsUi()
+    {
+        if (_settings.Shortcuts == null || _settings.Shortcuts.Count == 0)
+        {
+            _settings.Shortcuts = ShortcutManager.CreateDefaultShortcuts();
+            try { _store.Save(_settings); } catch { }
+        }
+        ShortcutsBackgroundCheck.IsChecked = _settings.BackgroundShortcutsEnabled;
+        BuiltInShortcutsList.ItemsSource = ShortcutManager.BuiltInShortcuts;
+        ShortcutActionCombo.ItemsSource = ShortcutManager.AllActions
+            .Select(a => new ShortcutActionOption(a, ShortcutManager.ActionLabel(a)))
+            .ToList();
+        ShortcutActionCombo.SelectedIndex = 0;
+        UpdateShortcutDraftDisplay();
+        RefreshUserShortcutsList();
+        InitializeProfilesAndVisualUi();
+    }
+
+    // ───────────────────────── Profiller, M1–M6 Atama & Kontrolcü Görseli ─────────────────────────
+
+    private void InitializeProfilesAndVisualUi()
+    {
+        if (_settings.ControllerProfiles == null || _settings.ControllerProfiles.Count < 4)
+        {
+            _settings.ControllerProfiles = WolverineRemapAndProfiles.CreateDefaultProfiles();
+            try { _store.Save(_settings); } catch { }
+        }
+        _settings.ActiveProfileSlot = Math.Clamp(_settings.ActiveProfileSlot, 1, 4);
+
+        _profileUiUpdating = true;
+        try
+        {
+            RemapTargetCombo.ItemsSource = WolverineRemapAndProfiles.AllTargets
+                .Select(t => new RemapTargetOption(t, WolverineRemapAndProfiles.TargetFullLabel(t)))
+                .ToList();
+
+            ( _settings.ActiveProfileSlot switch
+            {
+                2 => ProfileBtn2,
+                3 => ProfileBtn3,
+                4 => ProfileBtn4,
+                _ => ProfileBtn1
+            }).IsChecked = true;
+        }
+        finally { _profileUiUpdating = false; }
+
+        LoadActiveProfileIntoUi();
+    }
+
+    private ControllerProfile ActiveProfile
+    {
+        get
+        {
+            _settings.ControllerProfiles ??= WolverineRemapAndProfiles.CreateDefaultProfiles();
+            int idx = Math.Clamp(_settings.ActiveProfileSlot, 1, 4) - 1;
+            while (_settings.ControllerProfiles.Count <= idx)
+                _settings.ControllerProfiles.Add(new ControllerProfile { Slot = _settings.ControllerProfiles.Count + 1, Name = $"Profil {_settings.ControllerProfiles.Count + 1}" });
+            return _settings.ControllerProfiles[idx];
+        }
+    }
+
+    private void LoadActiveProfileIntoUi()
+    {
+        var prof = ActiveProfile;
+        _profileUiUpdating = true;
+        try
+        {
+            if (ProfileNameBox != null) ProfileNameBox.Text = prof.Name;
+            SelectMButtonInUi(_selectedMButton);
+        }
+        finally { _profileUiUpdating = false; }
+        UpdateControllerVisual();
+    }
+
+    private void SelectMButtonInUi(MButtonId id)
+    {
+        _selectedMButton = id;
+        bool prev = _profileUiUpdating;
+        _profileUiUpdating = true;
+        try
+        {
+            (id switch
+            {
+                MButtonId.M1 => SelM1,
+                MButtonId.M2 => SelM2,
+                MButtonId.M3 => SelM3,
+                MButtonId.M4 => SelM4,
+                MButtonId.M5 => SelM5,
+                _ => SelM6
+            }).IsChecked = true;
+
+            var target = ActiveProfile.Get(id);
+            if (RemapTargetCombo != null) RemapTargetCombo.SelectedValue = target;
+            if (SelectedMButtonTitle != null)
+                SelectedMButtonTitle.Text = $"Seçili: {WolverineRemapAndProfiles.MButtonLabel(id)} → {WolverineRemapAndProfiles.TargetShortLabel(target)}";
+        }
+        finally { _profileUiUpdating = prev; }
+        UpdateControllerVisual();
+    }
+
+    private void ProfileSlot_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _profileUiUpdating || sender is not RadioButton { Tag: string tag } || !int.TryParse(tag, out int slot)) return;
+        _settings.ActiveProfileSlot = Math.Clamp(slot, 1, 4);
+        try { _store.Save(_settings); } catch { }
+        LoadActiveProfileIntoUi();
+
+        int s = _settings.ActiveProfileSlot;
+        string name = ActiveProfile.Name;
+        Task.Run(() =>
+        {
+            var (ok, msg) = WolverineRemapAndProfiles.ApplyProfileSwitch(s);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (RemapStatusText != null)
+                {
+                    RemapStatusText.Text = ok ? $"✓ {name} seçildi ({msg})" : $"⚠ {msg}";
+                    RemapStatusText.Foreground = ok ? GoodBrush : WarnBrush;
+                }
+            });
+        });
+    }
+
+    private void ProfileName_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _profileUiUpdating || ProfileNameBox == null) return;
+        string text = ProfileNameBox.Text.Trim();
+        if (string.IsNullOrEmpty(text)) text = $"Profil {_settings.ActiveProfileSlot}";
+        ActiveProfile.Name = text;
+        ProfileNameBox.Text = text;
+        try { _store.Save(_settings); } catch { }
+    }
+
+    private void ProfileApplyAll_Click(object sender, RoutedEventArgs e)
+    {
+        ProfileName_LostFocus(sender, e);
+        var prof = ActiveProfile;
+        if (RemapStatusText != null)
+        {
+            RemapStatusText.Text = $"{prof.Name} kola yazılıyor…";
+            RemapStatusText.Foreground = MutedBrush;
+        }
+        Task.Run(() =>
+        {
+            var (ok, msg) = WolverineRemapAndProfiles.ApplyFullProfile(prof);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (RemapStatusText != null)
+                {
+                    RemapStatusText.Text = (ok ? "✓ " : "⚠ ") + msg;
+                    RemapStatusText.Foreground = ok ? GoodBrush : WarnBrush;
+                }
+            });
+        });
+    }
+
+    private void ProfileReset_Click(object sender, RoutedEventArgs e)
+    {
+        int slot = Math.Clamp(_settings.ActiveProfileSlot, 1, 4);
+        var defaults = WolverineRemapAndProfiles.CreateDefaultProfiles();
+        _settings.ControllerProfiles![slot - 1] = defaults[slot - 1];
+        try { _store.Save(_settings); } catch { }
+        LoadActiveProfileIntoUi();
+        ProfileApplyAll_Click(sender, e);
+    }
+
+    private void MButtonSelect_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || _profileUiUpdating || sender is not RadioButton { Tag: string tag } || !Enum.TryParse(tag, out MButtonId id)) return;
+        SelectMButtonInUi(id);
+    }
+
+    private void VisualMButton_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse(tag, out MButtonId id)) return;
+        SelectMButtonInUi(id);
+    }
+
+    private void VisualFrontButton_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse(tag, out RemapTarget target)) return;
+        AssignTargetToSelectedMButton(target, sendToHardware: true);
+    }
+
+    private void RemapTargetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized || _profileUiUpdating || RemapTargetCombo?.SelectedValue is not RemapTarget target) return;
+        AssignTargetToSelectedMButton(target, sendToHardware: true);
+    }
+
+    private void RemapAssignBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (RemapTargetCombo?.SelectedValue is not RemapTarget target) return;
+        AssignTargetToSelectedMButton(target, sendToHardware: true);
+    }
+
+    private void AssignTargetToSelectedMButton(RemapTarget target, bool sendToHardware)
+    {
+        var prof = ActiveProfile;
+        prof.Set(_selectedMButton, target);
+        try { _store.Save(_settings); } catch { }
+
+        _profileUiUpdating = true;
+        try
+        {
+            if (RemapTargetCombo != null) RemapTargetCombo.SelectedValue = target;
+            if (SelectedMButtonTitle != null)
+                SelectedMButtonTitle.Text = $"Seçili: {WolverineRemapAndProfiles.MButtonLabel(_selectedMButton)} → {WolverineRemapAndProfiles.TargetShortLabel(target)}";
+        }
+        finally { _profileUiUpdating = false; }
+
+        UpdateControllerVisual();
+        if (!sendToHardware) return;
+
+        int slot = prof.Slot;
+        var mBtn = _selectedMButton;
+        Task.Run(() =>
+        {
+            var (ok, msg) = WolverineRemapAndProfiles.ApplyButtonRemap(slot, mBtn, target);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (RemapStatusText != null)
+                {
+                    RemapStatusText.Text = (ok ? "✓ " : "⚠ ") + msg;
+                    RemapStatusText.Foreground = ok ? GoodBrush : WarnBrush;
+                }
+            });
+        });
+    }
+
+    private void ShortcutSubTab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (UserShortcutsPanel == null || HardwareShortcutsPanel == null) return;
+        bool showUser = SubTabUserShortcuts?.IsChecked == true;
+        UserShortcutsPanel.Visibility = showUser ? Visibility.Visible : Visibility.Collapsed;
+        HardwareShortcutsPanel.Visibility = showUser ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static readonly SolidColorBrush VisNormalBg = new(Color.FromRgb(0x16, 0x26, 0x42));
+    private static readonly SolidColorBrush VisNormalBorder = new(Color.FromRgb(0x3B, 0x55, 0x8A));
+    private static readonly SolidColorBrush VisSelectedBg = new(Color.FromRgb(0x12, 0x3D, 0x28));
+    private static readonly SolidColorBrush VisSelectedBorder = new(Color.FromRgb(0x22, 0xC5, 0x5E));
+    private static readonly SolidColorBrush VisLiveBg = new(Color.FromRgb(0x0E, 0x4A, 0x6B));
+    private static readonly SolidColorBrush VisLiveBorder = new(Color.FromRgb(0x38, 0xBD, 0xF8));
+
+    private void UpdateControllerVisual(ushort liveButtons = 0)
+    {
+        if (VisM1 == null) return;
+        var prof = ActiveProfile;
+        var selectedTarget = prof.Get(_selectedMButton);
+
+        void StyleM(Border b, TextBlock val, MButtonId id)
+        {
+            bool sel = id == _selectedMButton;
+            var t = prof.Get(id);
+            val.Text = WolverineRemapAndProfiles.TargetShortLabel(t);
+            val.Foreground = sel ? GoodBrush : System.Windows.Media.Brushes.White;
+            b.Background = sel ? VisSelectedBg : VisNormalBg;
+            b.BorderBrush = sel ? VisSelectedBorder : VisNormalBorder;
+            b.BorderThickness = new Thickness(sel ? 2.2 : 1.3);
+        }
+
+        StyleM(VisM1, VisM1Val, MButtonId.M1);
+        StyleM(VisM2, VisM2Val, MButtonId.M2);
+        StyleM(VisM3, VisM3Val, MButtonId.M3);
+        StyleM(VisM4, VisM4Val, MButtonId.M4);
+        StyleM(VisM5, VisM5Val, MButtonId.M5);
+        StyleM(VisM6, VisM6Val, MButtonId.M6);
+
+        void StyleFront(Border? b, RemapTarget target, ushort xinputMask)
+        {
+            if (b == null) return;
+            bool isLive = xinputMask != 0 && (liveButtons & xinputMask) != 0;
+            bool isMappedTarget = selectedTarget == target;
+            if (isLive)
+            {
+                b.Background = VisLiveBg;
+                b.BorderBrush = VisLiveBorder;
+                b.BorderThickness = new Thickness(2.2);
+            }
+            else if (isMappedTarget)
+            {
+                b.Background = VisSelectedBg;
+                b.BorderBrush = VisSelectedBorder;
+                b.BorderThickness = new Thickness(2.2);
+            }
+            else
+            {
+                b.Background = VisNormalBg;
+                b.BorderBrush = VisNormalBorder;
+                b.BorderThickness = new Thickness(1.2);
+            }
+        }
+
+        StyleFront(VisA, RemapTarget.A, XInputHaptics.ButtonA);
+        StyleFront(VisB, RemapTarget.B, XInputHaptics.ButtonB);
+        StyleFront(VisX, RemapTarget.X, XInputHaptics.ButtonX);
+        StyleFront(VisY, RemapTarget.Y, XInputHaptics.ButtonY);
+        StyleFront(VisLB, RemapTarget.LB, XInputHaptics.ButtonLeftShoulder);
+        StyleFront(VisRB, RemapTarget.RB, XInputHaptics.ButtonRightShoulder);
+        StyleFront(VisLT, RemapTarget.LT, 0);
+        StyleFront(VisRT, RemapTarget.RT, 0);
+        StyleFront(VisL3, RemapTarget.L3, ShortcutManager.ButtonLeftThumb);
+        StyleFront(VisR3, RemapTarget.R3, ShortcutManager.ButtonRightThumb);
+        StyleFront(VisDpadUp, RemapTarget.DpadUp, XInputHaptics.ButtonDpadUp);
+        StyleFront(VisDpadDown, RemapTarget.DpadDown, XInputHaptics.ButtonDpadDown);
+        StyleFront(VisDpadLeft, RemapTarget.DpadLeft, XInputHaptics.ButtonDpadLeft);
+        StyleFront(VisDpadRight, RemapTarget.DpadRight, XInputHaptics.ButtonDpadRight);
+        StyleFront(VisView, RemapTarget.View, XInputHaptics.ButtonView);
+        StyleFront(VisMenu, RemapTarget.Menu, XInputHaptics.ButtonMenu);
+    }
+
+    private void UpdateControllerVisualLiveButtons(ushort pressedButtons)
+    {
+        if (ShortcutsPage == null || ShortcutsPage.Visibility != Visibility.Visible) return;
+        if (pressedButtons == _lastVisualPressedButtons) return;
+        _lastVisualPressedButtons = pressedButtons;
+        UpdateControllerVisual(pressedButtons);
+        if (ControllerLiveActionText != null)
+        {
+            ControllerLiveActionText.Text = pressedButtons == 0
+                ? "Canlı: Hazır"
+                : "Canlı basılı: " + ShortcutManager.FormatControllerCombo(pressedButtons, 0);
+        }
+    }
+
+    private void RefreshUserShortcutsList()
+    {
+        if (UserShortcutsList == null) return;
+        UserShortcutsList.ItemsSource = null;
+        UserShortcutsList.ItemsSource = _settings.Shortcuts;
+    }
+
+    private void UpdateShortcutDraftDisplay()
+    {
+        if (ShortcutCapturedText == null) return;
+        bool pad = ShortcutKindPad.IsChecked == true;
+        if (ShortcutHoldRow != null)
+            ShortcutHoldRow.Visibility = pad ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutCapturedText.Text = pad
+            ? ShortcutManager.FormatControllerCombo(_draftPadButtons, _draftHoldMs)
+            : ShortcutManager.FormatKeyboardHotkey(_draftKeyModifiers, _draftVirtualKey);
+    }
+
+    private void ShortcutsBackground_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _settings.BackgroundShortcutsEnabled = ShortcutsBackgroundCheck.IsChecked == true;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kısayol ayarı", ex); }
+        RegisterWindowHotkeys();
+    }
+
+    private void ShortcutsRestoreDefaults_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.Shortcuts = ShortcutManager.CreateDefaultShortcuts();
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kısayol sıfırlama", ex); }
+        RefreshUserShortcutsList();
+        RegisterWindowHotkeys();
+        ShortcutStatusText.Text = "✓ Varsayılan özel kısayollar yüklendi.";
+        ShortcutStatusText.Foreground = GoodBrush;
+    }
+
+    private void ShortcutKind_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        StopShortcutCapture();
+        UpdateShortcutDraftDisplay();
+    }
+
+    private void ShortcutHold_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not RadioButton { Tag: string tag } || !int.TryParse(tag, out int ms)) return;
+        _draftHoldMs = ms;
+        UpdateShortcutDraftDisplay();
+    }
+
+    private void ShortcutCapture_Click(object sender, RoutedEventArgs e)
+    {
+        if (_capturingPadShortcut || _capturingKeyShortcut)
+        {
+            StopShortcutCapture();
+            return;
+        }
+
+        if (ShortcutKindPad.IsChecked == true)
+        {
+            _capturingPadShortcut = true;
+            _capturedPadPeakMask = 0;
+            ShortcutCaptureBtn.Content = "■ İptal";
+            ShortcutCapturedText.Text = "Kumandadan tuşlara bas (örn. ⧉ View + Yön)…";
+            ShortcutStatusText.Text = "Kumanda dinleniyor: istediğin tuşlara aynı anda basıp bırak.";
+            ShortcutStatusText.Foreground = WarnBrush;
+        }
+        else
+        {
+            _capturingKeyShortcut = true;
+            ShortcutCaptureBtn.Content = "■ İptal";
+            ShortcutCapturedText.Text = "Klavyeden kombinasyona bas (örn. Ctrl + Alt + M)…";
+            ShortcutStatusText.Text = "Klavye dinleniyor: tuş kombinasyonuna bas.";
+            ShortcutStatusText.Foreground = WarnBrush;
+            PreviewKeyDown -= Window_ShortcutCapturePreviewKeyDown;
+            PreviewKeyDown += Window_ShortcutCapturePreviewKeyDown;
+            Focus();
+        }
+    }
+
+    private void StopShortcutCapture()
+    {
+        _capturingPadShortcut = false;
+        _capturingKeyShortcut = false;
+        PreviewKeyDown -= Window_ShortcutCapturePreviewKeyDown;
+        if (ShortcutCaptureBtn != null) ShortcutCaptureBtn.Content = "🎯 Tuşları Dinle";
+        UpdateShortcutDraftDisplay();
+    }
+
+    private void HandleShortcutPadCaptureTick(ushort currentButtons)
+    {
+        if (currentButtons != 0)
+        {
+            _capturedPadPeakMask |= currentButtons;
+            ShortcutCapturedText.Text = "Basılıyor: " + ShortcutManager.FormatControllerCombo(_capturedPadPeakMask, _draftHoldMs);
+            return;
+        }
+
+        // Buttons released after at least one button was pressed: finalize capture.
+        if (_capturedPadPeakMask != 0)
+        {
+            _draftPadButtons = _capturedPadPeakMask;
+            if (ShortcutManager.CountBits(_draftPadButtons) == 1 && _draftHoldMs < 500)
+            {
+                ShortcutHold800.IsChecked = true;
+                _draftHoldMs = 800;
+            }
+            StopShortcutCapture();
+            ShortcutStatusText.Text = "✓ Kumanda kombinasyonu yakalandı: " + ShortcutManager.FormatControllerCombo(_draftPadButtons, _draftHoldMs);
+            ShortcutStatusText.Foreground = GoodBrush;
+        }
+    }
+
+    private void Window_ShortcutCapturePreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (!_capturingKeyShortcut) return;
+        e.Handled = true;
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Escape)
+        {
+            StopShortcutCapture();
+            ShortcutStatusText.Text = "Tuş yakalama iptal edildi.";
+            ShortcutStatusText.Foreground = MutedBrush;
+            return;
+        }
+
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+            return;
+
+        int mods = 0;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) mods |= ShortcutManager.ModControl;
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0) mods |= ShortcutManager.ModAlt;
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) mods |= ShortcutManager.ModShift;
+        if ((Keyboard.Modifiers & ModifierKeys.Windows) != 0) mods |= ShortcutManager.ModWin;
+
+        int vk = KeyInterop.VirtualKeyFromKey(key);
+        if (vk <= 0) return;
+
+        _draftKeyModifiers = mods;
+        _draftVirtualKey = vk;
+        StopShortcutCapture();
+        ShortcutStatusText.Text = "✓ Klavye kısayolu yakalandı: " + ShortcutManager.FormatKeyboardHotkey(_draftKeyModifiers, _draftVirtualKey);
+        ShortcutStatusText.Foreground = GoodBrush;
+    }
+
+    private void ShortcutAdd_Click(object sender, RoutedEventArgs e)
+    {
+        StopShortcutCapture();
+        var action = ShortcutActionCombo.SelectedItem is ShortcutActionOption opt ? opt.Action : ShortcutAction.CycleOutput;
+        bool pad = ShortcutKindPad.IsChecked == true;
+        var sc = new UserShortcut
+        {
+            Id = Guid.NewGuid().ToString("N")[..8],
+            Name = ShortcutManager.ActionLabel(action),
+            Kind = pad ? ShortcutTriggerKind.ControllerCombo : ShortcutTriggerKind.KeyboardHotkey,
+            ControllerButtons = pad ? _draftPadButtons : (ushort)0,
+            HoldMs = pad ? _draftHoldMs : 0,
+            KeyModifiers = pad ? 0 : _draftKeyModifiers,
+            VirtualKey = pad ? 0 : _draftVirtualKey,
+            Action = action,
+            Enabled = true
+        };
+
+        var (ok, err) = ShortcutManager.Validate(sc);
+        if (!ok)
+        {
+            ShortcutStatusText.Text = "⚠ " + err;
+            ShortcutStatusText.Foreground = WarnBrush;
+            return;
+        }
+
+        _settings.Shortcuts ??= new List<UserShortcut>();
+        // Replace existing shortcut with identical trigger so duplicates don't pile up.
+        _settings.Shortcuts.RemoveAll(existing =>
+            existing.Kind == sc.Kind &&
+            (sc.Kind == ShortcutTriggerKind.ControllerCombo
+                ? existing.ControllerButtons == sc.ControllerButtons
+                : existing.KeyModifiers == sc.KeyModifiers && existing.VirtualKey == sc.VirtualKey));
+
+        _settings.Shortcuts.Add(sc);
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kısayol kaydı", ex); }
+        RefreshUserShortcutsList();
+        RegisterWindowHotkeys();
+        ShortcutStatusText.Text = $"✓ Kısayol eklendi: {sc.TriggerDisplay} → {sc.ActionDisplay}";
+        ShortcutStatusText.Foreground = GoodBrush;
+    }
+
+    private void UserShortcutEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized || sender is not System.Windows.Controls.CheckBox { Tag: string id } cb || _settings.Shortcuts == null) return;
+        var sc = _settings.Shortcuts.FirstOrDefault(s => s.Id == id);
+        if (sc == null) return;
+        sc.Enabled = cb.IsChecked == true;
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kısayol güncelleme", ex); }
+        RegisterWindowHotkeys();
+    }
+
+    private void UserShortcutTest_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || _settings.Shortcuts == null) return;
+        var sc = _settings.Shortcuts.FirstOrDefault(s => s.Id == id);
+        if (sc == null) return;
+        ExecuteShortcutAction(sc.Action, sc.TriggerDisplay);
+    }
+
+    private void UserShortcutDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || _settings.Shortcuts == null) return;
+        _settings.Shortcuts.RemoveAll(s => s.Id == id);
+        try { _store.Save(_settings); } catch (Exception ex) { NoteError("Kısayol silme", ex); }
+        RefreshUserShortcutsList();
+        RegisterWindowHotkeys();
+        ShortcutStatusText.Text = "Kısayol silindi.";
+        ShortcutStatusText.Foreground = MutedBrush;
+    }
+
+    private bool EvaluateCustomControllerShortcuts(ushort currentButtons)
+    {
+        UpdateControllerVisualLiveButtons(currentButtons);
+        if (_settings.Shortcuts == null || _settings.Shortcuts.Count == 0) return false;
+        if (!_settings.BackgroundShortcutsEnabled)
+        {
+            IntPtr fg = GetForegroundWindow();
+            GetWindowThreadProcessId(fg, out uint pid);
+            if (pid != (uint)Environment.ProcessId) return false;
+        }
+
+        var fired = _shortcutTracker.Evaluate(_settings.Shortcuts, currentButtons, Environment.TickCount64);
+        if (fired.Count == 0) return false;
+        foreach (var sc in fired)
+        {
+            ExecuteShortcutAction(sc.Action, sc.TriggerDisplay);
+        }
+        return true;
+    }
+
+    private void RegisterWindowHotkeys()
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        if (_hwndSource == null)
+        {
+            _hwndSource = HwndSource.FromHwnd(hwnd);
+            _hwndSource?.AddHook(WndProcHotkey);
+        }
+
+        foreach (int id in _registeredHotkeyIds)
+            UnregisterHotKey(hwnd, id);
+        _registeredHotkeyIds.Clear();
+
+        if (_settings.Shortcuts == null) return;
+        int index = 0;
+        foreach (var sc in _settings.Shortcuts)
+        {
+            if (!sc.Enabled || sc.Kind != ShortcutTriggerKind.KeyboardHotkey || sc.VirtualKey <= 0)
+            {
+                index++;
+                continue;
+            }
+            int hotkeyId = HotkeyBaseId + index;
+            if (RegisterHotKey(hwnd, hotkeyId, (uint)sc.KeyModifiers, (uint)sc.VirtualKey))
+                _registeredHotkeyIds.Add(hotkeyId);
+            index++;
+        }
+    }
+
+    private IntPtr WndProcHotkey(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmHotkey && !_capturingKeyShortcut && _settings.Shortcuts != null)
+        {
+            if (!_settings.BackgroundShortcutsEnabled)
+            {
+                IntPtr fg = GetForegroundWindow();
+                GetWindowThreadProcessId(fg, out uint pid);
+                if (pid != (uint)Environment.ProcessId) return IntPtr.Zero;
+            }
+            int idx = wParam.ToInt32() - HotkeyBaseId;
+            if (idx >= 0 && idx < _settings.Shortcuts.Count)
+            {
+                var sc = _settings.Shortcuts[idx];
+                if (sc.Enabled && sc.Kind == ShortcutTriggerKind.KeyboardHotkey)
+                {
+                    handled = true;
+                    ExecuteShortcutAction(sc.Action, sc.TriggerDisplay);
+                }
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    private void ExecuteShortcutAction(ShortcutAction action, string triggerLabel)
+    {
+        switch (action)
+        {
+            case ShortcutAction.CycleOutput:
+                CycleMode();
+                break;
+            case ShortcutAction.OutputPhysical:
+                SetOutput(GameOutput.Physical, OutputMatrix.OnSelect(GameOutput.Physical, _features));
+                break;
+            case ShortcutAction.OutputXbox360:
+                SetOutput(GameOutput.Xbox360, OutputMatrix.OnSelect(GameOutput.Xbox360, _features));
+                break;
+            case ShortcutAction.OutputXboxSeries:
+                SetOutput(GameOutput.XboxSeries, OutputMatrix.OnSelect(GameOutput.XboxSeries, _features));
+                break;
+            case ShortcutAction.OutputDualShock4:
+                SetOutput(GameOutput.DualShock4, OutputMatrix.OnSelect(GameOutput.DualShock4, _features));
+                break;
+            case ShortcutAction.OutputDualSense:
+                SetOutput(GameOutput.DualSense, OutputMatrix.OnSelect(GameOutput.DualSense, _features));
+                break;
+            case ShortcutAction.TogglePalmAudio:
+                ClickFeature(OutputFeature.PalmAudio, null);
+                break;
+            case ShortcutAction.ToggleMelody:
+                AudioMelody.IsChecked = AudioMelody.IsChecked != true;
+                break;
+            case ShortcutAction.CycleOutputLevel:
+                int nextLevel = _settings.OutputLevelPercent switch { < 50 => 50, < 75 => 75, < 100 => 100, _ => 25 };
+                SelectLevelPreset(nextLevel);
+                break;
+            case ShortcutAction.VibrationLevelUp:
+                int upLevel = Math.Min(100, _settings.OutputLevelPercent + 25);
+                SelectLevelPreset(upLevel);
+                break;
+            case ShortcutAction.VibrationLevelDown:
+                int downLevel = Math.Max(25, _settings.OutputLevelPercent - 25);
+                SelectLevelPreset(downLevel);
+                break;
+            case ShortcutAction.RgbBrightnessUp:
+                RgbBrightnessSlider.Value = Math.Min(100, _settings.RgbBrightnessPercent + 25);
+                break;
+            case ShortcutAction.RgbBrightnessDown:
+                RgbBrightnessSlider.Value = Math.Max(0, _settings.RgbBrightnessPercent - 25);
+                break;
+            case ShortcutAction.ToggleRgbPower:
+                ToggleRgbPower();
+                break;
+            case ShortcutAction.CycleRgbEffect:
+                CycleRgbEffect();
+                break;
+            case ShortcutAction.SwitchToXboxMode:
+                if (PadModeXboxBtn.IsEnabled) PadModeXbox_Click(this, new RoutedEventArgs());
+                break;
+            case ShortcutAction.ToggleWindowVisibility:
+                if (IsVisible && WindowState != WindowState.Minimized) Hide();
+                else RestoreWindow();
+                break;
+        }
+        string msg = $"✓ Kısayol çalıştı ({triggerLabel}): {ShortcutManager.ActionLabel(action)}";
+        if (ShortcutStatusText != null)
+        {
+            ShortcutStatusText.Text = msg;
+            ShortcutStatusText.Foreground = GoodBrush;
+        }
+        DiagnosticsService.Info($"Shortcut executed ({triggerLabel}) -> {action}");
     }
 }

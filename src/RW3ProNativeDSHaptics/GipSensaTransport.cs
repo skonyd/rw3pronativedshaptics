@@ -83,9 +83,57 @@ public sealed class GipSensaTransport
     public static readonly Guid RazerInterface = new("AAE22FB7-E167-4908-9A40-FF9C687FA986");
     public static GipSensaTransport Shared { get; } = new();
 
+    static GipSensaTransport()
+    {
+        WolverineLightingAndBattery.GipPacketSender = pkt =>
+        {
+            Shared.TryOpen();
+            bool ok = Shared.SendRawPacket(pkt);
+            return (ok, Shared.LastError);
+        };
+        WolverineLightingAndBattery.WgiBatteryReader = TryReadWgiBattery;
+    }
+
+    private static readonly GameInputRumble BatteryProbe = new(allowOutput: false);
+
+    private static BatteryStatus? TryReadWgiBattery()
+    {
+        try
+        {
+            if (BatteryProbe.TryReadBattery() is { Available: true } giStatus)
+                return giStatus;
+        }
+        catch { }
+
+        try
+        {
+            foreach (var raw in RawGameController.RawGameControllers)
+            {
+                if (raw.HardwareVendorId != 0x1532) continue;
+                var rep = raw.TryGetBatteryReport();
+                if (rep == null) continue;
+                int? full = rep.FullChargeCapacityInMilliwattHours;
+                int? rem = rep.RemainingCapacityInMilliwattHours;
+                var st = rep.Status;
+                bool charging = st == Windows.System.Power.BatteryStatus.Charging;
+                if (full is > 0 && rem is >= 0)
+                {
+                    int pct = Math.Clamp((int)Math.Round(rem.Value * 100.0 / full.Value), 0, 100);
+                    string label = charging ? $"⚡ %{pct} (Şarj)" : $"🔋 %{pct}";
+                    return new BatteryStatus(true, pct, charging, "Windows.Gaming.Input", label);
+                }
+                if (charging)
+                    return new BatteryStatus(true, 100, true, "Windows.Gaming.Input", "⚡ Şarj oluyor");
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private GipGameControllerProvider? _provider;
     private int _registered;
     private byte _tx;
+    private readonly object _sendGate = new();
     private readonly byte[] _packet = new byte[SensaXboxFrameEncoder.GipPacketLength];
     public long FramesSent { get; private set; }
     public string? LastError { get; private set; }
@@ -122,9 +170,29 @@ public sealed class GipSensaTransport
         if (p == null) return false;
         try
         {
-            SensaXboxFrameEncoder.BuildGipPacket(frame, _tx++, _packet);
-            p.SendMessage(GipMessageClass.Command, 0x0F, _packet);
-            FramesSent++;
+            lock (_sendGate)
+            {
+                SensaXboxFrameEncoder.BuildGipPacket(frame, _tx++, _packet);
+                p.SendMessage(GipMessageClass.Command, 0x0F, _packet);
+                FramesSent++;
+            }
+            return true;
+        }
+        catch (Exception ex) { LastError = $"0x{ex.HResult:X8} {ex.Message}"; Volatile.Write(ref _provider, null); return false; }
+    }
+
+    /// <summary>Sends a complete 60-byte GIP 0x0F Razer command packet (e.g. Class 0x0F RGB lighting commands).</summary>
+    public bool SendRawPacket(byte[] packet)
+    {
+        if (packet == null || packet.Length != SensaXboxFrameEncoder.GipPacketLength) return false;
+        var p = Volatile.Read(ref _provider);
+        if (p == null) return false;
+        try
+        {
+            lock (_sendGate)
+            {
+                p.SendMessage(GipMessageClass.Command, 0x0F, packet);
+            }
             return true;
         }
         catch (Exception ex) { LastError = $"0x{ex.HResult:X8} {ex.Message}"; Volatile.Write(ref _provider, null); return false; }

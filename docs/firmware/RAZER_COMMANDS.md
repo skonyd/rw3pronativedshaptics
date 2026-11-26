@@ -60,7 +60,7 @@ answer.
 | **05/04, 05/08** | Active profile set; profile name set | capture (05/04 [03]) |
 | **05/80, 05/81, 05/84, 05/88, 05/8A** | Profile count (04), list (`04 01 02 03 04`), active, name (UTF-16 "Profile N"), … | capture + emulation |
 | 07/01, 07/03, 07/07 | Power sets (sleep timer, battery thresholds?) | API 0x60100x |
-| **07/80, 07/81, 07/83, 07/84, 07/87** | Battery / charging gets; 07/83 → `84 03`, 07/84 → `00 01`, 07/80 → `00 FF` on the device | capture |
+| **07/80, 07/81, 07/83, 07/84, 07/87** | Battery / charging gets (handler `0x17370`): `07/80` → `[00, raw_0_to_255]` (`[0x20000ED4+0x12] * 255 / 100`, e.g. `00 FF` = 100%); `07/83` → `[low, high]` sleep timeout seconds (`300..3600`, factory `84 03` = 900s); `07/84` → `[00, charging_0_or_1]` (`[0x20000ED4+0x17]`, `00 01` = charging) | capture + disassembly |
 | 0A/00, 0A/02, 0A/04, 0A/05 | System control (clock/reset) | emulation (SYSCON writes) |
 | 0A/80, 0A/81, 0A/88 | System info: 0A/80 → `01 01 03 28`, 0A/88 → `FF FF` | emulation |
 | 0C/02, 0C/05, 0C/07, 0C/08, 0C/11–0C/19 | Haptics / vibration sets | emulation |
@@ -68,8 +68,8 @@ answer.
 | **0C/80** | Vibration channel list → `06 05 06 07 08 01 02` | emulation |
 | 0C/81, 0C/82, 0C/85, **0C/86**, 0C/88, 0C/91–0C/99 | Haptics gets; 0C/86 [p, ch] → % (0x64); 0C/85/92/93/95/96/97 read per profile by the Razer app | capture |
 | 0C/95 [01 02 00] | Sent by Synapse before 00/53 | Synapse capture |
-| 0F/02, 0F/03, 0F/04 | Lighting sets | emulation |
-| **0F/80, 0F/81, 0F/82, 0F/84** | Lighting gets: 0F/80 → `05 19 03 01 02` (zones/LEDs), 0F/82 effect, 0F/84 brightness (FF) | capture |
+| **0F/02, 0F/03, 0F/04** | **Lighting sets** (handler `0x2F700`, validator `0x2B4F4`): `0F/02 [profile 0..4, zone 0x05, effectId, p1, p2, colorCount, R1,G1,B1, R2,G2,B2]` (`effectId`: `0x00` Off, `0x02` Breathing `p1=0/1/2`, `0x03` Spectrum, `0x04` Wave `p1=1/2 dir, p2=2`, `0x05` Reactive `p2=1..3 speed`, `0x07` Starlight `p2=1..3 speed`, `0x08` Static `cnt=1`); `0F/04 [profile 0..4, zone 0x05, brightness 0..255]` | emulation + disassembly |
+| **0F/80, 0F/81, 0F/82, 0F/84** | Lighting gets: `0F/80` → `05 19 03 01 02` (zones/LEDs), `0F/81 [05]` → `05 00 0D 02 03 04 08 0B`, `0F/82 [profile, 05]` effect, `0F/84 [profile, 05]` brightness (`FF`) | capture + emulation |
 | 10/00–10/05, 10/83 | Radio SoC flashing through the NXP (UpdateType.FLASH): erase / program / verify / reboot | emulation + updater |
 | 16/07–16/0D | Sensa settings / effect slots | emulation |
 | **16/0E [01, frame]** | **Sensa frame** (PC 2-hand layout or Xbox 4-body-part layout), ≥ 11 ms apart | decoded + hardware |
