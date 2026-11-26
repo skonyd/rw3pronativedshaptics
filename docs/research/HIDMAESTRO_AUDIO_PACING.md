@@ -1,6 +1,6 @@
 # HIDMaestro USB/IP DualSense: the audio endpoint drains in 20 ms bursts
 
-Status (2026-11-24): cause outside RW3; not fixed. Reported 2026-11-24: https://github.com/hifihedgehog/HIDMaestro/issues/76 and https://github.com/vadimgrn/usbip-win2/issues/207 (texts posted as in `TestResults/issue-*.md`). Measurements: E-20261123-81 … -85 in
+Status (2026-11-26): **fixed** in HIDMaestro 2.4.0 (https://github.com/hifihedgehog/HIDMaestro/issues/76): it installed usbip-win2's host controller without the root hub filter that answers `QueryBusTime`; 2.4.0 adds it to its own hub. RW3 uses 2.4.0: steady 10 ms drain (E-20261126-91), no TLOU2 crackle (E-20261126-92). Also reported: https://github.com/vadimgrn/usbip-win2/issues/207.
 [EXPERIMENTS.md](EXPERIMENTS.md). Below is a draft issue for HIDMaestro
 (https://github.com/hifihedgehog/HIDMaestro). The user posts it; RW3 does not.
 
