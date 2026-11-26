@@ -739,8 +739,8 @@ public sealed class VirtualDualSenseBridge : IDisposable
             return; // retain native objects until the worker has actually exited
         }
         _input = null;
-        _speaker.Dispose();
 #if HAS_HIDMAESTRO
+        _speaker.Dispose();
         _pcOutputSlot = -1;
         try { _ctrl?.Dispose(); } catch { }
         try { _ctx?.Dispose(); } catch { }

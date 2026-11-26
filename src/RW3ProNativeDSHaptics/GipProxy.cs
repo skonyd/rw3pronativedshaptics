@@ -177,8 +177,10 @@ public static class GipProxy
 #endif
     }
 
+#if HAS_HIDMAESTRO
     private static long nextLog;
     private static int s_exactNoted, s_paddedNoted;
     private static long s_dupes;
     private static string lastRumble = "-";
+#endif
 }

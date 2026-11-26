@@ -52,7 +52,7 @@ public sealed class XboxAudioGameBridge : IDisposable
     // XInput slots and GameInput devices present before our virtual pad was created: what appears after it is ours. A real
     // Bluetooth Xbox Series pad has the same 045E:0B13 as the virtual one, so VID/PID alone cannot tell them apart.
     private int _slotsBefore = -1;
-    private HashSet<string>? _gameInputBefore;
+    private HashSet<string>? _gameInputBefore = null;   // assigned only with HIDMaestro
     /// <summary>Strict path: the Sensa engine's state for the periodic log (set by the orchestrator).</summary>
     public Func<string>? EngineProbe { get; init; }
     private double _maxGameBody, _maxGameTrig;
@@ -327,6 +327,13 @@ public sealed class XboxAudioGameBridge : IDisposable
         catch { Dispose(); throw; }
     }
 
+    // used with and without HIDMaestro (an SDK-free build, as CI builds, failed on them)
+    private long _startedAt = Environment.TickCount64;
+
+    /// <summary>XInput slot of the running strict virtual pad (-1 unknown). Above 0 while the Wolverine holds a lower
+    /// slot: games that take player 1 from slot 0 then read the hidden Wolverine and ignore the virtual pad.</summary>
+    public static volatile int VirtualSlot = -1;
+
 #if HAS_HIDMAESTRO
     /// <summary>
     /// While the Wolverine is out (a replug), recreates the virtual pad when a lower XInput slot than its own is now free,
@@ -364,11 +371,6 @@ public sealed class XboxAudioGameBridge : IDisposable
         return true;
     }
     private int _slotMoves;
-    private long _startedAt = Environment.TickCount64;
-
-    /// <summary>XInput slot of the running strict virtual pad (-1 unknown). Above 0 while the Wolverine holds a lower
-    /// slot: games that take player 1 from slot 0 then read the hidden Wolverine and ignore the virtual pad.</summary>
-    public static volatile int VirtualSlot = -1;
 
     private void OnOutput(HMController controller, HMOutputPacket packet)
     {
