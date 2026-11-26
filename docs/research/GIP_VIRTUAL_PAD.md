@@ -106,3 +106,10 @@ avoids the overlap and bounds everything (`GipProxy.cs`):
   reset and before the clone is created.
 * Creating the clone (45 s) and removing it (15 s) are time-limited; over the limit the run stops and the flag is deleted.
 * HIDMaestro is 2.4.0 now (the clone profile loads with its profile checker; 2.2-2.4 changed USB/IP attach and removal).
+
+### Is the proxy needed? (2026-11-26)
+
+Probably not for trigger rumble. The test range's game-like quick test (XInput + GameInput, as GDK games) delivers
+trigger rumble through RW3's virtual Xbox Series pad (`game max trig 1.00`, felt; E-20261126-93). The premise of this
+work, that Windows zeroes trigger rumble on the virtual pad (E-20261123-72), came from Banishers, which most likely sends
+none. The proxy stays paused, with its guards, until a game with known impulse-trigger support shows a gap.
