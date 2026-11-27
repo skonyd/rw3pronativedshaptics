@@ -280,7 +280,9 @@ Later app commits resolve the build blocker: main 5ff0450 / CI 45876635460
 passes 585 contracts, WPF and the package job. The release job is skipped.
 The old source-specific failure notes below remain history; these results
 do not establish whole-device firmware equivalence.
-Latest firmware-source CI is also green: ac476f3 / 46033025127, 585 contracts
+Latest firmware-source CI is also green: 7dd139a / 46083705379, 585 contracts
+and package job pass (E-20261128-102); release job skipped.
+Earlier firmware-source CI was also green: ac476f3 / 46033025127, 585 contracts
 and package job pass (E-20261127-102); release job skipped.
 
 - E-20261122-62: CI 45028884831 on 32809ef has 575 passing contracts
