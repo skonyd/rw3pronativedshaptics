@@ -1,8 +1,8 @@
 # Roadmap — 2026-11-08 (top section updated 2026-11-11)
 
-**Firmware lab, 2026-11-23:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
+**Firmware lab, 2026-11-27:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[23-stage validation, four fresh/nineteen audited reuse](firmware/validation/20261123-gpio-delay.json)
+[24-stage validation, one fresh/23 audited reuse](firmware/validation/20261127-release-i2c.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -27,10 +27,12 @@ SPI9/DMA22/23 path in selected GPIO states, plus shared I2S/Sensa audio
 and explicit RGB controls. The [GPIO/busy-wait extension](firmware/GPIO_BUSYWAIT_REPLAY.md)
 executes the P1_8 latch write and original calibrated loop with explicit
 instruction budgets, including IRQ/coalescing and audio/filter controls.
-Falling P3_17 reaches an unmodeled FLEXCOMM2 I2C peer at slave 0x1A,
-before the low write. Original SPI error callbacks can publish ready
+The [FLEXCOMM2 extension](firmware/I2C_RELEASE_REPLAY.md) follows the
+original initialization, IRQ16, five raw writes and low GPIO latch
+against an explicit synthetic peer. Full-audio NACK recovery still
+stops at 0x9FB2/0x400A000C after the low write. Original SPI error callbacks can publish ready
 with no data; implement proper error propagation in a future candidate.
-Next extend that I2C/release path and continuous event timing, establish
+Next extend that error/peripheral path and continuous event timing, establish
 gate/button meanings, complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime

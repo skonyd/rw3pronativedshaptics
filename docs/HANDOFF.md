@@ -1,6 +1,6 @@
 # Handoff: where the work stands (for any AI tool)
 
-Updated 2026-11-23. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
+Updated 2026-11-27. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
 Cursor…). This page says **what was done, where it lives, what phase we are in and what comes next**. Rules stay
 in [AGENTS.md](../AGENTS.md); behaviour facts in [STATUS.md](STATUS.md); every test and its result in
 [research/EXPERIMENTS.md](research/EXPERIMENTS.md). Update this page when the phase changes.
@@ -260,6 +260,23 @@ now exposes FLEXCOMM2 I2C at 0x10BB6/0x40088800, slave 0x1A in the caller,
 before the low latch write. Next model its real driver/initialization
 with NACK/timeout/IRQ controls; peer identity is unknown. Retain masked
 MRT coalescing, SPI error evidence and the partial timing scope.
+
+FLEXCOMM2 release continuation (E-20261127-100/101): read
+[I2C_RELEASE_REPLAY.md](firmware/I2C_RELEASE_REPLAY.md). Execute original
+Initialize/PowerControl and verify PSELID selection, not just its return.
+The synthetic 0x1A write sink now permits the original five commands and
+low latch write. It has no physical chip identity or read responses.
+[Latest validation](firmware/validation/20261127-release-i2c.json) covers
+24 contracts: one fresh normal/optimized stage and 23 audited reused
+reports, not 24 reruns. Seven active cases cover 1113 iterations and
+64 independent frames. ACK release completes; full-audio NACK
+and longer all-ACK cycles stop at 0x9FB2/0x400A000C (ADC channel 8).
+Next model ADC sequence B and continuous arrivals/independent stop during stalls.
+The previous stage keeps its original unsupported-I2C boundary controls.
+
+Desktop update 2026-11-27: main 5ff0450 / CI 45876635460 now passes
+585 contracts, WPF and package checks following later app commits.
+The old ChromaEffect build failures below remain historical notes.
 
 Build caveat (E-20261122-05): the firmware commit `b14f072` passed the
 local 15-stage firmware suite, but Windows CI run `44956123630` fails

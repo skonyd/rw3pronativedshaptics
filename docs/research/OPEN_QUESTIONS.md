@@ -166,9 +166,18 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   is not proof of 200ms. Both falling-input variants now stop after 89
   iterations at 0x10BB6 / 0x40088800 (FLEXCOMM2 I2C), before the low latch
   write. Its caller targets slave 0x1A; peer identity is unknown. Next
-  model the actual controller/driver state and release path, with NACK,
-  timeout and IRQ controls. Do not invent a successful peer or call this
-  full power-down. See [GPIO/busy-wait scope](../firmware/GPIO_BUSYWAIT_REPLAY.md).
+  read the later [release extension](../firmware/I2C_RELEASE_REPLAY.md):
+  E-20261127-100/101 executes original Initialize/PowerControl, IRQ16 and
+  five exact writes through GPIO low in an explicit ACK fixture. Fifteen
+  protocol/register and three blocked controls reject; direct fault
+  cases retain original retry behavior and callback distinction. The
+  physical chip remains unknown; longer all-ACK cycles also reach ADC B
+  after 199/255 iterations, so NACK is not required for that boundary.
+  Full-audio NACK instead stops later at
+  0x9FB2/0x400A000C after GPIO low. Next follow that peripheral/error
+  branch (ADC0 sequence B; existing ADC model is sequence A only),
+  actual concurrent USB/DMA arrivals during stalls and independent
+  elapsed-time stop. Do not infer full board power-down or recovery.
   SPI DMA error flags also expose a delivery-evidence gap: original driver
   callbacks receive transfer-done=0 but still publish application status 0
   and ready with no FIFO clocks. Future custom firmware must preserve
@@ -181,8 +190,9 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   report reuses), with affected prior reports and full normal/optimized new
   output identical. Six audio/filter scenes drain safely in their fixtures.
   The new instruction clock is limited to D620 and its IRQs; supplied CPI
-  is not physical timing or a complete event scheduler. Falling-input
-  FLEXCOMM2/0x1A remains the next integration boundary.
+  is not physical timing or a complete event scheduler.
+  E-20261127-101 extends that selected release path, while the
+  full-audio NACK/MMIO boundary and physical/timing limits remain open.
   The I2C wait schedule supplies 125us logical quanta, not CPU cycle timing.
   E-20261122-71 passes all 21 stages, with prior 20 reports unchanged
   and normal/optimized I2C equality; the saved run records validated
@@ -252,7 +262,12 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   - The `101` "tail" is explained: it was the right hand's first bits.
 - **Next step:** repeat the mic A/B for transient records with the fixed encoder.
 
-## Published desktop package (2026-11-22)
+## Published desktop package (historical failures; resolved 2026-11-27)
+
+Later app commits resolve the build blocker: main 5ff0450 / CI 45876635460
+passes 585 contracts, WPF and the package job. The release job is skipped.
+The old source-specific failure notes below remain history; these results
+do not establish whole-device firmware equivalence.
 
 - E-20261122-62: CI 45028884831 on 32809ef has 575 passing contracts
   but fails WPF CS0246 on the referenced ChromaEffect type. Review and

@@ -1,0 +1,1429 @@
+{
+  "date": "2026-11-27",
+  "scope": "offline original/candidate replay; one fresh stage and 23 audited report reuses",
+  "passed": true,
+  "complete": true,
+  "whole_device_equivalence_proven": false,
+  "flashable_candidate_ready": false,
+  "input_sha256": {
+    "nxp_image": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+    "dongle_image": "09af87a6d3d4588ac2d49b7a5fad6630eeb790e8ead4677b6239486dd4f6693d",
+    "controller_radio_image": "b923c194baf57f78b9cda32f33097caeb5f89787658b3e7e1916f0bc63212e54",
+    "dsp": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f",
+    "wired_capture": "0879f9142be407c0403b0e21d62248a79c330240d6183f93af155d4f473eb71c",
+    "dongle_capture": "6060a038f3ea6bf017dd12d82503fac8ae6da04ef9cca5e124abec2822cd6173"
+  },
+  "tool_source_lf_sha256": {
+    "tools/firmware/audio_haptics_core.c": "a412be2ec3ee3cdc13d7118aa2f6afc69ce9807a32f244200540216aeb913717",
+    "tools/firmware/audio_haptics_core.h": "555e424e124acc2b75ded6642c51abacb2e8b7859fa8f505a86f3d63f94676ac",
+    "tools/firmware/audio_haptics_publish.c": "754d353a6dbd3a684571c542a1f9918f4fe0bdf806fff3c207c5530e3710da81",
+    "tools/firmware/audio_haptics_sim.ld": "b4c37baea9685d2d008025c1a1323a09c25906a355e93740020af5d2525e2ebc",
+    "tools/firmware/audio_haptics_tap.S": "d35054748ed6d40d31c4903215e7c9416603ab3a35de75f0cd9bde56997fdb76",
+    "tools/firmware/audit_dev2_hex.py": "df5095f56b3617a8e4323ebfcc8416ea7614fa70484403d3691fce4607938112",
+    "tools/firmware/build_audio_replay.ps1": "e96b4ad9aa820e87e325bb291f1cd17201f5d6d93e32ab33771ec06b6a321493",
+    "tools/firmware/cortex_m_fpu.py": "3da7488a2f844d732eaff4e3d1f5196d0099e0982650f4191bb7b9db4e1bf706",
+    "tools/firmware/cortex_m_irq.py": "074c83fe0c385047ce97d56346bcfb22c69e5afd2416b983230c7cc74bc99d09",
+    "tools/firmware/descriptor_refs.py": "2618025fcec17d609b4f8c20d17f1d36011becfdbb1e0cc039497c12d41cb135",
+    "tools/firmware/dev2_ram_init.py": "9e35d07a08d91db9d153d2ef169cb9e8e19975b211c2484b95579c4eba04929a",
+    "tools/firmware/dev2_razer_commands.py": "bed1bb822956eb8ea53b697bdc657767696dd8e55a063e6956df03047688db06",
+    "tools/firmware/dev2_simulate_commands.py": "738fed5cadf3c4b6514a77cb4ac3c76cddc901aaddbe2f8613e6ae62281c2cfe",
+    "tools/firmware/dev2_vectors.py": "bdd57597236644fd2713ad89a8696ffe5eb38242c68f36cb7ec9e4fbdeb91545",
+    "tools/firmware/dev2_xref.py": "f2a445f10e249da20486e4f7971fda6a59366b317b5601a9e03d433943a3c2b4",
+    "tools/firmware/emulate_decoder.py": "e2b5d8a0340cc102d28dcaa5336188ad7dc9f5934647bed4db51483bd05bd618",
+    "tools/firmware/fwmap_arm.py": "67221239133530b2dcba7bf984bb35c5081e14e773e82dea2433cacab66edc37",
+    "tools/firmware/fwscan.py": "0518265a55874cbb7e3133aac782fba331873135abe69a599ce6dbd421aa9359",
+    "tools/firmware/hex2bin.py": "5cd406fb4c82c432c8219cc221316ea9b0fee6fc4ea061f8ae23cdd5974d7997",
+    "tools/firmware/map_telink.py": "45050daa2d72fe6466151fd5e3a71d7da3b18e6d9ae2f882cedcf1ce52a35fe7",
+    "tools/firmware/nxp_ctimer_clock.py": "3484ad6ea15cfcef4100bcbf3ff581e3112315a1fc21f6609dac9ec578c15889",
+    "tools/firmware/nxp_dma_status.py": "1b286205f3ea86b01bed2fd26e56abe3545a14b01c0df8eac78bc56cb41e5f1c",
+    "tools/firmware/nxp_gpio_inputs.py": "0a26189d499129b2c585f62aa16eba38ce823e4bd3db0dc0568da5125a6cbdb1",
+    "tools/firmware/nxp_mrt_model.py": "af4331f94e8274303239776a78c9883dc4f1a0df5b543690549e591aa2165416",
+    "tools/firmware/nxp_spi_fifo.py": "3031ed0055af8f58ecc9bafeac79d3551937aecf6202911b8f2dbec2bcc0c014",
+    "tools/firmware/nxp_wwdt_model.py": "974dcd165ed87a4c91ff430a805061b0859e56d90121b0aacc06f34b55e1409d",
+    "tools/firmware/replay_controller_i2s.py": "424c9b5a8e7bb3ae8f3c544104056ee50619309566cf9e924d0d4e3a83db5c07",
+    "tools/firmware/replay_controller_spi.py": "cac6574ffac5e36ad6f82219edffcaff82491fa2819167f11815bd0f4b09e33e",
+    "tools/firmware/replay_nxp_analog.py": "ab6fd954764c61e61f913cd19aa6984b7e88369e2fda06de8fb80031c7bb1dfb",
+    "tools/firmware/replay_nxp_clock.py": "161340d5da22858809e81778b4dfc93073354fe85e5751f005a270e292460477",
+    "tools/firmware/replay_nxp_dma_preemption.py": "ed1efbb98883d4bc8822f2cc74e46c0fc3e2977e9fbdd2896e5ca029cb3412f2",
+    "tools/firmware/replay_nxp_exceptions.py": "97695d5fa50067f08202e7a50a42f54a4a89edbbc10862a2ecfae3401fc8c15c",
+    "tools/firmware/replay_nxp_fpu.py": "e4e3a1e915d3642ecbbb31c96eeb67688a42ae67d5627b4f41497c27b9b0ddaf",
+    "tools/firmware/replay_nxp_loop.py": "88047613e55e59bbb8306f898fa291a1ea12a66d487b64a6deae0686a6b49c4d",
+    "tools/firmware/replay_nxp_loop_i2c.py": "a8b1547fa29e25f7b460a465d3df633e25681f2c7f80ac01905598d1704f495e",
+    "tools/firmware/replay_nxp_power_gpio.py": "7b83337fdfd1c9cd678af103cda76320854590bc43cf3654e2420f31313736e4",
+    "tools/firmware/replay_nxp_publication.py": "2f6342614f9a783bb9f30169d90dda67b5495e1a99178eb8aa7b529d81bf5fa0",
+    "tools/firmware/replay_nxp_release_i2c.py": "a659e810f3c2f3b08586831a62ff89d79695df227f72456b19726319e4ae2580",
+    "tools/firmware/replay_nxp_rgb_spi.py": "c78296a165968b09db9045d63514e96308b3faee0eea5f4c61ac2b1a801c166b",
+    "tools/firmware/replay_nxp_startup.py": "cb3c2a5bd7d09ccdf0d82b4d3c09ce69ea1534b0e907c36b2a7d924efb1fbfe9",
+    "tools/firmware/replay_nxp_watchdog.py": "6592ff7e852800e1aa1e4d90392bde266c33db6d30be2768dfa6ff3db6bff057",
+    "tools/firmware/replay_telink_duplex.py": "2e2aad10727a6b84de2c998ab9d880fadd8b6434e04f9b32af5f2247c3c53e19",
+    "tools/firmware/replay_telink_link.py": "a9e8f0fba931c3879cee5cb8209fe482f3e98425f4b377408e74219d623d632a",
+    "tools/firmware/replay_telink_radio.py": "a249385f827a948ce22ecb3f02981c61e6b373da744578cb0f0571517b042ca1",
+    "tools/firmware/replay_telink_rf.py": "cab87fb0554800c7d5f985056d5b9877ace5fd9cea799dd8717597c68079120c",
+    "tools/firmware/replay_telink_startup.py": "05d3dc2d88e23386d6c10e6d5ff80fff65cb7e4c63987ab15ecfca7dcce573d5",
+    "tools/firmware/replay_telink_timer.py": "f69eda8e9d7e8044548ef621f8c9ac098e2402ce99486ea0de28cf770fc5157b",
+    "tools/firmware/replay_telink_uplink.py": "bf0bb69501a7891c217ddb90b0fc1b9f70f4aa42efa4f98c0f252c15a6e3b3e1",
+    "tools/firmware/replay_telink_usb.py": "eea005fe7827203c1b22a5e0f9602a37c0f61bd1ab346378ca21289935ef9095",
+    "tools/firmware/run_simulator_suite.py": "f8a3229a01664aec0aca1d114de83506fae1c7bb92bc76f24a852c665acead7c",
+    "tools/firmware/simulate_audio_haptics.py": "ecb9e81da27e475ab3dece06842f9f9c03fa966a466856e7e024d1aa542079ca",
+    "tools/firmware/usb_audio_trace.py": "ce5209d649840afb263177324c5b108232f37556a5a2d080fc49d906560d33e1",
+    "tools/firmware/usb_voice_trace.py": "026fba4796ff8c0ee1a1cace578578b0fb34aa1fc40dc959871d9af197f3e6c7"
+  },
+  "stages": {
+    "telink-startup": true,
+    "dongle-usb": true,
+    "telink-radio-audio": true,
+    "telink-dongle-to-radio": true,
+    "telink-duplex-retry": true,
+    "voice-usb-capture": true,
+    "telink-voice-uplink": true,
+    "controller-spi": true,
+    "controller-i2s": true,
+    "nxp-analog": true,
+    "nxp-startup-i2c": true,
+    "nxp-exceptions": true,
+    "nxp-fpu-exceptions": true,
+    "nxp-dma-preemption": true,
+    "nxp-publication": true,
+    "nxp-clock": true,
+    "nxp-watchdog": true,
+    "nxp-foreground-loop": true,
+    "nxp-foreground-i2c": true,
+    "nxp-rgb-spi": true,
+    "nxp-wired-dsp": true,
+    "nxp-dongle-dsp": true,
+    "nxp-gpio-delay": true,
+    "nxp-release-i2c": true
+  },
+  "stage_report_sha256": {
+    "telink-startup": "63d297c4e0c80b4415d7787caead6a1b5bc893c496bee6bde27e8e53268d21b7",
+    "dongle-usb": "1815126adf0d9a0405d517c587fabca347937d973501b8ba5f92ac019352cb17",
+    "telink-radio-audio": "a39d500bc16817aef912131a3d0114e0379a00804a09b7af72a22f6f4595bf8e",
+    "telink-dongle-to-radio": "95fb5e083048436d909018f707344a5226859a3c70c650b873c18bc4fc65714e",
+    "telink-duplex-retry": "4d393c8ea49790a4d80a023d991d1205448187a943e8858b925849d5ca29ab8c",
+    "voice-usb-capture": "18a948d30b3c77c4304eb4b560a2adfdd1a1cae45d2b92b04e138492a9a97b53",
+    "telink-voice-uplink": "48798a5e4f250242fe2663ab95017dd8b827feb6a6a508efaa503da494c79d6c",
+    "controller-spi": "7fc40cf3032593dd63257e34d04729b94027ce7ec553754527cda6bbd3828b71",
+    "controller-i2s": "40bc7ba06a1d04df675dca43c6f204df48d2af562395ea873da84714550f991f",
+    "nxp-analog": "7d543b233de9aab4b7285e994c61e4e16270a1855e4a82aaa42cefc3714bb201",
+    "nxp-startup-i2c": "8a3494eb851a4626269e219a94d96b9f951c97489b774490eb5c80cd06074c29",
+    "nxp-exceptions": "c7193fd672088ed41d61cb3077185ec398f247a2f9892c45433772a841c35797",
+    "nxp-fpu-exceptions": "3abfb00852d423c89bad309b085fc777c903373f82109ca705303a05b02848cc",
+    "nxp-dma-preemption": "ea21a9e2d9cb5c2325e9c871172b11486be28bb871d3f1510b113e4a1bafc954",
+    "nxp-publication": "dc159f5b0d0dcf6f1e69c2e2dc4a573544a9af81728968cfd3bde56898a96833",
+    "nxp-clock": "7ad721748fafe6394dd23f2efeb683e63ce1b2ce3d546dc552bee36afddda270",
+    "nxp-watchdog": "00a6edb31e0a888dba97d05f42ffd42b3af2c05198023fcebc1a2f86bbbdfb7e",
+    "nxp-foreground-loop": "7eb6935a602df3dbb902f4a185f174ce32fdd32d19b8b3486c8dc333de45cdf7",
+    "nxp-foreground-i2c": "0034ddd4069b50b9dd1051b53d23fdafd96e01304e3f5304f37808939e55dc29",
+    "nxp-rgb-spi": "bc8d8e362d8af52c1668bc930ec7fd6f3a5e6e9bcff881b3d1c00607e3b6fe79",
+    "nxp-wired-dsp": "25154b298d690ec16805cbfab3b7556c1c9a7515a8aa6bba7879f9b674342e63",
+    "nxp-dongle-dsp": "adcf221ce90d37a747f498ccff5a1be23ada9679cc3f75acf02335c9e4a3d33b",
+    "nxp-gpio-delay": "e05ac602ea7d1d7ae7735337bb7ee3fd2299adea0fd4d10825d50f5598785886",
+    "nxp-release-i2c": "293a0e3c5c9d43bff8d3269c14ba562bafa77491fb6b1357c81e927793f470ff"
+  },
+  "stage_execution": {
+    "telink-startup": "audited unchanged report reuse",
+    "dongle-usb": "audited unchanged report reuse",
+    "telink-radio-audio": "audited unchanged report reuse",
+    "telink-dongle-to-radio": "audited unchanged report reuse",
+    "telink-duplex-retry": "audited unchanged report reuse",
+    "voice-usb-capture": "audited unchanged report reuse",
+    "telink-voice-uplink": "audited unchanged report reuse",
+    "controller-spi": "audited unchanged report reuse",
+    "controller-i2s": "audited unchanged report reuse",
+    "nxp-analog": "audited unchanged report reuse",
+    "nxp-startup-i2c": "audited unchanged report reuse",
+    "nxp-exceptions": "audited unchanged report reuse",
+    "nxp-fpu-exceptions": "audited unchanged report reuse",
+    "nxp-dma-preemption": "audited unchanged report reuse",
+    "nxp-publication": "audited unchanged report reuse",
+    "nxp-clock": "audited unchanged report reuse",
+    "nxp-watchdog": "audited unchanged report reuse",
+    "nxp-foreground-loop": "audited unchanged report reuse",
+    "nxp-foreground-i2c": "audited unchanged report reuse",
+    "nxp-rgb-spi": "audited unchanged report reuse",
+    "nxp-wired-dsp": "audited unchanged report reuse",
+    "nxp-dongle-dsp": "audited unchanged report reuse",
+    "nxp-gpio-delay": "audited unchanged report reuse",
+    "nxp-release-i2c": "fresh normal run; separate optimized run identical"
+  },
+  "execution": {
+    "fresh_stages": [
+      "nxp-release-i2c"
+    ],
+    "audited_reused_stages": [
+      "telink-startup",
+      "dongle-usb",
+      "telink-radio-audio",
+      "telink-dongle-to-radio",
+      "telink-duplex-retry",
+      "voice-usb-capture",
+      "telink-voice-uplink",
+      "controller-spi",
+      "controller-i2s",
+      "nxp-analog",
+      "nxp-startup-i2c",
+      "nxp-exceptions",
+      "nxp-fpu-exceptions",
+      "nxp-dma-preemption",
+      "nxp-publication",
+      "nxp-clock",
+      "nxp-watchdog",
+      "nxp-foreground-loop",
+      "nxp-foreground-i2c",
+      "nxp-rgb-spi",
+      "nxp-wired-dsp",
+      "nxp-dongle-dsp",
+      "nxp-gpio-delay"
+    ],
+    "previous_validation": "20261123-gpio-delay.json",
+    "baseline_commit": "7d9093989a1de463bf3e0e909aafabeba85f4ac0",
+    "dependency_closures": {
+      "telink-startup": [
+        "replay_telink_startup",
+        "usb_audio_trace"
+      ],
+      "dongle-usb": [
+        "replay_telink_startup",
+        "replay_telink_usb",
+        "usb_audio_trace"
+      ],
+      "telink-radio-audio": [
+        "replay_telink_radio",
+        "replay_telink_startup",
+        "replay_telink_usb",
+        "usb_audio_trace"
+      ],
+      "telink-dongle-to-radio": [
+        "replay_telink_link",
+        "replay_telink_radio",
+        "replay_telink_rf",
+        "replay_telink_startup",
+        "replay_telink_timer",
+        "replay_telink_usb",
+        "usb_audio_trace"
+      ],
+      "telink-duplex-retry": [
+        "replay_telink_duplex",
+        "replay_telink_radio",
+        "replay_telink_rf",
+        "replay_telink_startup",
+        "replay_telink_usb",
+        "usb_audio_trace"
+      ],
+      "voice-usb-capture": [
+        "usb_audio_trace",
+        "usb_voice_trace"
+      ],
+      "telink-voice-uplink": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "replay_controller_i2s",
+        "replay_telink_duplex",
+        "replay_telink_radio",
+        "replay_telink_rf",
+        "replay_telink_startup",
+        "replay_telink_uplink",
+        "replay_telink_usb",
+        "simulate_audio_haptics",
+        "usb_audio_trace",
+        "usb_voice_trace"
+      ],
+      "controller-spi": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "replay_controller_spi",
+        "replay_telink_radio",
+        "replay_telink_startup",
+        "replay_telink_usb",
+        "simulate_audio_haptics",
+        "usb_audio_trace"
+      ],
+      "controller-i2s": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "replay_controller_i2s",
+        "replay_telink_radio",
+        "replay_telink_startup",
+        "replay_telink_usb",
+        "simulate_audio_haptics",
+        "usb_audio_trace"
+      ],
+      "nxp-analog": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "replay_nxp_analog",
+        "simulate_audio_haptics"
+      ],
+      "nxp-startup-i2c": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-exceptions": [
+        "audit_dev2_hex",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "replay_nxp_exceptions",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-fpu-exceptions": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-dma-preemption": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_dma_status",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-publication": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_dma_status",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_publication",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-clock": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_mrt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_publication",
+        "replay_nxp_startup",
+        "simulate_audio_haptics"
+      ],
+      "nxp-watchdog": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_mrt_model",
+        "nxp_wwdt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_publication",
+        "replay_nxp_startup",
+        "replay_nxp_watchdog",
+        "simulate_audio_haptics"
+      ],
+      "nxp-foreground-loop": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_gpio_inputs",
+        "nxp_mrt_model",
+        "nxp_wwdt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_loop",
+        "replay_nxp_publication",
+        "replay_nxp_startup",
+        "replay_nxp_watchdog",
+        "simulate_audio_haptics"
+      ],
+      "nxp-foreground-i2c": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_gpio_inputs",
+        "nxp_mrt_model",
+        "nxp_wwdt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_loop",
+        "replay_nxp_loop_i2c",
+        "replay_nxp_publication",
+        "replay_nxp_startup",
+        "replay_nxp_watchdog",
+        "simulate_audio_haptics"
+      ],
+      "nxp-rgb-spi": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_gpio_inputs",
+        "nxp_mrt_model",
+        "nxp_spi_fifo",
+        "nxp_wwdt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_loop",
+        "replay_nxp_loop_i2c",
+        "replay_nxp_publication",
+        "replay_nxp_rgb_spi",
+        "replay_nxp_startup",
+        "replay_nxp_watchdog",
+        "simulate_audio_haptics"
+      ],
+      "nxp-wired-dsp": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "simulate_audio_haptics"
+      ],
+      "nxp-dongle-dsp": [
+        "audit_dev2_hex",
+        "emulate_decoder",
+        "simulate_audio_haptics"
+      ],
+      "nxp-gpio-delay": [
+        "audit_dev2_hex",
+        "cortex_m_fpu",
+        "cortex_m_irq",
+        "emulate_decoder",
+        "nxp_ctimer_clock",
+        "nxp_dma_status",
+        "nxp_gpio_inputs",
+        "nxp_mrt_model",
+        "nxp_spi_fifo",
+        "nxp_wwdt_model",
+        "replay_nxp_clock",
+        "replay_nxp_dma_preemption",
+        "replay_nxp_exceptions",
+        "replay_nxp_fpu",
+        "replay_nxp_loop",
+        "replay_nxp_loop_i2c",
+        "replay_nxp_power_gpio",
+        "replay_nxp_publication",
+        "replay_nxp_rgb_spi",
+        "replay_nxp_startup",
+        "replay_nxp_watchdog",
+        "simulate_audio_haptics"
+      ]
+    },
+    "changed_previous_modules": [
+      "run_simulator_suite"
+    ],
+    "all_24_freshly_executed": false,
+    "guards": [
+      "All six inputs rehashed; runtime versions unchanged",
+      "All baseline tools/firmware tracked files compared except changed runner",
+      "Transitive local imports including function-scoped imports inspected; no dynamic imports",
+      "No old stage imports the changed runner or the new release module",
+      "Every reused report hash matches previous public validation",
+      "Complete fresh normal/optimized reports identical; no removable new guard assertions"
+    ]
+  },
+  "runtime": {
+    "python": "3.13.5",
+    "unicorn": "2.1.4",
+    "capstone": "5.0.7"
+  },
+  "active_stereo_excerpt": 3000,
+  "compiled_module": {
+    "text_bytes": 6206,
+    "sha256": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f",
+    "toolchain": "Zig 0.15.2, thumb-freestanding-eabi, cortex_m4, -Oz, -Wall -Wextra -Werror",
+    "independent_output_cache_builds": 3,
+    "all_build_bytes_identical": true,
+    "memory_map": "8 KiB simulator-only text at 0x00100000; 128-byte publication state at 0x20024200",
+    "complete_controller_image": false,
+    "shared_state_type_size_assertions": true
+  },
+  "module_build_provenance_reference": "20261122-publication.json; unchanged DSP reused, no rebuild",
+  "release_i2c": {
+    "registers": {
+      "checks": [
+        "explicit_capability",
+        "original_selection_value",
+        "master_enable",
+        "pending_set_and_clear_aliases",
+        "raw_two_byte_sink_without_invented_chip_registers"
+      ],
+      "rejected": [
+        "reserved_register",
+        "unspecified_data_read",
+        "byte_access",
+        "write_readonly_status",
+        "slave_mode",
+        "unmodeled_interrupt",
+        "wide_data",
+        "wrong_peripheral_selection",
+        "selection_lock",
+        "data_without_start",
+        "unsupported_master_command",
+        "unselected_master",
+        "read_start",
+        "repeated_start",
+        "overlong_write"
+      ],
+      "physical_peer_or_electrical_timing_verified": false
+    },
+    "blocked": {
+      "rejected": [
+        "absent_i2c_capability_cannot_be_success",
+        "frozen_wait_clock_cannot_complete",
+        "masked_irqs_cannot_complete"
+      ],
+      "instruction_budget_is_not_an_automatic_transfer_abort": true
+    },
+    "faults": {
+      "address_nack": {
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": ""
+          },
+          {
+            "address": 26,
+            "data_hex": ""
+          },
+          {
+            "address": 26,
+            "data_hex": ""
+          }
+        ],
+        "callbacks": [
+          16,
+          16,
+          16
+        ],
+        "driver_status": [
+          2611,
+          2611,
+          2611
+        ],
+        "wait_events": 240,
+        "checked_irq_returns": 396,
+        "flags_hex": "00000000000000000000000000011e00",
+        "wrapper_success_proven": false,
+        "wire_completion_alone_is_wrapper_success": false
+      },
+      "missing_irq": {
+        "frames": [],
+        "callbacks": [],
+        "driver_status": [],
+        "wait_events": 240,
+        "checked_irq_returns": 390,
+        "flags_hex": "00000000000000000000000000011e00",
+        "wrapper_success_proven": false,
+        "wire_completion_alone_is_wrapper_success": false
+      },
+      "missing_callback": {
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          }
+        ],
+        "callbacks": [],
+        "driver_status": [
+          0,
+          0,
+          0
+        ],
+        "wait_events": 240,
+        "checked_irq_returns": 405,
+        "flags_hex": "00000000000000000000000000011e00",
+        "wrapper_success_proven": false,
+        "wire_completion_alone_is_wrapper_success": false
+      },
+      "late_irq_recovery": {
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          }
+        ],
+        "callbacks": [
+          1
+        ],
+        "driver_status": [
+          0
+        ],
+        "wait_events": 88,
+        "checked_irq_returns": 148,
+        "flags_hex": "09000000000000000000000000000b00",
+        "wrapper_success_proven": true,
+        "wire_completion_alone_is_wrapper_success": false
+      }
+    },
+    "inactive_pair": {
+      "iterations": 159,
+      "checked_irq_returns": 2311,
+      "compared_ram_bytes": 81192,
+      "stock_and_inactive_candidate_match": true
+    },
+    "active": {
+      "stereo_release": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2311,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 25,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": false,
+        "pin_changes": [
+          [
+            70,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 1,
+        "physical_peer_verified": false
+      },
+      "other_pin_release": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2311,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 25,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": false,
+        "pin_changes": [
+          [
+            70,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 1,
+        "expected_release_cycles": 1,
+        "physical_peer_verified": false
+      },
+      "left_release": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2311,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 25,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": true,
+        "pin_changes": [
+          [
+            70,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 1,
+        "physical_peer_verified": false
+      },
+      "right_release": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2311,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 25,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": true,
+        "pin_changes": [
+          [
+            70,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 1,
+        "physical_peer_verified": false
+      },
+      "short_low_pulse": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ]
+        ],
+        "frames": [],
+        "callbacks": [],
+        "driver_status": [],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2282,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 0,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": false,
+        "pin_changes": [
+          [
+            70,
+            0
+          ],
+          [
+            80,
+            1
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 0,
+        "physical_peer_verified": false
+      },
+      "repeated_release": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ],
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          },
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 0,
+        "checked_irq_returns": 2346,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 50,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200,
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 9,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": false,
+        "pin_changes": [
+          [
+            25,
+            0
+          ],
+          [
+            70,
+            1
+          ],
+          [
+            115,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 2,
+        "physical_peer_verified": false
+      },
+      "delayed_irq": {
+        "name": "stock_continuous_dma",
+        "blocks_played": 96,
+        "pcm_bytes": 18432,
+        "first_pcm_fixture_tick": 18,
+        "descriptor_addresses": 3,
+        "silence_gaps_ticks": [],
+        "underrun_selected_silence": true,
+        "iterations": 159,
+        "gpio_writes": [
+          [
+            40,
+            1
+          ],
+          [
+            40,
+            0
+          ]
+        ],
+        "frames": [
+          {
+            "address": 26,
+            "data_hex": "69c0"
+          },
+          {
+            "address": 26,
+            "data_hex": "6bc0"
+          },
+          {
+            "address": 26,
+            "data_hex": "0200"
+          },
+          {
+            "address": 26,
+            "data_hex": "0400"
+          },
+          {
+            "address": 26,
+            "data_hex": "0600"
+          }
+        ],
+        "callbacks": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "driver_status": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "unknown_addresses": [],
+        "release_wait_events": 8,
+        "checked_irq_returns": 2324,
+        "combined_spi_i2s_batches": 9,
+        "release_irq_entries": 25,
+        "original_power_mmio_writes": [
+          [
+            1073742372,
+            4,
+            8192
+          ],
+          [
+            1073742116,
+            4,
+            8192
+          ],
+          [
+            1073742148,
+            4,
+            8192
+          ],
+          [
+            1074302968,
+            4,
+            3
+          ]
+        ],
+        "delay_arguments": [
+          200,
+          200
+        ],
+        "independent_sensa_frame_checks": 10,
+        "drained_to_stock_idle": true,
+        "opposite_palm_and_triggers_idle_checked": false,
+        "pin_changes": [
+          [
+            70,
+            0
+          ]
+        ],
+        "source_blocks": 96,
+        "P0_23": 0,
+        "expected_release_cycles": 1,
+        "physical_peer_verified": false
+      }
+    },
+    "stock_idle_reference_reused_from_inactive_pair": true,
+    "full_nack_boundary": {
+      "pc": "0x9FB2",
+      "unmodeled_address": "0x400A000C",
+      "adc_channel": 8,
+      "completed_iterations": 89,
+      "gpio_writes": [
+        [
+          40,
+          1
+        ],
+        [
+          40,
+          0
+        ]
+      ],
+      "failed_address_attempts": 15,
+      "callback_status": 16,
+      "logical_wait_events": 1198,
+      "checked_irq_returns": 3297,
+      "instruction_budget": 5000000,
+      "accepted_as_full_run": false,
+      "physical_error_recovery_verified": false
+    },
+    "long_repeat_boundary": {
+      "pc": "0x9FB2",
+      "unmodeled_address": "0x400A000C",
+      "adc_channel": 8,
+      "completed_iterations": 199,
+      "requested_iterations": 255,
+      "source_blocks": 192,
+      "pin_changes": [
+        [
+          70,
+          0
+        ],
+        [
+          120,
+          1
+        ],
+        [
+          170,
+          0
+        ]
+      ],
+      "gpio_writes": [
+        [
+          40,
+          1
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          1
+        ],
+        [
+          40,
+          0
+        ]
+      ],
+      "successful_write_callbacks": 10,
+      "logical_wait_events": 0,
+      "nack_is_required_for_adc_boundary": false,
+      "accepted_as_full_run": false
+    },
+    "scope": "Original falling-input FLEXCOMM2 driver/IRQ16; explicit synthetic write-only ACK sink",
+    "physical_i2c_or_instruction_timing_verified": false,
+    "whole_device_equivalence_proven": false,
+    "flashable_candidate_ready": false,
+    "input_sha256": {
+      "stock": "d19550cf434da3e3ae3c7e8e46f23e5c5f61274a0a462bf81b768c3953a1aee8",
+      "dsp": "f2c5f153f587d02c37cab56e7890f3a651b186305feb71b5e50c8caab832959f"
+    }
+  },
+  "active_totals": {
+    "active_cases": 7,
+    "iterations": 1113,
+    "checked_irq_returns": 16196,
+    "independent_sensa_frame_checks": 64,
+    "release_irq_entries": 175,
+    "combined_spi_i2s_batches": 63
+  },
+  "optimized_python": {
+    "complete_release_report_identical": true,
+    "removable_asserts_in_new_guard_source": 0
+  },
+  "prior_limits_reference": "20261123-gpio-delay.json; earlier boot/radio/USB/timing limitations still apply",
+  "known_limits": [
+    "FLEXCOMM2 PSELID I2C-present bit and write-only ACK sink are explicit fixtures; physical peer is unknown",
+    "No electrical I2C clock/bit timing, bus-speed setup or board pin mux proof",
+    "Wait quanta advance timers/motors/WWDT, not concurrent USB/DMA packet arrivals during a foreground stall",
+    "D620 CPI remains supplied and partial; not continuous CPU/board timing",
+    "All-address-NACK active audio reaches GPIO low then stops at PC0x9FB2/ADC0 SEQ_CTRL[1] 0x400A000C; existing ADC model covers sequence A only",
+    "Long all-ACK repeated cycles also stop at ADC-B channel8 after 199/255 iterations; NACK is not required",
+    "Elapsed-counter versus changed-state causality of the ADC visit is unverified",
+    "Instruction budget is a terminal harness boundary, not a firmware abort or independent motor stop",
+    "Full boot, error recovery, independent audio stop, physical routing, bootloader acceptance and SWD recovery unverified"
+  ],
+  "local_full_reports": "TestResults/firmware-lab/suite-20261127-release-i2c",
+  "desktop_ci_prior_publication": {
+    "run_id": 45876635460,
+    "source_commit": "5ff04508cdd00679bddff192906d49e9336ec9ed",
+    "conclusion": "success",
+    "app_contracts_passed": 585,
+    "app_contracts_failed": 0,
+    "wpf_build_passed": true,
+    "package_job_passed": true,
+    "release_job": "skipped",
+    "scope": "separate prior main source; no physical firmware validation"
+  }
+}

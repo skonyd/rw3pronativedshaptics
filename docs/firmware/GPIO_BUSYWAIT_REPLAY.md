@@ -71,7 +71,13 @@ commands. This is a different controller/peer from the earlier FLEXCOMM3
 No invented ACK or callback is supplied. The latch has only its high write
 at this point: **full release/power-down has not completed**.
 
-Next model this controller from its actual initialization/driver state,
+The later [FLEXCOMM2 extension](I2C_RELEASE_REPLAY.md) now executes
+original initialization, IRQ16 and the five raw writes through the low
+latch write in its explicit ACK fixture. This original stage retains
+its own unmapped-I2C controls unchanged. Full-audio NACK recovery then
+stops at 0x9FB2/0x400A000C; physical peer and timing remain unknown.
+
+The original next-step record was to model this controller from its initialization/driver state,
 retain NACK/timeout/IRQ controls and follow the original falling path to
 its low write. Confirm the board peer separately before treating register
 acceptance as hardware evidence. SPI error propagation, continuous event

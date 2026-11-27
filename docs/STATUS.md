@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-23. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-27. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Desktop app additions (2026-11-22)
@@ -110,11 +110,13 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-The [latest validation](firmware/validation/20261123-gpio-delay.json),
-2026-11-23, covers 23 passing stages: four ran afresh and nineteen reuse
-unchanged reports after pinned-input, source-dependency and report-hash
-checks. The three affected earlier stage reports remain identical; the
-new GPIO/delay stage matches its separate optimized-Python execution.
+The [latest validation](firmware/validation/20261127-release-i2c.json),
+2026-11-27, covers 24 passing stage contracts: one new release/I2C
+stage ran afresh under normal and optimized Python with identical
+reports. Twenty-three previous reports are reused after input, source,
+dependency, report-hash and runtime-version checks. These are not
+24 fresh runs. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
+retains its own four-fresh/nineteen-reused execution provenance.
 The preceding [full 22-stage run](firmware/validation/20261123-rgb-spi.json)
 includes active stereo capture excerpts in the PWM model. This is
 modeled replay evidence, not whole-device equivalence. JSON records
@@ -329,6 +331,31 @@ Published firmware-source commit `d17cbba`, CI `45077139967`, also has
 578 passing contracts but fails the existing `ChromaEffect` reference
 at `MainWindow.xaml.cs:2937` (E-20261123-102). No Windows package was
 produced; this is separate from the offline firmware validation.
+
+The [FLEXCOMM2 release extension](firmware/I2C_RELEASE_REPLAY.md),
+2026-11-27, now executes original Initialize/PowerControl, the master
+driver, IRQ16 and wrapper callback against an explicit write-only sink.
+It checks actual clock/reset/selection writes and five exact two-byte
+commands before the original P1_8 low write. An absent I2C capability
+cannot pass merely because PowerControl returns zero. Fifteen malformed
+register/protocol controls and three blocked-state controls reject.
+Direct NACK, missing IRQ/callback and late-IRQ retry cases retain distinct
+transfer and wrapper results. The disabled-candidate pair matches 81,192
+shared RAM bytes plus registers, PWM, PCM and transactions.
+Seven active scenes cover 1113 iterations, 16,196 checked IRQ
+returns and 64 independent Sensa frame checks; each drains to
+stock idle, with separate mono isolation, filtering and repeated-cycle checks.
+Full-audio all-address-NACK still reaches another unmapped register at
+0x9FB2/0x400A000C (ADC0 sequence B) after GPIO low. A longer all-ACK
+repeat also stops there after 199/255 iterations, so NACK is not required.
+Neither partial run is a completed recovery.
+The physical peer, bus timing and concurrent USB/DMA arrivals during
+I2C stalls remain unverified. Full-device/flashable flags remain false.
+
+Current desktop verification (2026-11-27): main `5ff0450`, CI
+`45876635460`, passes 585 contracts, WPF and the package job. The release
+job is skipped; this is not a published release or physical validation.
+Older missing-ChromaEffect failures below are historical source outcomes.
 
 The firmware suite result is separate from desktop packaging: Windows
 CI run `44956123630` on `b14f072` has 573 passing contracts but fails WPF

@@ -112,7 +112,10 @@ as a failure of ready-only evidence, not a successful delivery. Selected
 GPIO states are covered. The later [GPIO/busy-wait extension](GPIO_BUSYWAIT_REPLAY.md)
 follows the high-input latch write and original delay with supplied
 instruction budgets. The falling path exposes a different I2C controller
-and unverified slave 0x1A; full release and physical timing stay open.
+and unverified slave 0x1A. The later [FLEXCOMM2 release stage](I2C_RELEASE_REPLAY.md)
+executes its original initialization/IRQ and low write with a synthetic
+write-only sink. Physical peer/timing and full-audio NACK recovery at
+0x9FB2/0x400A000C remain open.
 Voice framing is checked against every captured endpoint-0x87
 packet, including host grouping and sequence wrap; its background-level
 PCM is not a reference for the synthetic microphone tone.
@@ -120,7 +123,12 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-23 validation summary](validation/20261123-gpio-delay.json)
+The [latest 2026-11-27 validation](validation/20261127-release-i2c.json)
+covers 24 contracts: one new normal/optimized stage and 23 audited
+reused reports, with unchanged input/runtime/module provenance. The
+full-audio NACK boundary is explicitly not a completed recovery.
+
+The [preceding GPIO validation](validation/20261123-gpio-delay.json)
 covers 23 stages: four fresh executions and nineteen audited unchanged
 report reuses, not 23 new runs. Affected prior reports and complete
 normal/optimized GPIO reports match; input/source hashes and unchanged
