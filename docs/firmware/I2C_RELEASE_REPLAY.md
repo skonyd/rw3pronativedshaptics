@@ -84,6 +84,12 @@ required to reach it. These runs still do not isolate elapsed-counter
 effects from the changed foreground state; the ADC visit is not labeled
 as a NACK-specific error handler.
 
+The later [ADC-B extension](ADC_B_FOREGROUND_REPLAY.md) follows
+these two retained boundaries with explicit samples/readiness and the
+original configuration, reader and averaging code. Selected longer
+and NACK fixtures now return. This original stage keeps its own
+unsupported-ADC contracts; missing-conversion full recovery remains open.
+
 ## Validation and timing limits
 
 [Public validation](validation/20261127-release-i2c.json) records one new

@@ -1,6 +1,6 @@
 # Handoff: where the work stands (for any AI tool)
 
-Updated 2026-11-27. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
+Updated 2026-11-28. Start here when you pick the project up in a new tool (Claude, Codex, Gemini/Antigravity,
 Cursor…). This page says **what was done, where it lives, what phase we are in and what comes next**. Rules stay
 in [AGENTS.md](../AGENTS.md); behaviour facts in [STATUS.md](STATUS.md); every test and its result in
 [research/EXPERIMENTS.md](research/EXPERIMENTS.md). Update this page when the phase changes.
@@ -273,6 +273,21 @@ reports, not 24 reruns. Seven active cases cover 1113 iterations and
 and longer all-ACK cycles stop at 0x9FB2/0x400A000C (ADC channel 8).
 Next model ADC sequence B and continuous arrivals/independent stop during stalls.
 The previous stage keeps its original unsupported-I2C boundary controls.
+
+ADC-B continuation (E-20261128-100/101): read
+[ADC_B_FOREGROUND_REPLAY.md](firmware/ADC_B_FOREGROUND_REPLAY.md).
+The original B setter/enable fragment produces 0xD0040100; the original
+reader distinguishes DATA_VALID and retries, with no patched completion.
+4,096 clamp inputs, 468 means and cold-ten/warm-five windows pass.
+Five active streams cover 1499 iterations and 108 independent frames,
+including both previously blocked paths and a 575-iteration stereo run.
+[Latest validation](firmware/validation/20261128-adc-b.json) is one fresh
+normal/optimized stage plus 24 source/input/runtime/hash-audited reuses.
+Readiness is count-supplied; samples are not measured board voltages.
+Missing readiness retains the old result and reaches power control at
+0xA034/0x40000620, not a complete reset recovery. Next implement that
+power/reset/calibration path and continuous event/independent-stop timing.
+Keep ADC-A separate and retain all GPIO events, including NACK reassertions.
 
 Desktop update 2026-11-27: main 5ff0450 / CI 45876635460 now passes
 585 contracts, WPF and package checks following later app commits.

@@ -1,6 +1,6 @@
 # Current status (single source of truth)
 
-Updated 2026-11-27. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
+Updated 2026-11-28. For the work history and next steps when switching AI tools, see [HANDOFF.md](HANDOFF.md). This page replaces reading the dated reports in order; they stay as history
 (see [docs/README.md](README.md)). When something changes, update this page in the same commit.
 
 ## Desktop app additions (2026-11-22)
@@ -110,12 +110,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-The [latest validation](firmware/validation/20261127-release-i2c.json),
-2026-11-27, covers 24 passing stage contracts: one new release/I2C
-stage ran afresh under normal and optimized Python with identical
-reports. Twenty-three previous reports are reused after input, source,
-dependency, report-hash and runtime-version checks. These are not
-24 fresh runs. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
+The [latest validation](firmware/validation/20261128-adc-b.json),
+2026-11-28, covers 25 stage contracts: one fresh ADC/foreground stage
+with identical normal/optimized reports, plus 24 unchanged reports reused
+after input/source/import/runtime/report-hash checks. These are not
+25 fresh runs. The [preceding release validation](firmware/validation/20261127-release-i2c.json)
+retains its own one-fresh/23-reused provenance. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
 retains its own four-fresh/nineteen-reused execution provenance.
 The preceding [full 22-stage run](firmware/validation/20261123-rgb-spi.json)
 includes active stereo capture excerpts in the PWM model. This is
@@ -351,6 +351,28 @@ repeat also stops there after 199/255 iterations, so NACK is not required.
 Neither partial run is a completed recovery.
 The physical peer, bus timing and concurrent USB/DMA arrivals during
 I2C stalls remain unverified. Full-device/flashable flags remain false.
+
+The [ADC-B foreground extension](firmware/ADC_B_FOREGROUND_REPLAY.md),
+2026-11-28, now executes the original B configuration setter/enable
+fragment, channel-8 reader and ten-/five-sample averaging code. Explicit
+12-bit samples and read-count readiness remain fixtures, not physical
+conversion timing. Nineteen invalid register/input cases reject; seven
+reader cases preserve valid zero versus missing data and the eight-poll
+limit. All 4,096 raw clamp values and 468 means pass independent oracles,
+including the stock percentage divisor 467 and 0..100 output range.
+Both former ADC-boundary cases now return in their supplied fixtures.
+Five active streams cover 1499 iterations, 23,821 checked IRQ
+returns, 50 conversions and 108 independent Sensa frame checks,
+including 575-iteration stereo, 255-iteration L/R and delayed-variable
+ADC cases, plus active-audio NACK. Output drains to independently
+retained stock-idle PWM and mono stays isolated. Two stock/disabled
+pairs compare 81,192 shared RAM bytes, registers, PCM and transaction
+traces. GPIO reassertions remain in the logs, not normalized away.
+Never-ready data now reaches PC 0xA034, the original 0x40000620/0x400
+power-control write; full reset/calibration recovery is still unmodeled.
+Sequence A integration, actual ADC timing/voltage scale, continuous
+USB/DMA arrivals during blocked foreground, independent stop, full boot
+and safe flash/recovery remain open. No hardware firmware was written.
 
 Current desktop verification (2026-11-27): main `5ff0450`, CI
 `45876635460`, passes 585 contracts, WPF and the package job. The release

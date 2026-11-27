@@ -1,8 +1,8 @@
 # Roadmap — 2026-11-08 (top section updated 2026-11-11)
 
-**Firmware lab, 2026-11-27:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
+**Firmware lab, 2026-11-28:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[24-stage validation, one fresh/23 audited reuse](firmware/validation/20261127-release-i2c.json)
+[25-stage validation, one fresh/24 audited reuse](firmware/validation/20261128-adc-b.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -29,10 +29,14 @@ executes the P1_8 latch write and original calibrated loop with explicit
 instruction budgets, including IRQ/coalescing and audio/filter controls.
 The [FLEXCOMM2 extension](firmware/I2C_RELEASE_REPLAY.md) follows the
 original initialization, IRQ16, five raw writes and low GPIO latch
-against an explicit synthetic peer. Full-audio NACK recovery still
-stops at 0x9FB2/0x400A000C after the low write. Original SPI error callbacks can publish ready
+against an explicit synthetic peer. That stage retains its unsupported
+ADC contracts; the extension below follows those paths. Original SPI error callbacks can publish ready
 with no data; implement proper error propagation in a future candidate.
-Next extend that error/peripheral path and continuous event timing, establish
+The [ADC-B extension](firmware/ADC_B_FOREGROUND_REPLAY.md) now follows
+original sample/read/average code, with explicit readiness and independent
+4096-input/468-mean oracles. Selected longer and NACK runs return; missing
+data stops at the unmodeled power-control write 0xA034/0x40000620.
+Next extend power/reset/calibration and continuous event timing, establish
 gate/button meanings, complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime

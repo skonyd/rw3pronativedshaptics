@@ -123,7 +123,18 @@ The physical inter-chip audio route,
 live timing, GPIO and analog board behavior, console authentication,
 and the resident bootloader need further evidence.
 
-The [latest 2026-11-27 validation](validation/20261127-release-i2c.json)
+The [ADC-B continuation](ADC_B_FOREGROUND_REPLAY.md) supplies strict
+channel-8 conversion/readiness inputs while executing the original
+configuration, polling, clipping and averaging code. Longer stereo/mono
+and NACK fixtures now return; missing data retains an explicit reset
+boundary. No physical ADC timing or full calibration is proven.
+
+The [latest 2026-11-28 validation](validation/20261128-adc-b.json) covers
+25 contracts: one fresh normal/optimized ADC stage and 24 audited
+unchanged report reuses, not 25 reruns. It keeps raw source/input hashes
+and the unchanged DSP module provenance.
+
+The [preceding release validation](validation/20261127-release-i2c.json)
 covers 24 contracts: one new normal/optimized stage and 23 audited
 reused reports, with unchanged input/runtime/module provenance. The
 full-audio NACK boundary is explicitly not a completed recovery.

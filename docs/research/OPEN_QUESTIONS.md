@@ -178,6 +178,18 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   branch (ADC0 sequence B; existing ADC model is sequence A only),
   actual concurrent USB/DMA arrivals during stalls and independent
   elapsed-time stop. Do not infer full board power-down or recovery.
+  E-20261128-100/101 now integrates the original ADC-B setter/enable,
+  reader and average with explicit 12-bit/readiness fixtures. Both former
+  boundaries return, including a 575-iteration stereo run. Nineteen
+  invalid cases reject; seven read cases and independent 4096-input /
+  468-mean checks pass. No board voltage/ADC timing is measured. Missing
+  readiness retains the old result, exhausts eight polls, and stops at
+  the original power-control write 0xA034/0x40000620. Next model that
+  reset path and full 0x90E0 calibration/pin/clock setup, integrate ADC A,
+  and supply concurrent USB/DMA arrivals and independent elapsed-time stop.
+  Keep all original GPIO events; reassertions are not physical motor proof.
+  See [ADC-B limits](../firmware/ADC_B_FOREGROUND_REPLAY.md).
+
   SPI DMA error flags also expose a delivery-evidence gap: original driver
   callbacks receive transfer-done=0 but still publish application status 0
   and ready with no FIFO clocks. Future custom firmware must preserve
