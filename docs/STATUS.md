@@ -110,11 +110,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-The [latest validation](firmware/validation/20261128-adc-b.json),
-2026-11-28, covers 25 stage contracts: one fresh ADC/foreground stage
-with identical normal/optimized reports, plus 24 unchanged reports reused
+The [latest validation](firmware/validation/20261128-adc-recovery.json),
+2026-11-28, covers 26 stage contracts: one fresh ADC recovery stage
+with identical normal/optimized reports, plus 25 unchanged reports reused
 after input/source/import/runtime/report-hash checks. These are not
-25 fresh runs. The [preceding release validation](firmware/validation/20261127-release-i2c.json)
+26 fresh runs. The [preceding ADC-B validation](firmware/validation/20261128-adc-b.json)
+retains its own one-fresh/24-reused provenance. The [preceding release validation](firmware/validation/20261127-release-i2c.json)
 retains its own one-fresh/23-reused provenance. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
 retains its own four-fresh/nineteen-reused execution provenance.
 The preceding [full 22-stage run](firmware/validation/20261123-rgb-spi.json)
@@ -368,9 +369,24 @@ ADC cases, plus active-audio NACK. Output drains to independently
 retained stock-idle PWM and mono stays isolated. Two stock/disabled
 pairs compare 81,192 shared RAM bytes, registers, PCM and transaction
 traces. GPIO reassertions remain in the logs, not normalized away.
-Never-ready data now reaches PC 0xA034, the original 0x40000620/0x400
-power-control write; full reset/calibration recovery is still unmodeled.
-Sequence A integration, actual ADC timing/voltage scale, continuous
+That preceding stage keeps its never-ready boundary at PC 0xA034,
+the original 0x40000620/0x400 power-control write.
+The [ADC recovery extension](firmware/ADC_RECOVERY_REPLAY.md) now executes
+that power fallback and full original 0x90E0 pin/clock/calibration setup.
+Six startup scenes distinguish successful, delayed and never-completing
+calibration/dummy initialization. Original setup returns and enables both
+sequences even after four failed attempts; the model rejects conversion
+while startup is unhealthy. Two reader scenes recover to a new valid
+3450 sample after eight invalid polls and full power reinitialization.
+Four averaging fault scenes show stock 0x2C678 includes stale results;
+all ten failures still mark an average of 3200 ready in the fixture.
+Fifteen negative guards reject unspecified/unsupported operations.
+Normal and optimized complete reports match. This does not change the
+stock image or fix its behavior on hardware.
+The next explicit ADC-A start boundary is 0x1982C after original setup;
+the older standalone A model remains separate. Calibration wait 0x1FF70
+executes original instructions without advancing concurrent peripheral
+time. Sequence A/B integration, actual ADC timing/voltage scale, continuous
 USB/DMA arrivals during blocked foreground, independent stop, full boot
 and safe flash/recovery remain open. No hardware firmware was written.
 

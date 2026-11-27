@@ -285,9 +285,20 @@ including both previously blocked paths and a 575-iteration stereo run.
 normal/optimized stage plus 24 source/input/runtime/hash-audited reuses.
 Readiness is count-supplied; samples are not measured board voltages.
 Missing readiness retains the old result and reaches power control at
-0xA034/0x40000620, not a complete reset recovery. Next implement that
-power/reset/calibration path and continuous event/independent-stop timing.
-Keep ADC-A separate and retain all GPIO events, including NACK reassertions.
+0xA034/0x40000620 in that stage. E-20261128-110/111 now executes that
+power fallback and complete original 0x90E0 pin/clock/calibration setup:
+read [ADC_RECOVERY_REPLAY.md](firmware/ADC_RECOVERY_REPLAY.md).
+Six startup, two full recovery and four averaging fault scenes pass;
+15 guards reject. Full normal/optimized reports match; latest validation
+covers 26 contracts (one fresh, 25 audited reuses, not 26 reruns).
+Important stock failure semantics: four failed calibration attempts still
+lead to enabled sequences, and all ten failed measurements can yield a
+stale 3200 average marked ready. Do not treat either as healthy data.
+Next combine the earlier six-channel ADC-A model with this A/B lifecycle:
+original scanner 0x197F8 reaches unsupported A-start at 0x1982C.
+Then advance concurrent peripheral/USB/DMA events during 0x1FF70 waits
+and provide independent elapsed-time stop. Retain all GPIO events,
+including NACK reassertions. Stock/DSP images remain unchanged; no flash.
 
 Desktop update 2026-11-27: main 5ff0450 / CI 45876635460 now passes
 585 contracts, WPF and package checks following later app commits.

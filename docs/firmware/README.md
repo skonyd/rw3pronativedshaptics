@@ -129,10 +129,17 @@ configuration, polling, clipping and averaging code. Longer stereo/mono
 and NACK fixtures now return; missing data retains an explicit reset
 boundary. No physical ADC timing or full calibration is proven.
 
-The [latest 2026-11-28 validation](validation/20261128-adc-b.json) covers
-25 contracts: one fresh normal/optimized ADC stage and 24 audited
-unchanged report reuses, not 25 reruns. It keeps raw source/input hashes
-and the unchanged DSP module provenance.
+The [ADC recovery continuation](ADC_RECOVERY_REPLAY.md) now executes
+original power fallback and full 0x90E0 pin/clock/calibration setup.
+It checks recovery to fresh data, failed startup and stale-data averaging.
+ADC-A integration stops explicitly at 0x1982C; calibration waits still
+lack concurrent peripheral time. This is not physical reset validation.
+
+The [latest 2026-11-28 validation](validation/20261128-adc-recovery.json) covers
+26 contracts: one fresh normal/optimized ADC recovery stage and 25 audited
+unchanged report reuses, not 26 reruns. The [preceding ADC-B validation](validation/20261128-adc-b.json)
+keeps its own one-fresh/24-reused provenance. Input/source hashes and the
+unchanged DSP module provenance remain recorded.
 
 The [preceding release validation](validation/20261127-release-i2c.json)
 covers 24 contracts: one new normal/optimized stage and 23 audited

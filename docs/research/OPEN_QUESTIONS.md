@@ -184,9 +184,20 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   invalid cases reject; seven read cases and independent 4096-input /
   468-mean checks pass. No board voltage/ADC timing is measured. Missing
   readiness retains the old result, exhausts eight polls, and stops at
-  the original power-control write 0xA034/0x40000620. Next model that
-  reset path and full 0x90E0 calibration/pin/clock setup, integrate ADC A,
-  and supply concurrent USB/DMA arrivals and independent elapsed-time stop.
+  the original power-control write 0xA034/0x40000620 in that stage.
+  E-20261128-110/111 executes that fallback and full original 0x90E0
+  calibration/pin/clock setup with count-supplied completion. Six startup,
+  two full recovery and four averaging-fault scenes plus 15 guards pass
+  with identical normal/optimized reports. Original setup enables sequences
+  even after four failed calibration attempts; the original average uses
+  stale data and can mark ready after all ten conversions fail. These are
+  future candidate error-propagation requirements, not hardware fixes.
+  Next combine the separate six-channel ADC-A model: original scanner
+  0x197F8 stops at A-start store 0x1982C. Advance peripheral time during
+  0x1FF70 calibration waits, concurrent USB/DMA arrivals and independent
+  elapsed-time stop. Calibration retention and overlapping dummy/calibration
+  requests need physical evidence; completion fixtures do not prove timing.
+  See [ADC recovery scope](../firmware/ADC_RECOVERY_REPLAY.md).
   Keep all original GPIO events; reassertions are not physical motor proof.
   See [ADC-B limits](../firmware/ADC_B_FOREGROUND_REPLAY.md).
 

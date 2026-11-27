@@ -4,6 +4,10 @@
 NXP v2.04.00 and the existing simulator-only DSP module remain unchanged.
 No controller access, firmware upload, driver change or SDK installation.
 
+Continuation: [ADC_RECOVERY_REPLAY.md](ADC_RECOVERY_REPLAY.md) executes the
+power fallback and complete original initializer in a separate strict model.
+This report and its tests retain their earlier, narrower boundaries.
+
 ## Original code and supplied state
 
 The previous [I2C/release stage](I2C_RELEASE_REPLAY.md) stopped at ADC0
