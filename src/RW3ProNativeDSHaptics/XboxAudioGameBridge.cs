@@ -63,18 +63,19 @@ public sealed class XboxAudioGameBridge : IDisposable
     private InputSeen _physSeen, _virtSeen;
     private struct InputSeen
     {
-        private ushort _buttons; private int _stick, _trigger;
+        private ushort _buttons; private int _stick, _trigger, _both;
         public void Add(XInputPad p)
         {
             _buttons |= p.Buttons;
             _stick = Math.Max(_stick, Math.Max(Math.Max(Abs(p.LX), Abs(p.LY)), Math.Max(Abs(p.RX), Abs(p.RY))));
             _trigger = Math.Max(_trigger, Math.Max(p.LeftTrigger, p.RightTrigger));
+            _both = Math.Max(_both, Math.Min(p.LeftTrigger, p.RightTrigger));   // LT and RT held together (a game's LT + RT move)
         }
         private static int Abs(short v) => v == short.MinValue ? 32768 : Math.Abs((int)v);
-        /// <summary>"btn 0x1001 stick 32767 trig 255" for the window, then reset.</summary>
+        /// <summary>"btn 0x1001 stick 32767 trig 255 both 255" for the window, then reset.</summary>
         public string TakeNote()
         {
-            string note = $"btn 0x{_buttons:X4} stick {_stick} trig {_trigger}";
+            string note = $"btn 0x{_buttons:X4} stick {_stick} trig {_trigger} both {_both}";
             this = default;
             return note;
         }
