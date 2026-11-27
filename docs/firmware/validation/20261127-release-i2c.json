@@ -1425,5 +1425,17 @@
     "package_job_passed": true,
     "release_job": "skipped",
     "scope": "separate prior main source; no physical firmware validation"
+  },
+  "desktop_ci_after_source_publication": {
+    "run_id": 46033025127,
+    "source_commit": "ac476f3b69ceac362d6460cc57ed9d5864d04794",
+    "conclusion": "success",
+    "app_contracts_passed": 585,
+    "app_contracts_failed": 0,
+    "wpf_build_passed": true,
+    "package_job_passed": true,
+    "release_job": "skipped",
+    "firmware_fresh_stages": 1,
+    "firmware_audited_reused_stages": 23
   }
 }
