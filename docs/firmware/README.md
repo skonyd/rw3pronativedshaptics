@@ -141,9 +141,16 @@ fresh recovery, queued trigger reports, and combined Sensa/audio paths.
 Original stale raw/uninverted failure values remain recorded, with no
 physical fault claim. Simultaneous sequence timing remains unsupported.
 
-The [latest 2026-11-28 validation](validation/20261128-adc-dual.json) covers
-27 contracts: one fresh normal/optimized unified ADC stage and 26 audited
-unchanged report reuses, not 27 reruns. The [preceding recovery validation](validation/20261128-adc-recovery.json)
+The [calibration-time extension](CALIBRATION_TIME_REPLAY.md) now advances
+supplied MRT/motor/WWDT time during original 1FF70/IRQ work. It shares
+fractional phase with D620 and supplies DMA completion deadlines to original
+handlers. Masked coalescence stays visible; actual USB/FIFO arrivals,
+all-CPU timing and independent elapsed-time stop remain open.
+
+The [latest 2026-11-28 validation](validation/20261128-calibration-time.json) covers
+28 contracts: one fresh normal/optimized calibration-time stage and 27 audited
+unchanged report reuses, not 28 reruns. The [preceding A/B validation](validation/20261128-adc-dual.json)
+keeps its own one-fresh/26-reused provenance. The [preceding recovery validation](validation/20261128-adc-recovery.json)
 keeps its own one-fresh/25-reused provenance. The [preceding ADC-B validation](validation/20261128-adc-b.json)
 keeps its own one-fresh/24-reused provenance. Input/source hashes and the
 unchanged DSP module provenance remain recorded.

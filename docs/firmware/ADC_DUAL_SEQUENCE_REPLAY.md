@@ -4,6 +4,10 @@
 v2.04.00 and the existing simulator-only DSP module remain unchanged.
 No controller access, firmware write, driver or service change.
 
+Continuation: [CALIBRATION_TIME_REPLAY.md](CALIBRATION_TIME_REPLAY.md)
+adds supplied clock time and DMA completions during calibration waits.
+This earlier stage retains its original timing scope and reports.
+
 ## What this adds
 
 The [preceding recovery stage](ADC_RECOVERY_REPLAY.md) deliberately rejects

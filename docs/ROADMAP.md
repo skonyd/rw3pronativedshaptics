@@ -2,7 +2,7 @@
 
 **Firmware lab, 2026-11-28:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[27-stage validation, one fresh/26 audited reuse](firmware/validation/20261128-adc-dual.json)
+[28-stage validation, one fresh/27 audited reuse](firmware/validation/20261128-calibration-time.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -43,8 +43,12 @@ than declaring health from setup/ready flags. The [unified A/B stage](firmware/A
 now covers that former A-start boundary, six-channel startup/foreground
 scans, per-channel abort/recovery, queued trigger reports and combined
 Sensa/audio paths. It retains stale raw values and skipped inversion on
-failed A reads as candidate freshness/error requirements. Next advance
-concurrent peripheral time during calibration waits and establish
+failed A reads as candidate freshness/error requirements. The
+[calibration-time stage](firmware/CALIBRATION_TIME_REPLAY.md) advances
+supplied clocks during original 1FF70/IRQ work, preserves shared fractional
+phase with D620 and delivers supplied DMA completion events through original
+handlers. Masked coalescence and terminal watchdog reset remain explicit.
+Next integrate actual USB/FIFO arrivals, all relevant CPU timing and establish
 gate/button meanings, complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime

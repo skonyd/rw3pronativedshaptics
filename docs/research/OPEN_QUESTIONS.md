@@ -203,9 +203,19 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   retained raw values without inversion; future candidate needs freshness
   status. No physical defect, host delivery or authentication is established.
   The former 0x1982C boundary remains only in the older stage's own contract.
-  Next advance peripheral time during 0x1FF70 calibration waits, concurrent
-  USB/DMA arrivals and independent elapsed-time stop. Simultaneous A/B
-  priority, external triggers/bursts and ADC conversion IRQ/DMA stay open.
+  E-20261128-130/131 now advances supplied MRT/motor/WWDT time inside
+  original 0x1FF70, its division helpers and IRQs. Nine profiles and CPI1/3/7
+  preserve original loop work. Shared D620/1FF70 fractional phase fixes a
+  discriminating 77-versus-78 WDCLK boundary. Four DMA completion scenes
+  run original handlers, including nested DMA-over-MRT; four full ADC setups
+  and timed stock/disabled/stereo-recovery streams pass normal/optimized
+  equality. Fifteen guards plus terminal WWDT expiry pass. Masked 34/33
+  MRT expiration/coalescence retains lost time; independent stop is not done.
+  Actual USB receive/descriptor arrivals, FIFO pacing, ADC readiness derived
+  from time, all relevant CPU timing and independent elapsed-time output
+  stop are next. Physical cycles/latency and simultaneous A/B priority,
+  external triggers/bursts and ADC conversion IRQ/DMA remain unverified.
+  See [Calibration-time scope](../firmware/CALIBRATION_TIME_REPLAY.md).
   See [Unified ADC scope](../firmware/ADC_DUAL_SEQUENCE_REPLAY.md). Calibration retention and overlapping dummy/calibration
   requests need physical evidence; completion fixtures do not prove timing.
   See [ADC recovery scope](../firmware/ADC_RECOVERY_REPLAY.md).

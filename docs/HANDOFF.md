@@ -304,10 +304,22 @@ Integrated stock/disabled, stereo/L/R and A-/B-timeout scenes check original
 foreground, preserved PCM and independent PWM/drain/isolation. Full reports
 match normal/optimized Python; latest validation is 27 contracts (one fresh,
 26 audited reuses). Older stages retain their own boundaries.
-Next advance concurrent peripheral/USB/DMA events during 0x1FF70 waits
-and provide independent elapsed-time stop. Simultaneous A/B priority and
-real conversion timing remain unsupported. Retain all GPIO events,
-including NACK reassertions. Stock/DSP images remain unchanged; no flash.
+E-20261128-130/131 now times original 0x1FF70 plus division/shift
+helpers and IRQ work: read [CALIBRATION_TIME_REPLAY.md](firmware/CALIBRATION_TIME_REPLAY.md).
+Nine direct profiles, four supplied DMA completion scenes (including nested
+DMA-over-MRT), four ADC initializations, stock/disabled and active stereo
+recovery pass normal/optimized equality. The D620/1FF70 clocks share their
+fractional phase: 9360 bus cycles produce 78 WDCLK rather than an incorrect
+77 from separate rounding. Fifteen guards and terminal WWDT expiry retain
+failure boundaries. A masked wait coalesces 34 expirations to one serviced
+flag; no catch-up or independent motor-stop claim. Latest validation covers
+28 contracts (one fresh, 27 audited reuses); prior stage contracts stay intact.
+Next supply actual USB receive/descriptor arrivals and FIFO pacing during
+waits, advance all relevant CPU work without double charging and validate
+independent elapsed-time output stop. ADC readiness is still count-supplied;
+physical clocks, simultaneous sequence priority and real conversion timing
+remain open. Retain all GPIO events, including NACK reassertions. Images
+are unchanged and simulator-only; no flash.
 
 Desktop update 2026-11-27: main 5ff0450 / CI 45876635460 now passes
 585 contracts, WPF and package checks following later app commits.

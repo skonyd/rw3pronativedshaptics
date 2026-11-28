@@ -110,11 +110,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-The [latest validation](firmware/validation/20261128-adc-dual.json),
-2026-11-28, covers 27 stage contracts: one fresh unified ADC A/B stage
-with identical normal/optimized reports, plus 26 unchanged reports reused
+The [latest validation](firmware/validation/20261128-calibration-time.json),
+2026-11-28, covers 28 stage contracts: one fresh calibration-time stage
+with identical normal/optimized reports, plus 27 unchanged reports reused
 after input/source/import/runtime/report-hash checks. These are not
-27 fresh runs. The [preceding recovery validation](firmware/validation/20261128-adc-recovery.json)
+28 fresh runs. The [preceding A/B validation](firmware/validation/20261128-adc-dual.json)
+retains its own one-fresh/26-reused provenance. The [preceding recovery validation](firmware/validation/20261128-adc-recovery.json)
 retains its own one-fresh/25-reused provenance. The [preceding ADC-B validation](firmware/validation/20261128-adc-b.json)
 retains its own one-fresh/24-reused provenance. The [preceding release validation](firmware/validation/20261127-release-i2c.json)
 retains its own one-fresh/23-reused provenance. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
@@ -400,11 +401,27 @@ A-/B-timeout audio paths, original foreground iterations, PCM preservation,
 independent PWM/idle/isolation and Sensa frame checks. Five active runs
 cover 1275 iterations, 635 A scans, 3809 valid A reads, 49 valid B reads,
 22,249 checked IRQ returns and 105 independent frames. Normal/optimized
-complete reports match. Calibration wait 0x1FF70 still executes without
-advancing concurrent peripheral time. Simultaneous sequence priority,
-physical ADC timing/voltage/pin behavior, continuous USB/DMA arrivals during
-waits, independent stop, full boot and safe flash/recovery remain open.
-No hardware firmware was written.
+complete reports match; that preceding stage retains untimed 0x1FF70 waits.
+The [calibration-time extension](firmware/CALIBRATION_TIME_REPLAY.md) now
+advances supplied MRT/motor/WWDT clocks during original 0x1FF70, its
+division/shift helpers and actual IRQs. Nine profiles check independent
+loop arithmetic and CPI1/3/7 sensitivity. Both wait helpers share fractional
+clock phase: the mixed 9360-bus-cycle case produces 78 WDCLK cycles,
+while separate rounding would produce 77. Four supplied DMA-completion
+scenes execute original IRQ/callback code, including DMA preempting MRT.
+Four full ADC initializations preserve original status semantics with
+wait time enabled. Fifteen negative controls reject invalid/unsupported
+states, and supplied watchdog expiry remains terminal. A masked wait
+retains 34 expirations/33 coalesced events, not fabricated catch-up ticks.
+The timed stock/disabled pair and active stereo recovery scene preserve
+shared state, source PCM, frame checks, idle triggers and final drain.
+The active run covers 127 iterations, 63 A scans, 2271 checked IRQ returns,
+nine combined DMA batches and eight independent Sensa frames.
+Complete normal/optimized reports match. This is an instruction-budget
+fixture, not physical clock/latency proof; ADC readiness is still supplied.
+Actual USB arrivals/FIFO pacing, all-CPU timing, simultaneous A/B priority,
+physical pin/voltage behavior, independent elapsed-time stop, full boot
+and safe flash/recovery remain open. No hardware firmware was written.
 
 Current desktop verification (2026-11-27): main `5ff0450`, CI
 `45876635460`, passes 585 contracts, WPF and the package job. The release
