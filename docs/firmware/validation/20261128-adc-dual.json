@@ -1141,5 +1141,17 @@
     "checked_irq_returns": 22249,
     "combined_spi_i2s_batches": 60,
     "runtime_sensa_frame_checks": 105
+  },
+  "desktop_ci_after_source_publication": {
+    "run_id": 46088531617,
+    "source_commit": "9a6e4f139332599ae321fa869d9a16baa18cc889",
+    "conclusion": "success",
+    "app_contracts_passed": 585,
+    "app_contracts_failed": 0,
+    "wpf_build_passed": true,
+    "package_job_passed": true,
+    "release_job": "skipped",
+    "firmware_fresh_stages": 1,
+    "firmware_audited_reused_stages": 26
   }
 }
