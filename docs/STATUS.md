@@ -428,6 +428,10 @@ Current desktop verification (2026-11-27): main `5ff0450`, CI
 job is skipped; this is not a published release or physical validation.
 Older missing-ChromaEffect failures below are historical source outcomes.
 
+Published firmware-source commit `a6f459d` also passes Windows CI
+`46128347695`: 585 contracts, WPF and the package job pass. The release
+job is skipped; no published release or physical firmware proof follows.
+
 Published firmware-source commit `9a6e4f1` also passes Windows CI
 `46088531617`: 585 contracts, WPF and the package job pass. The release
 job is skipped; no published release or physical firmware proof follows.

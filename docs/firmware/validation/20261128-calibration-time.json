@@ -5916,5 +5916,17 @@
     "Masked MRT expirations coalesce without catch-up, so independent elapsed-time motor stop remains unproved",
     "WWDT expiry remains a terminal boundary, not evidence of boot/PWM recovery",
     "Full boot/radio/USB/authentication, bootloader acceptance, image placement and SWD recovery remain unverified"
-  ]
+  ],
+  "desktop_ci_after_source_publication": {
+    "run_id": 46128347695,
+    "source_commit": "a6f459d1c180c2be22310b0e1bbec5484495a4ad",
+    "conclusion": "success",
+    "app_contracts_passed": 585,
+    "app_contracts_failed": 0,
+    "wpf_build_passed": true,
+    "package_job_passed": true,
+    "release_job": "skipped",
+    "firmware_fresh_stages": 1,
+    "firmware_audited_reused_stages": 27
+  }
 }
