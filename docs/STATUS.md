@@ -110,11 +110,12 @@ release clears both fields. The stock USB driver arms the same bytes
 on endpoint `0x81` in modeled USB RAM, and its IRQ and endpoint callback
 retire the transfer only after modeled completion. An offline suite runs the stock and DSP
 checks from the two original USB captures and all three stock images.
-The [latest validation](firmware/validation/20261128-adc-recovery.json),
-2026-11-28, covers 26 stage contracts: one fresh ADC recovery stage
-with identical normal/optimized reports, plus 25 unchanged reports reused
+The [latest validation](firmware/validation/20261128-adc-dual.json),
+2026-11-28, covers 27 stage contracts: one fresh unified ADC A/B stage
+with identical normal/optimized reports, plus 26 unchanged reports reused
 after input/source/import/runtime/report-hash checks. These are not
-26 fresh runs. The [preceding ADC-B validation](firmware/validation/20261128-adc-b.json)
+27 fresh runs. The [preceding recovery validation](firmware/validation/20261128-adc-recovery.json)
+retains its own one-fresh/25-reused provenance. The [preceding ADC-B validation](firmware/validation/20261128-adc-b.json)
 retains its own one-fresh/24-reused provenance. The [preceding release validation](firmware/validation/20261127-release-i2c.json)
 retains its own one-fresh/23-reused provenance. The [previous GPIO validation](firmware/validation/20261123-gpio-delay.json)
 retains its own four-fresh/nineteen-reused execution provenance.
@@ -383,12 +384,27 @@ all ten failures still mark an average of 3200 ready in the fixture.
 Fifteen negative guards reject unspecified/unsupported operations.
 Normal and optimized complete reports match. This does not change the
 stock image or fix its behavior on hardware.
-The next explicit ADC-A start boundary is 0x1982C after original setup;
-the older standalone A model remains separate. Calibration wait 0x1FF70
-executes original instructions without advancing concurrent peripheral
-time. Sequence A/B integration, actual ADC timing/voltage scale, continuous
-USB/DMA arrivals during blocked foreground, independent stop, full boot
-and safe flash/recovery remain open. No hardware firmware was written.
+That recovery stage retains its explicit ADC-A start boundary at 0x1982C.
+The [unified ADC A/B stage](firmware/ADC_DUAL_SEQUENCE_REPLAY.md) now
+executes original full setup and six-channel scans in the same strict
+power/startup lifecycle as B. Twelve scans check delayed/last-poll data
+and independent moving averages; eighteen startup scans check trimmed
+calibration. Six warm timeout scenes check each channel position, aborted
+remaining channels, original retained-raw/uninverted values and fresh
+recovery, interleaved with valid B zero/3450. Original trigger mapping
+and RAM-queued GIP press/release fields also pass; no host delivery or
+authentication is inferred. Twenty negative guards reject unsupported data,
+inputs, widths, overlaps, exhaustion and unpowered operations.
+The new integrated scenes include a stock/disabled pair, stereo, L/R and
+A-/B-timeout audio paths, original foreground iterations, PCM preservation,
+independent PWM/idle/isolation and Sensa frame checks. Five active runs
+cover 1275 iterations, 635 A scans, 3809 valid A reads, 49 valid B reads,
+22,249 checked IRQ returns and 105 independent frames. Normal/optimized
+complete reports match. Calibration wait 0x1FF70 still executes without
+advancing concurrent peripheral time. Simultaneous sequence priority,
+physical ADC timing/voltage/pin behavior, continuous USB/DMA arrivals during
+waits, independent stop, full boot and safe flash/recovery remain open.
+No hardware firmware was written.
 
 Current desktop verification (2026-11-27): main `5ff0450`, CI
 `45876635460`, passes 585 contracts, WPF and the package job. The release

@@ -4,6 +4,10 @@
 The stock NXP v2.04.00 image and simulator-only DSP module are unchanged.
 No controller access, firmware upload, driver or service change.
 
+Continuation: [ADC_DUAL_SEQUENCE_REPLAY.md](ADC_DUAL_SEQUENCE_REPLAY.md)
+now executes A scans and B reads under one lifecycle. This earlier stage
+and its explicit 0x1982C rejection retain their own narrower contract.
+
 ## Original path now executed
 
 The preceding [ADC-B stage](ADC_B_FOREGROUND_REPLAY.md) deliberately stops

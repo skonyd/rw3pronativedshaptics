@@ -2,7 +2,7 @@
 
 **Firmware lab, 2026-11-28:** [Cortex-M IRQ/FP replay](firmware/CORTEX_M_IRQ.md),
 [DMA/DSP preemption](firmware/DMA_DSP_PREEMPTION.md) and the
-[26-stage validation, one fresh/25 audited reuse](firmware/validation/20261128-adc-recovery.json)
+[27-stage validation, one fresh/26 audited reuse](firmware/validation/20261128-adc-dual.json)
 extend the stock/candidate simulator with original DMA and nested motor
 handlers on an explicitly selected M4. The new
 [compiled Sensa publisher](firmware/COMPILED_SENSA_PUBLICATION.md) removes
@@ -39,9 +39,12 @@ data retains that stage's power-control boundary 0xA034/0x40000620.
 The [ADC recovery stage](firmware/ADC_RECOVERY_REPLAY.md) now executes
 full original pin/clock/calibration setup and that power fallback. It
 retains failed-calibration enable and stale-average failure modes rather
-than declaring health from setup/ready flags. Next integrate the six-channel
-ADC-A scanner (explicit A-start boundary 0x1982C), advance concurrent
-peripheral time during calibration waits, and establish
+than declaring health from setup/ready flags. The [unified A/B stage](firmware/ADC_DUAL_SEQUENCE_REPLAY.md)
+now covers that former A-start boundary, six-channel startup/foreground
+scans, per-channel abort/recovery, queued trigger reports and combined
+Sensa/audio paths. It retains stale raw values and skipped inversion on
+failed A reads as candidate freshness/error requirements. Next advance
+concurrent peripheral time during calibration waits and establish
 gate/button meanings, complete game reports,
 actual IRQ0 setup, full loop/IRQ timing, an independent
 elapsed-time safety source, masked worst-case timing, runtime

@@ -132,12 +132,19 @@ boundary. No physical ADC timing or full calibration is proven.
 The [ADC recovery continuation](ADC_RECOVERY_REPLAY.md) now executes
 original power fallback and full 0x90E0 pin/clock/calibration setup.
 It checks recovery to fresh data, failed startup and stale-data averaging.
-ADC-A integration stops explicitly at 0x1982C; calibration waits still
+That stage's ADC-A contract stops at 0x1982C; calibration waits still
 lack concurrent peripheral time. This is not physical reset validation.
 
-The [latest 2026-11-28 validation](validation/20261128-adc-recovery.json) covers
-26 contracts: one fresh normal/optimized ADC recovery stage and 25 audited
-unchanged report reuses, not 26 reruns. The [preceding ADC-B validation](validation/20261128-adc-b.json)
+The [unified ADC A/B stage](ADC_DUAL_SEQUENCE_REPLAY.md) now follows that
+A-start through original startup/foreground scans, per-channel fault and
+fresh recovery, queued trigger reports, and combined Sensa/audio paths.
+Original stale raw/uninverted failure values remain recorded, with no
+physical fault claim. Simultaneous sequence timing remains unsupported.
+
+The [latest 2026-11-28 validation](validation/20261128-adc-dual.json) covers
+27 contracts: one fresh normal/optimized unified ADC stage and 26 audited
+unchanged report reuses, not 27 reruns. The [preceding recovery validation](validation/20261128-adc-recovery.json)
+keeps its own one-fresh/25-reused provenance. The [preceding ADC-B validation](validation/20261128-adc-b.json)
 keeps its own one-fresh/24-reused provenance. Input/source hashes and the
 unchanged DSP module provenance remain recorded.
 

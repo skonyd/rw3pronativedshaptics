@@ -97,6 +97,7 @@ def main():
         ("nxp-release-i2c", "replay_nxp_release_i2c.py", (nxp, args.dsp)),
         ("nxp-foreground-adc", "replay_nxp_foreground_adc.py", (nxp, args.dsp)),
         ("nxp-adc-recovery", "replay_nxp_adc_recovery.py", (nxp, args.dsp)),
+        ("nxp-adc-dual-sequence", "replay_nxp_adc_dual.py", (nxp, args.dsp)),
         ("nxp-wired-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", wired_pcm, *excerpt)),
         ("nxp-dongle-dsp", "simulate_audio_haptics.py", (nxp, args.dsp, "--verified-pcm-trace", dongle_pcm, *excerpt)),
     )

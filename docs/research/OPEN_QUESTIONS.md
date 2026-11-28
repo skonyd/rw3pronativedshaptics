@@ -192,10 +192,21 @@ to [EXPERIMENTS.md](EXPERIMENTS.md).
   even after four failed calibration attempts; the original average uses
   stale data and can mark ready after all ten conversions fail. These are
   future candidate error-propagation requirements, not hardware fixes.
-  Next combine the separate six-channel ADC-A model: original scanner
-  0x197F8 stops at A-start store 0x1982C. Advance peripheral time during
-  0x1FF70 calibration waits, concurrent USB/DMA arrivals and independent
-  elapsed-time stop. Calibration retention and overlapping dummy/calibration
+  E-20261128-120/121 now combines six-channel A scans and B reads with
+  the original full setup/recovery lifecycle. Twelve foreground and eighteen
+  startup scans, all six warm fault positions, interleaved B recovery and
+  original RAM-queued trigger press/release reports pass. Twenty guards
+  reject unsupported inputs/registers/overlaps. Full foreground stereo/L/R
+  and A-/B-timeout audio runs preserve PCM and check isolated/drained PWM;
+  stock/disabled state matches. Normal/optimized reports are identical.
+  Power-down aborts pending channels: original failed reads can store
+  retained raw values without inversion; future candidate needs freshness
+  status. No physical defect, host delivery or authentication is established.
+  The former 0x1982C boundary remains only in the older stage's own contract.
+  Next advance peripheral time during 0x1FF70 calibration waits, concurrent
+  USB/DMA arrivals and independent elapsed-time stop. Simultaneous A/B
+  priority, external triggers/bursts and ADC conversion IRQ/DMA stay open.
+  See [Unified ADC scope](../firmware/ADC_DUAL_SEQUENCE_REPLAY.md). Calibration retention and overlapping dummy/calibration
   requests need physical evidence; completion fixtures do not prove timing.
   See [ADC recovery scope](../firmware/ADC_RECOVERY_REPLAY.md).
   Keep all original GPIO events; reassertions are not physical motor proof.

@@ -294,10 +294,19 @@ covers 26 contracts (one fresh, 25 audited reuses, not 26 reruns).
 Important stock failure semantics: four failed calibration attempts still
 lead to enabled sequences, and all ten failed measurements can yield a
 stale 3200 average marked ready. Do not treat either as healthy data.
-Next combine the earlier six-channel ADC-A model with this A/B lifecycle:
-original scanner 0x197F8 reaches unsupported A-start at 0x1982C.
-Then advance concurrent peripheral/USB/DMA events during 0x1FF70 waits
-and provide independent elapsed-time stop. Retain all GPIO events,
+E-20261128-120/121 now covers that A-start in a strict unified lifecycle:
+read [ADC_DUAL_SEQUENCE_REPLAY.md](firmware/ADC_DUAL_SEQUENCE_REPLAY.md).
+Twelve foreground and eighteen startup scans, all six warm timeout positions,
+interleaved B recovery, queued trigger press/release and 20 guards pass.
+A timeout aborts remaining A channels; the original ring can retain raw
+payloads without success-only inversion. A new scan recovers fresh values.
+Integrated stock/disabled, stereo/L/R and A-/B-timeout scenes check original
+foreground, preserved PCM and independent PWM/drain/isolation. Full reports
+match normal/optimized Python; latest validation is 27 contracts (one fresh,
+26 audited reuses). Older stages retain their own boundaries.
+Next advance concurrent peripheral/USB/DMA events during 0x1FF70 waits
+and provide independent elapsed-time stop. Simultaneous A/B priority and
+real conversion timing remain unsupported. Retain all GPIO events,
 including NACK reassertions. Stock/DSP images remain unchanged; no flash.
 
 Desktop update 2026-11-27: main 5ff0450 / CI 45876635460 now passes
