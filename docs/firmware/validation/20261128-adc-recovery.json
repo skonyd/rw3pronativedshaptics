@@ -1940,5 +1940,17 @@
     "Sequence A start at 0x1982C remains explicit next integration boundary; older standalone six-channel replay is separate",
     "Calibration wait 0x1FF70 executes original code but does not advance concurrent peripheral time",
     "Independent motor stop, concurrent arrivals, full boot/radio/USB/authentication, bootloader acceptance and SWD recovery remain open"
-  ]
+  ],
+  "desktop_ci_after_source_publication": {
+    "run_id": 46085319751,
+    "source_commit": "665e70c5ac372aefbe1de6adea91e09b5452e209",
+    "conclusion": "success",
+    "app_contracts_passed": 585,
+    "app_contracts_failed": 0,
+    "wpf_build_passed": true,
+    "package_job_passed": true,
+    "release_job": "skipped",
+    "firmware_fresh_stages": 1,
+    "firmware_audited_reused_stages": 25
+  }
 }
